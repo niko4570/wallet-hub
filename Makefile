@@ -7,8 +7,9 @@ export
 endif
 
 EXPO_PUBLIC_API_URL ?= http://localhost:3000
+ADB_PORT ?= 3000
 
-.PHONY: help install dev-api dev-mobile dev-all build-api build-contracts lint test-api android
+.PHONY: help install dev-api dev-mobile dev-all build-api build-contracts lint test-api android adb-reverse
 
 help:
 	@echo "WalletHub shortcuts:"
@@ -31,8 +32,12 @@ dev-api:
 dev-mobile:
 	EXPO_PUBLIC_API_URL=$(EXPO_PUBLIC_API_URL) npm run start --workspace apps/mobile
 
-android:
-	EXPO_PUBLIC_API_URL=$(EXPO_PUBLIC_API_URL) npx --yes expo run:android
+android: adb-reverse
+	cd apps/mobile && EXPO_PUBLIC_API_URL=$(EXPO_PUBLIC_API_URL) npx --yes expo run:android
+
+adb-reverse:
+	@echo ">> Mapping device tcp:$(ADB_PORT) -> host tcp:$(ADB_PORT) via adb"
+	@adb reverse tcp:$(ADB_PORT) tcp:$(ADB_PORT) >/dev/null 2>&1 || true
 
 dev-all:
 	EXPO_PUBLIC_API_URL=$(EXPO_PUBLIC_API_URL) npx concurrently "npm run dev:api" "npm run start --workspace apps/mobile"

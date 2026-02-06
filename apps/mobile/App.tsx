@@ -4,13 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -93,22 +93,23 @@ export default function App() {
 
   const totalWalletsValue = useMemo(() => portfolio?.totalUsdValue ?? 0, [portfolio]);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.centered}>
-        <ActivityIndicator size="large" color="#4B8BF5" />
-        <Text style={styles.loadingText}>Syncing WalletHub data...</Text>
-      </SafeAreaView>
-    );
-  }
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <SafeAreaView style={styles.centered}>
+          <ActivityIndicator size="large" color="#4B8BF5" />
+          <Text style={styles.loadingText}>Syncing WalletHub data...</Text>
+        </SafeAreaView>
+      );
+    }
 
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="light" />
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} />}
-      >
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar style="light" />
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} />}
+        >
         <Text style={styles.title}>WalletHub Control Center</Text>
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -169,9 +170,12 @@ export default function App() {
             </View>
           ))}
         </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
+        </ScrollView>
+      </SafeAreaView>
+    );
+  };
+
+  return <SafeAreaProvider>{renderContent()}</SafeAreaProvider>;
 }
 
 const styles = StyleSheet.create({

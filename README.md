@@ -33,6 +33,7 @@ packages/
    cd apps/mobile
    EXPO_PUBLIC_API_URL=http://localhost:3000 npm run start
    ```
+   - **USB 真机调试**：先运行 `make adb-reverse ADB_PORT=3000`（或直接 `make android`，会自动调用）将手机的 `tcp:3000` 映射到宿主机端口，再保持 `EXPO_PUBLIC_API_URL=http://localhost:3000`。
 
 ## API Surface
 
