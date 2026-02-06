@@ -1,0 +1,36 @@
+{
+  "name": "wallethub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WalletHub monorepo for Solana mobile wallet hub MVP",
+  "main": "index.js",
+  "workspaces": [
+    "apps/mobile",
+    "apps/api",
+    "packages/contracts"
+  ],
+  "scripts": {
+    "dev:mobile": "npm run start --workspace apps/mobile",
+    "dev:api": "npm run start:dev --workspace apps/api",
+    "build:contracts": "npm run build --workspace packages/contracts",
+    "build:api": "npm run build --workspace apps/api",
+    "build": "npm run build:contracts && npm run build:api",
+    "lint": "npm run lint --workspace apps/api",
+    "postinstall": "npm run build:contracts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/niko4570/wallet-hub.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/niko4570/wallet-hub/issues"
+  },
+  "homepage": "https://github.com/niko4570/wallet-hub#readme",
+  "devDependencies": {
+    "turbo": "^2.1.3",
+    "typescript": "^5.4.5"
+  }
+}

@@ -1,0 +1,12 @@
+node_modules
+dist
+.expo
+.expo-shared
+.turbo
+coverage
+.DS_Store
+*.log
+apps/mobile/.expo
+apps/mobile/node_modules
+apps/api/node_modules
+packages/contracts/dist

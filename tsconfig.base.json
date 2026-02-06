@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@wallethub/contracts": ["packages/contracts/src"],
+      "@wallethub/contracts/*": ["packages/contracts/src/*"]
+    },
+    "strict": true,
+    "skipLibCheck": true
+  }
+}
