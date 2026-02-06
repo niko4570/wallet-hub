@@ -13,7 +13,8 @@ export class WalletsService {
     {
       id: 'session-rotation',
       title: 'Rotate session keys',
-      description: 'Primary device keys reach policy threshold, rotate within 12h.',
+      description:
+        'Primary device keys reach policy threshold, rotate within 12h.',
       severity: 'warning',
     },
   ];
@@ -67,11 +68,11 @@ export class WalletsService {
     },
   ];
 
-  async getAggregatedPortfolio(): Promise<AggregatedPortfolio> {
+  getAggregatedPortfolio(): AggregatedPortfolio {
     return computeAggregatedPortfolio(this.wallets, this.pendingActions, 3.4);
   }
 
-  async getWallet(address: string): Promise<WalletAccount> {
+  getWallet(address: string): WalletAccount {
     const wallet = this.wallets.find((item) => item.address === address);
     if (!wallet) {
       throw new NotFoundException(`Wallet ${address} was not found`);
@@ -80,9 +81,11 @@ export class WalletsService {
     return wallet;
   }
 
-  async linkWallet(payload: LinkWalletDto): Promise<WalletAccount> {
+  linkWallet(payload: LinkWalletDto): WalletAccount {
     const normalizedAddress = payload.address.trim();
-    const existing = this.wallets.find((wallet) => wallet.address === normalizedAddress);
+    const existing = this.wallets.find(
+      (wallet) => wallet.address === normalizedAddress,
+    );
     if (existing) {
       return existing;
     }

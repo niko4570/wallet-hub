@@ -12,7 +12,10 @@ export class SessionService {
       walletAddress: 'F97p1dA1s5C3q9e7m2x1n4v6b8k0z1r3t5y7u9w1',
       maxDailySpendUsd: 2500,
       maxTxPerHour: 10,
-      allowedPrograms: ['11111111111111111111111111111111', 'JUP4Fb2cqiRUznZY1rY6kQzFfj3GX4T1J8YcbD3JhC'],
+      allowedPrograms: [
+        '11111111111111111111111111111111',
+        'JUP4Fb2cqiRUznZY1rY6kQzFfj3GX4T1J8YcbD3JhC',
+      ],
       allowedDestinations: [],
     },
     {
