@@ -9,18 +9,28 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
+    "@tamagui/config": "^1.144.3",
+    "@tamagui/core": "^1.144.3",
     "@wallethub/contracts": "file:../../packages/contracts",
     "expo": "~54.0.33",
+    "expo-font": "^14.0.11",
+    "expo-haptics": "^15.0.8",
+    "expo-splash-screen": "^31.0.13",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
+    "react-native-reanimated": "^4.2.1",
     "react-native-safe-area-context": "^5.6.2",
-    "react-native-web": "^0.21.0"
+    "react-native-svg": "^15.15.2",
+    "react-native-web": "^0.21.0",
+    "tamagui": "^1.144.3"
   },
   "devDependencies": {
+    "@tamagui/babel-plugin": "^1.144.3",
     "@types/react": "~19.1.0",
+    "babel-plugin-transform-inline-environment-variables": "^0.4.4",
     "typescript": "~5.9.2"
-  },
-  "private": true
+  }
 }

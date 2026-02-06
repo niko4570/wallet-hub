@@ -1,20 +1,68 @@
 import { AggregatedPortfolio, SessionKey } from '@wallethub/contracts';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { RefreshControl } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { useFonts } from 'expo-font';
+import * as SplashScreen from 'expo-splash-screen';
+import {
+  TamaguiProvider,
+  YStack,
+  XStack,
+  Text,
+  ScrollView,
+  Theme,
+  Button,
+  Card,
+  Spinner,
+  H3,
+  H6,
+  Paragraph,
+  Separator,
+  Spacer,
+  styled,
+} from 'tamagui';
+import config from './tamagui.config';
+import * as Haptics from 'expo-haptics';
+
+// Suppress zeego warning (not using native menus yet)
+// import '@tamagui/native/setup-zeego';
+
+SplashScreen.preventAutoHideAsync();
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
-const formatUsd = (value: number) => `$${value.toFixed(2)}`;
+const formatUsd = (value: number) => `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const GlassCard = styled(Card, {
+  backgroundColor: 'rgba(255,255,255,0.03)',
+  borderColor: '$borderColor',
+  borderWidth: 1,
+  borderRadius: '$6', // 32px
+  padding: '$4', // 24px
+  elevation: 0,
+  animation: 'bouncy',
+  hoverStyle: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    scale: 1.01,
+  },
+  pressStyle: {
+    scale: 0.98,
+  },
+});
+
+const ActionButton = styled(Button, {
+  backgroundColor: '$colorFocus',
+  color: 'white',
+  borderRadius: '$4', // 16px
+  height: 48,
+  animation: 'bouncy',
+  pressStyle: {
+    scale: 0.96,
+    opacity: 0.9,
+  },
+  onPressIn: () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium),
+});
 
 const fetchJson = async <T,>(path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(`${API_URL}${path}`, init);
@@ -26,6 +74,11 @@ const fetchJson = async <T,>(path: string, init?: RequestInit): Promise<T> => {
 };
 
 export default function App() {
+  const [loaded] = useFonts({
+    Inter: require('@tamagui/font-inter/otf/Inter-Medium.otf'),
+    InterBold: require('@tamagui/font-inter/otf/Inter-Bold.otf'),
+  });
+
   const [portfolio, setPortfolio] = useState<AggregatedPortfolio | null>(null);
   const [sessions, setSessions] = useState<SessionKey[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,13 +104,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (loaded) {
+      SplashScreen.hideAsync();
+      loadData();
+    }
+  }, [loaded, loadData]);
 
   const handleIssueSessionKey = useCallback(async () => {
-    if (!portfolio?.wallets.length) {
-      return;
-    }
+    if (!portfolio?.wallets.length) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
     const primaryWallet = portfolio.wallets[0];
     await fetchJson<SessionKey>('/session/issue', {
@@ -67,15 +122,8 @@ export default function App() {
         walletAddress: primaryWallet.address,
         devicePublicKey: 'demo-device-public-key',
         expiresInMinutes: 60,
-        scopes: [
-          {
-            name: 'transfer',
-            maxUsd: 500,
-          },
-        ],
-        metadata: {
-          device: 'Saga Pro devkit',
-        },
+        scopes: [{ name: 'transfer', maxUsd: 500 }],
+        metadata: { device: 'Saga Pro devkit' },
       }),
     });
     await loadData();
@@ -83,227 +131,202 @@ export default function App() {
 
   const handleRevokeSessionKey = useCallback(
     async (id: string) => {
-      await fetchJson(`/session/${id}`, {
-        method: 'DELETE',
-      });
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      await fetchJson(`/session/${id}`, { method: 'DELETE' });
       await loadData();
     },
-    [loadData],
+    [loadData]
   );
 
   const totalWalletsValue = useMemo(() => portfolio?.totalUsdValue ?? 0, [portfolio]);
 
-  const renderContent = () => {
-    if (loading) {
-      return (
-        <SafeAreaView style={styles.centered}>
-          <ActivityIndicator size="large" color="#4B8BF5" />
-          <Text style={styles.loadingText}>Syncing WalletHub data...</Text>
-        </SafeAreaView>
-      );
-    }
+  if (!loaded) {
+    return null;
+  }
 
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar style="light" />
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} />}
-        >
-        <Text style={styles.title}>WalletHub Control Center</Text>
+  return (
+    <SafeAreaProvider>
+      <TamaguiProvider config={config} defaultTheme="dark">
+        <Theme name="dark">
+          <SafeAreaView style={{ flex: 1, backgroundColor: '#050914' }}>
+            <StatusBar style="light" />
+            <ScrollView
+              contentContainerStyle={{ paddingBottom: 120 }}
+              refreshControl={
+                // @ts-ignore
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={loadData}
+                  tintColor="#8EA4FF"
+                  colors={['#8EA4FF']}
+                />
+              }
+            >
+              <YStack padding="$4" gap="$5">
+                {/* Header */}
+                <XStack justifyContent="space-between" alignItems="center" marginTop="$2">
+                  <H3 color="white" fontWeight="800" letterSpacing={1}>
+                    WALLETHUB
+                  </H3>
+                  <YStack
+                    backgroundColor="$surface2"
+                    width={40}
+                    height={40}
+                    borderRadius="$8"
+                    alignItems="center"
+                    justifyContent="center"
+                  >
+                    <Text fontSize={16}>🛡️</Text>
+                  </YStack>
+                </XStack>
 
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+                {error && (
+                  <GlassCard backgroundColor="rgba(255, 77, 77, 0.1)" borderColor="$error">
+                    <Text color="$error">{error}</Text>
+                  </GlassCard>
+                )}
 
-        <View style={styles.heroCard}>
-          <Text style={styles.heroLabel}>Total Portfolio Value</Text>
-          <Text style={styles.heroValue}>{formatUsd(totalWalletsValue)}</Text>
-          <Text style={styles.heroSubtext}>
-            {portfolio?.change24hPercent ?? 0}% vs. 24h · {portfolio?.wallets.length ?? 0} linked wallets
-          </Text>
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Wallet Aggregation</Text>
-            <Text style={styles.sectionSubtitle}>Multi-wallet overview</Text>
-          </View>
-          {portfolio?.wallets.map((wallet) => (
-            <View key={wallet.address} style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>{wallet.label ?? wallet.address.slice(0, 6)}</Text>
-                <Text style={styles.badge}>{wallet.provider}</Text>
-              </View>
-              <Text style={styles.cardValue}>{formatUsd(wallet.totalUsdValue)}</Text>
-              <Text style={styles.cardMeta}>
-                Share {wallet.shareOfPortfolio}% · Session keys {wallet.sessionKeyIds.length}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Session Keys</Text>
-            <Text style={styles.sectionSubtitle}>Policy-aware signing</Text>
-          </View>
-          <TouchableOpacity style={styles.primaryButton} onPress={handleIssueSessionKey}>
-            <Text style={styles.primaryButtonText}>Issue session key</Text>
-          </TouchableOpacity>
-          {sessions.map((session) => (
-            <View key={session.id} style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>{session.metadata?.device ?? 'Unknown device'}</Text>
-                <Text style={[styles.badge, session.status !== 'active' && styles.badgeMuted]}>
-                  {session.status.toUpperCase()}
-                </Text>
-              </View>
-              <Text style={styles.cardMeta}>Expires {new Date(session.expiresAt).toLocaleString()}</Text>
-              <Text style={styles.cardMeta}>Scopes: {session.scopes.map((scope) => scope.name).join(', ')}</Text>
-              {session.status === 'active' ? (
-                <TouchableOpacity
-                  style={styles.secondaryButton}
-                  onPress={() => handleRevokeSessionKey(session.id)}
+                {/* Hero Section */}
+                <GlassCard
+                  padded
+                  elevate
+                  bordered
+                  animation="bouncy"
+                  pressStyle={{ scale: 0.98 }}
                 >
-                  <Text style={styles.secondaryButtonText}>Revoke</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          ))}
-        </View>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  };
+                  <YStack gap="$1">
+                    <H6 color="$colorFocus" textTransform="uppercase" letterSpacing={2} fontSize={11} opacity={0.8}>
+                      Total Portfolio Value
+                    </H6>
+                    <H3 fontSize={42} fontWeight="900" letterSpacing={-1} lineHeight={48}>
+                      {formatUsd(totalWalletsValue)}
+                    </H3>
+                    <XStack gap="$2" alignItems="center" marginTop="$2">
+                      <YStack backgroundColor="rgba(0, 255, 179, 0.15)" paddingHorizontal="$2" paddingVertical="$1" borderRadius="$2">
+                        <Text color="$accentColor" fontSize={12} fontWeight="700">
+                          +{portfolio?.change24hPercent ?? 0}%
+                        </Text>
+                      </YStack>
+                      <Text color="$color" opacity={0.5} fontSize={13}>
+                        vs 24h
+                      </Text>
+                    </XStack>
+                  </YStack>
+                </GlassCard>
 
-  return <SafeAreaProvider>{renderContent()}</SafeAreaProvider>;
+                {/* Wallets Section */}
+                <YStack gap="$3">
+                  <XStack justifyContent="space-between" alignItems="baseline">
+                    <H6 color="$color" opacity={0.6} textTransform="uppercase" letterSpacing={1}>
+                      Linked Wallets
+                    </H6>
+                  </XStack>
+
+                  {loading && !portfolio ? (
+                    <Spinner size="large" color="$colorFocus" />
+                  ) : (
+                    portfolio?.wallets.map((wallet) => (
+                      <GlassCard key={wallet.address} bordered padded>
+                        <XStack justifyContent="space-between" alignItems="center">
+                          <YStack gap="$1">
+                            <Text color="white" fontWeight="700" fontSize={16}>
+                              {wallet.label ?? wallet.address.slice(0, 6)}
+                            </Text>
+                            <Text color="$color" opacity={0.5} fontSize={12}>
+                              {wallet.provider.toUpperCase()}
+                            </Text>
+                          </YStack>
+                          <YStack alignItems="flex-end" gap="$1">
+                            <Text color="white" fontWeight="700" fontSize={16}>
+                              {formatUsd(wallet.totalUsdValue)}
+                            </Text>
+                            <Text color="$color" opacity={0.5} fontSize={12}>
+                              {wallet.shareOfPortfolio}% share
+                            </Text>
+                          </YStack>
+                        </XStack>
+                      </GlassCard>
+                    ))
+                  )}
+                </YStack>
+
+                {/* Session Keys Section */}
+                <YStack gap="$3">
+                  <XStack justifyContent="space-between" alignItems="center">
+                    <H6 color="$color" opacity={0.6} textTransform="uppercase" letterSpacing={1}>
+                      Session Keys
+                    </H6>
+                  </XStack>
+
+                  <ActionButton onPress={handleIssueSessionKey}>
+                    <Text color="white" fontWeight="700">Issue New Session Key</Text>
+                  </ActionButton>
+
+                  {sessions.map((session) => (
+                    <GlassCard key={session.id} bordered padded>
+                      <YStack gap="$3">
+                        <XStack justifyContent="space-between" alignItems="center">
+                          <YStack>
+                            <Text color="white" fontWeight="700" fontSize={15}>
+                              {session.metadata?.device ?? 'Unknown Device'}
+                            </Text>
+                            <Text color="$color" opacity={0.5} fontSize={12} marginTop="$1">
+                              Expires {new Date(session.expiresAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            </Text>
+                          </YStack>
+                          <YStack
+                            backgroundColor={session.status === 'active' ? 'rgba(0, 255, 179, 0.1)' : 'rgba(255, 255, 255, 0.05)'}
+                            paddingHorizontal="$2"
+                            paddingVertical="$1"
+                            borderRadius="$2"
+                            borderWidth={1}
+                            borderColor={session.status === 'active' ? 'rgba(0, 255, 179, 0.3)' : 'transparent'}
+                          >
+                            <Text
+                              color={session.status === 'active' ? '$accentColor' : '$color'}
+                              opacity={session.status === 'active' ? 1 : 0.4}
+                              fontSize={10}
+                              fontWeight="800"
+                              textTransform="uppercase"
+                            >
+                              {session.status}
+                            </Text>
+                          </YStack>
+                        </XStack>
+
+                        <Separator borderColor="rgba(255,255,255,0.05)" />
+
+                        <XStack gap="$2" flexWrap="wrap">
+                          {session.scopes.map((scope, idx) => (
+                            <YStack key={idx} backgroundColor="rgba(142, 164, 255, 0.1)" borderRadius="$1" paddingHorizontal="$2" paddingVertical={4}>
+                              <Text color="$colorFocus" fontSize={11} fontWeight="600">
+                                {scope.name} {scope.maxUsd ? `≤ $${scope.maxUsd}` : ''}
+                              </Text>
+                            </YStack>
+                          ))}
+                        </XStack>
+
+                        {session.status === 'active' && (
+                          <Button
+                            size="$3"
+                            variant="outlined"
+                            borderColor="rgba(255,255,255,0.2)"
+                            marginTop="$2"
+                            onPress={() => handleRevokeSessionKey(session.id)}
+                            pressStyle={{ backgroundColor: 'rgba(255,255,255,0.05)' }}
+                          >
+                            <Text color="$color" opacity={0.7} fontSize={12}>Revoke Access</Text>
+                          </Button>
+                        )}
+                      </YStack>
+                    </GlassCard>
+                  ))}
+                </YStack>
+              </YStack>
+            </ScrollView>
+          </SafeAreaView>
+        </Theme>
+      </TamaguiProvider>
+    </SafeAreaProvider>
+  );
 }
-
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#050914',
-  },
-  scrollContent: {
-    padding: 20,
-    gap: 20,
-    paddingBottom: 80,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: 'white',
-  },
-  heroCard: {
-    backgroundColor: '#11182b',
-    padding: 20,
-    borderRadius: 16,
-  },
-  heroLabel: {
-    color: '#8EA4FF',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    fontSize: 12,
-  },
-  heroValue: {
-    color: 'white',
-    fontSize: 32,
-    fontWeight: '700',
-    marginTop: 8,
-  },
-  heroSubtext: {
-    color: '#9aa6c5',
-    marginTop: 8,
-  },
-  section: {
-    gap: 12,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  sectionSubtitle: {
-    color: '#9aa6c5',
-  },
-  card: {
-    backgroundColor: '#121a31',
-    padding: 16,
-    borderRadius: 14,
-    gap: 6,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cardTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  badge: {
-    color: '#8EA4FF',
-    borderWidth: 1,
-    borderColor: '#1F2A44',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
-    fontSize: 12,
-    textTransform: 'uppercase',
-  },
-  badgeMuted: {
-    color: '#9aa6c5',
-  },
-  cardValue: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  cardMeta: {
-    color: '#9aa6c5',
-    fontSize: 13,
-  },
-  primaryButton: {
-    backgroundColor: '#4B8BF5',
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  secondaryButton: {
-    marginTop: 8,
-    paddingVertical: 8,
-    borderRadius: 10,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#263659',
-  },
-  secondaryButtonText: {
-    color: '#9aa6c5',
-    fontWeight: '600',
-  },
-  errorText: {
-    color: '#ff7a7a',
-    backgroundColor: '#2a0f15',
-    padding: 10,
-    borderRadius: 10,
-  },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#050914',
-    gap: 12,
-  },
-  loadingText: {
-    color: '#9aa6c5',
-  },
-});

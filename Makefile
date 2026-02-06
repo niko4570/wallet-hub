@@ -35,6 +35,9 @@ dev-mobile:
 android: adb-reverse
 	cd apps/mobile && EXPO_PUBLIC_API_URL=$(EXPO_PUBLIC_API_URL) npx --yes expo run:android
 
+web:
+	npm run web
+
 adb-reverse:
 	@echo ">> Mapping device tcp:$(ADB_PORT) -> host tcp:$(ADB_PORT) via adb"
 	@adb reverse tcp:$(ADB_PORT) tcp:$(ADB_PORT) >/dev/null 2>&1 || true

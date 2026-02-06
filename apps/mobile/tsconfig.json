@@ -6,6 +6,7 @@
     "paths": {
       "@wallethub/contracts": ["../../packages/contracts/src"],
       "@wallethub/contracts/*": ["../../packages/contracts/src/*"]
-    }
+    },
+    "skipLibCheck": true
   }
 }
