@@ -15,6 +15,15 @@ const aliasMap = {
     "dist",
     "index.browser.cjs",
   ),
+  "@noble/hashes/crypto": path.resolve(
+    projectRoot,
+    "..",
+    "..",
+    "node_modules",
+    "@noble",
+    "hashes",
+    "crypto.js",
+  ),
   "@noble/hashes/crypto.js": path.resolve(
     projectRoot,
     "..",
@@ -29,7 +38,12 @@ const aliasMap = {
 const previousResolveRequest = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  const aliasPath = aliasMap[moduleName];
+  const normalizedModuleName =
+    moduleName === "@noble/hashes/crypto.js"
+      ? "@noble/hashes/crypto"
+      : moduleName;
+
+  const aliasPath = aliasMap[normalizedModuleName];
   if (aliasPath) {
     return {
       type: "sourceFile",

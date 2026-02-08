@@ -23,16 +23,15 @@ import {
   Input,
   styled,
 } from "tamagui";
-import config from "./tamagui.config";
+import config from "./tamagui.config.js";
 import * as Haptics from "expo-haptics";
 import { useSolana } from "./src/hooks/useSolana";
+import { API_URL } from "./src/config/env";
 
 // Suppress zeego warning (not using native menus yet)
 // import '@tamagui/native/setup-zeego';
 
 SplashScreen.preventAutoHideAsync();
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3000";
 
 const formatUsd = (value: number) =>
   `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -168,10 +167,10 @@ export default function App() {
   useEffect(() => {
     const testNetworkConnection = async () => {
       try {
-        const response = await fetch('https://www.google.com');
-        console.log('网络连接测试成功:', response.status);
+        const response = await fetch("https://www.google.com");
+        console.log("网络连接测试成功:", response.status);
       } catch (error) {
-        console.error('网络连接测试失败:', error);
+        console.error("网络连接测试失败:", error);
       }
     };
     testNetworkConnection();
@@ -264,9 +263,7 @@ export default function App() {
 
   const solBalance = useMemo(
     () =>
-      balanceLamports !== null
-        ? balanceLamports / LAMPORTS_PER_SOL
-        : null,
+      balanceLamports !== null ? balanceLamports / LAMPORTS_PER_SOL : null,
     [balanceLamports],
   );
 
@@ -449,9 +446,14 @@ export default function App() {
                           textTransform="uppercase"
                           letterSpacing={1}
                         >
-                          {isAuthenticated ? "Connected Wallet" : "No wallet linked"}
+                          {isAuthenticated
+                            ? "Connected Wallet"
+                            : "No wallet linked"}
                         </Text>
-                        <XStack justifyContent="space-between" alignItems="center">
+                        <XStack
+                          justifyContent="space-between"
+                          alignItems="center"
+                        >
                           <YStack gap="$1">
                             <Text color="white" fontWeight="700" fontSize={16}>
                               {account
@@ -459,15 +461,22 @@ export default function App() {
                                 : "Connect to load"}
                             </Text>
                             <Text color="$color" opacity={0.5} fontSize={12}>
-                              {account?.label ?? (isAuthenticated ? "Mobile Wallet" : "Awaiting connection")}
+                              {account?.label ??
+                                (isAuthenticated
+                                  ? "Mobile Wallet"
+                                  : "Awaiting connection")}
                             </Text>
                           </YStack>
                           <YStack alignItems="flex-end">
                             <Text color="white" fontWeight="700" fontSize={16}>
-                              {solBalance !== null ? `${solBalance.toFixed(3)} SOL` : "—"}
+                              {solBalance !== null
+                                ? `${solBalance.toFixed(3)} SOL`
+                                : "—"}
                             </Text>
                             <Text color="$color" opacity={0.5} fontSize={12}>
-                              {solBalanceValueUsd !== null ? formatUsd(solBalanceValueUsd) : "Live"}
+                              {solBalanceValueUsd !== null
+                                ? formatUsd(solBalanceValueUsd)
+                                : "Live"}
                             </Text>
                           </YStack>
                         </XStack>

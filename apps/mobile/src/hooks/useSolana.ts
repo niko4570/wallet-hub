@@ -11,15 +11,17 @@ import {
   transact,
   type Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
+import { HELIUS_RPC_URL, SOLANA_CLUSTER } from "../config/env";
 
-const CLUSTER = "devnet";
-const HELIUS_API_KEY = process.env.EXPO_PUBLIC_HELIUS_API_KEY || "demo";
-const RPC_URL = `https://rpc-devnet.helius.com/?api-key=${HELIUS_API_KEY}`; // 使用正确的 Helius Devnet RPC 端点格式
 const APP_IDENTITY = {
   name: "WalletHub",
   uri: "https://wallethub.app",
 };
 
+/**
+ * Normalize wallet addresses emitted from Mobile Wallet Adapter.
+ * Some wallets return base64-encoded 32 byte buffers, others return base58 strings.
+ */
 const decodeWalletAddress = (rawAddress: string): string => {
   const trimmed = rawAddress.trim();
   const attempts: Error[] = [];
@@ -65,12 +67,19 @@ interface UseSolanaResult {
   refreshBalance: () => Promise<number | null>;
 }
 
+/**
+ * Shared Solana adapter hook that wraps Mobile Wallet Adapter authorization
+ * and exposes helpers for connecting, disconnecting, sending, and refreshing balances.
+ */
 export function useSolana(): UseSolanaResult {
   const [account, setAccount] = useState<AccountMeta | null>(null);
   const [authToken, setAuthToken] = useState<any | null>(null);
   const [balanceLamports, setBalanceLamports] = useState<number | null>(null);
 
-  const connection = useMemo(() => new Connection(RPC_URL, "confirmed"), []);
+  const connection = useMemo(
+    () => new Connection(HELIUS_RPC_URL, "confirmed"),
+    [HELIUS_RPC_URL],
+  );
 
   const refreshBalance = useCallback(async () => {
     if (!account?.address) {
@@ -94,6 +103,7 @@ export function useSolana(): UseSolanaResult {
     return transact(async (wallet: Web3MobileWallet) => {
       let authorization;
       if (authToken) {
+        // Re-use prior auth token so wallets avoid re-prompting the user.
         authorization = await wallet.authorize({
           identity: APP_IDENTITY,
           auth_token: authToken,
@@ -101,7 +111,7 @@ export function useSolana(): UseSolanaResult {
       } else {
         authorization = await wallet.authorize({
           identity: APP_IDENTITY,
-          chain: CLUSTER,
+          chain: SOLANA_CLUSTER,
         });
       }
       setAuthToken(authorization.auth_token);
