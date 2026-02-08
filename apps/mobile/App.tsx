@@ -1,10 +1,11 @@
-import { AggregatedPortfolio, SessionKey } from "@wallethub/contracts";
+import { SessionKey } from "@wallethub/contracts";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshControl } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import {
   TamaguiProvider,
   YStack,
@@ -17,9 +18,7 @@ import {
   Spinner,
   H3,
   H6,
-  Paragraph,
   Separator,
-  Spacer,
   Sheet,
   Input,
   styled,
@@ -83,14 +82,20 @@ export default function App() {
     InterBold: require("@tamagui/font-inter/otf/Inter-Bold.otf"),
   });
 
-  const [portfolio, setPortfolio] = useState<AggregatedPortfolio | null>(null);
   const [sessions, setSessions] = useState<SessionKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { connect, disconnect, sendSol, account, isAuthenticated } =
-    useSolana();
+  const {
+    connect,
+    disconnect,
+    sendSol,
+    account,
+    isAuthenticated,
+    balanceLamports,
+    refreshBalance,
+  } = useSolana();
   const [walletBusy, setWalletBusy] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
   const [sendSheetOpen, setSendSheetOpen] = useState(false);
@@ -101,24 +106,50 @@ export default function App() {
     type: "success" | "error";
     message: string;
   } | null>(null);
+  const [solPriceUsd, setSolPriceUsd] = useState<number | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchPrice = async () => {
+      try {
+        const response = await fetch(
+          "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd",
+        );
+        if (!response.ok) return;
+        const data = await response.json();
+        if (isMounted) {
+          setSolPriceUsd(data?.solana?.usd ?? null);
+        }
+      } catch (err) {
+        console.warn("Unable to fetch SOL price", err);
+      }
+    };
+    fetchPrice();
+    const interval = setInterval(fetchPrice, 60_000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   const loadData = useCallback(async () => {
     setRefreshing(true);
     setError(null);
     try {
-      const [portfolioResponse, sessionResponse] = await Promise.all([
-        fetchJson<AggregatedPortfolio>("/wallets"),
-        fetchJson<SessionKey[]>("/session"),
-      ]);
-      setPortfolio(portfolioResponse);
+      const sessionResponse = await fetchJson<SessionKey[]>("/session");
       setSessions(sessionResponse);
+      if (isAuthenticated) {
+        await refreshBalance().catch((err) => {
+          console.warn("Failed to refresh balance", err);
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [isAuthenticated, refreshBalance]);
 
   useEffect(() => {
     if (loaded) {
@@ -133,16 +164,31 @@ export default function App() {
     }
   }, [sendSheetOpen]);
 
+  // 测试网络连接
+  useEffect(() => {
+    const testNetworkConnection = async () => {
+      try {
+        const response = await fetch('https://www.google.com');
+        console.log('网络连接测试成功:', response.status);
+      } catch (error) {
+        console.error('网络连接测试失败:', error);
+      }
+    };
+    testNetworkConnection();
+  }, []);
+
   const handleIssueSessionKey = useCallback(async () => {
-    if (!portfolio?.wallets.length) return;
+    if (!account?.address) {
+      setWalletError("Connect a wallet to issue session keys.");
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
-    const primaryWallet = portfolio.wallets[0];
     await fetchJson<SessionKey>("/session/issue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        walletAddress: primaryWallet.address,
+        walletAddress: account.address,
         devicePublicKey: "demo-device-public-key",
         expiresInMinutes: 60,
         scopes: [{ name: "transfer", maxUsd: 500 }],
@@ -150,7 +196,7 @@ export default function App() {
       }),
     });
     await loadData();
-  }, [portfolio, loadData]);
+  }, [account, loadData]);
 
   const handleRevokeSessionKey = useCallback(
     async (id: string) => {
@@ -216,10 +262,20 @@ export default function App() {
     }
   }, [amountToSend, recipientAddress, sendSol]);
 
-  const totalWalletsValue = useMemo(
-    () => portfolio?.totalUsdValue ?? 0,
-    [portfolio],
+  const solBalance = useMemo(
+    () =>
+      balanceLamports !== null
+        ? balanceLamports / LAMPORTS_PER_SOL
+        : null,
+    [balanceLamports],
   );
+
+  const solBalanceValueUsd = useMemo(() => {
+    if (solBalance === null || solPriceUsd === null) {
+      return null;
+    }
+    return solBalance * solPriceUsd;
+  }, [solBalance, solPriceUsd]);
 
   if (!loaded) {
     return null;
@@ -282,7 +338,7 @@ export default function App() {
                   animation="bouncy"
                   pressStyle={{ scale: 0.98 }}
                 >
-                  <YStack gap="$1">
+                  <YStack gap="$2">
                     <H6
                       color="$colorFocus"
                       textTransform="uppercase"
@@ -290,7 +346,7 @@ export default function App() {
                       fontSize={11}
                       opacity={0.8}
                     >
-                      Total Portfolio Value
+                      Live SOL Balance
                     </H6>
                     <H3
                       fontSize={42}
@@ -298,27 +354,17 @@ export default function App() {
                       letterSpacing={-1}
                       lineHeight={48}
                     >
-                      {formatUsd(totalWalletsValue)}
+                      {solBalance !== null
+                        ? `${solBalance.toFixed(4)} SOL`
+                        : "Connect wallet"}
                     </H3>
-                    <XStack gap="$2" alignItems="center" marginTop="$2">
-                      <YStack
-                        backgroundColor="rgba(0, 255, 179, 0.15)"
-                        paddingHorizontal="$2"
-                        paddingVertical="$1"
-                        borderRadius="$2"
-                      >
-                        <Text
-                          color="$accentColor"
-                          fontSize={12}
-                          fontWeight="700"
-                        >
-                          +{portfolio?.change24hPercent ?? 0}%
-                        </Text>
-                      </YStack>
-                      <Text color="$color" opacity={0.5} fontSize={13}>
-                        vs 24h
-                      </Text>
-                    </XStack>
+                    <Text color="$color" opacity={0.7} fontSize={14}>
+                      {solBalanceValueUsd !== null
+                        ? formatUsd(solBalanceValueUsd)
+                        : solBalance !== null
+                          ? "Fetching USD..."
+                          : "Awaiting wallet"}
+                    </Text>
                   </YStack>
                 </GlassCard>
 
@@ -391,34 +437,42 @@ export default function App() {
                     </H6>
                   </XStack>
 
-                  {loading && !portfolio ? (
+                  {loading ? (
                     <Spinner size="large" color="$colorFocus" />
                   ) : (
-                    portfolio?.wallets.map((wallet) => (
-                      <GlassCard key={wallet.address} bordered padded>
-                        <XStack
-                          justifyContent="space-between"
-                          alignItems="center"
+                    <GlassCard bordered padded>
+                      <YStack gap="$2">
+                        <Text
+                          color="$color"
+                          opacity={0.6}
+                          fontSize={12}
+                          textTransform="uppercase"
+                          letterSpacing={1}
                         >
+                          {isAuthenticated ? "Connected Wallet" : "No wallet linked"}
+                        </Text>
+                        <XStack justifyContent="space-between" alignItems="center">
                           <YStack gap="$1">
                             <Text color="white" fontWeight="700" fontSize={16}>
-                              {wallet.label ?? wallet.address.slice(0, 6)}
+                              {account
+                                ? `${account.address.slice(0, 4)}...${account.address.slice(-4)}`
+                                : "Connect to load"}
                             </Text>
                             <Text color="$color" opacity={0.5} fontSize={12}>
-                              {wallet.provider.toUpperCase()}
+                              {account?.label ?? (isAuthenticated ? "Mobile Wallet" : "Awaiting connection")}
                             </Text>
                           </YStack>
-                          <YStack alignItems="flex-end" gap="$1">
+                          <YStack alignItems="flex-end">
                             <Text color="white" fontWeight="700" fontSize={16}>
-                              {formatUsd(wallet.totalUsdValue)}
+                              {solBalance !== null ? `${solBalance.toFixed(3)} SOL` : "—"}
                             </Text>
                             <Text color="$color" opacity={0.5} fontSize={12}>
-                              {wallet.shareOfPortfolio}% share
+                              {solBalanceValueUsd !== null ? formatUsd(solBalanceValueUsd) : "Live"}
                             </Text>
                           </YStack>
                         </XStack>
-                      </GlassCard>
-                    ))
+                      </YStack>
+                    </GlassCard>
                   )}
                 </YStack>
 
