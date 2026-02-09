@@ -58,7 +58,7 @@ packages/
 | PATCH  | `/session/:id/revoke` | Revoke a session key                      |
 | DELETE | `/session/:id`        | Revoke via delete                         |
 
-`POST /session/issue` requires a biometric attestation payload (`biometricProof`) alongside `walletAddress`, `devicePublicKey`, scopes, and expiry data. The API currently accepts base64-encoded JSON proofs (method, deviceId, confidence) while remaining agnostic to future MPC/attestation providers.
+`POST /session/issue` requires a biometric attestation payload (`biometricProof`) alongside `walletAddress`, `devicePublicKey`, scopes, and expiry data. The API currently accepts base64-encoded JSON proofs (method, deviceId, confidence) while remaining agnostic to future MPC/attestation providers, and now routes every issuance through an MPC/multi-sig signer abstraction that enforces policy limits before returning a signature identifier.
 
 The backend currently uses in-memory stores plus sample Helius-style balances, enabling fast hackathon iterations. The shared contracts (`@wallethub/contracts`) define wallet, session, and policy interfaces consumed by both the API and mobile UI.
 
@@ -71,5 +71,5 @@ The backend currently uses in-memory stores plus sample Helius-style balances, e
 ## Next Steps
 
 - Replace mock wallet data with live Solana RPC aggregation (Helius/QuickNode).
-- Integrate MPC provider support for session issuance (biometric gating now ships on-device).
+- Swap the mocked MPC signer abstraction with a real provider integration once credentials are provisioned.
 - Extend Expo UI with onboarding, activity feed, and device trust center.

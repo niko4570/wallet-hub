@@ -4,11 +4,13 @@ import { randomUUID } from 'crypto';
 import { IssueSessionKeyDto } from './dto/issue-session-key.dto';
 import { RevokeSessionKeyDto } from './dto/revoke-session-key.dto';
 import { BiometricVerificationService } from '../security/biometric-verification.service';
+import { MpcSignerService } from '../security/mpc-signer.service';
 
 @Injectable()
 export class SessionService {
   constructor(
     private readonly biometricVerifier: BiometricVerificationService,
+    private readonly mpcSigner: MpcSignerService,
   ) {}
   private readonly policies: SessionPolicy[] = [
     {
@@ -63,6 +65,10 @@ export class SessionService {
   }
 
   issueSessionKey(dto: IssueSessionKeyDto): SessionKey {
+    const policy =
+      this.policies.find((item) => item.walletAddress === dto.walletAddress) ??
+      this.createEphemeralPolicy(dto.walletAddress);
+
     const biometricVerification = this.biometricVerifier.verifyProof(
       dto.biometricProof,
       {
@@ -70,9 +76,14 @@ export class SessionService {
         devicePublicKey: dto.devicePublicKey,
       },
     );
-    const policy =
-      this.policies.find((item) => item.walletAddress === dto.walletAddress) ??
-      this.createEphemeralPolicy(dto.walletAddress);
+
+    const signature = this.mpcSigner.authorizeAndSign({
+      walletAddress: dto.walletAddress,
+      scopes: dto.scopes,
+      policy,
+      biometricConfidence: biometricVerification.confidence,
+      expiresInMinutes: dto.expiresInMinutes,
+    });
 
     const now = Date.now();
     const metadata: Record<string, string> = {
@@ -80,6 +91,9 @@ export class SessionService {
       biometricMethod: biometricVerification.method,
       biometricConfidence: biometricVerification.confidence.toString(),
       biometricIssuedAt: biometricVerification.issuedAt,
+      mpcSignatureId: signature.signatureId,
+      mpcApprovals: JSON.stringify(signature.approvals),
+      mpcExpiresAt: signature.expiresAt,
     };
     if (biometricVerification.deviceId) {
       metadata.biometricDeviceId = biometricVerification.deviceId;
