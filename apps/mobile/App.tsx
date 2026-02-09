@@ -18,7 +18,11 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import * as Haptics from "expo-haptics";
-import { useSolana } from "./src/hooks/useSolana";
+import {
+  useSolana,
+  type AuthorizationPreview,
+  type DetectedWalletApp,
+} from "./src/hooks/useSolana";
 import { API_URL, COINGECKO_API_KEY } from "./src/config/env";
 import { requireBiometricApproval } from "./src/security/biometrics";
 
@@ -29,6 +33,13 @@ SplashScreen.preventAutoHideAsync();
 
 const formatUsd = (value: number) =>
   `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const formatAddress = (address?: string | null) => {
+  if (!address) {
+    return "Not Connected";
+  }
+  return `${address.slice(0, 4)}...${address.slice(-4)}`;
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -129,6 +140,11 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 15,
   },
+  walletActiveLabel: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 12,
+    marginTop: 4,
+  },
   actionButton: {
     backgroundColor: "#8EA4FF",
     paddingHorizontal: 16,
@@ -140,6 +156,16 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     color: "white",
+    fontWeight: "700",
+  },
+  walletActions: {
+    alignItems: "flex-end",
+  },
+  secondaryButton: {
+    paddingVertical: 8,
+  },
+  secondaryButtonText: {
+    color: "#8EA4FF",
     fontWeight: "700",
   },
   sendButton: {
@@ -170,6 +196,10 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     fontSize: 14,
   },
+  sectionSubtitle: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 12,
+  },
   spinner: {
     marginVertical: 24,
   },
@@ -180,11 +210,20 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     padding: 24,
   },
+  walletCardActive: {
+    borderColor: "#8EA4FF",
+  },
   walletCardTitle: {
     color: "rgba(255,255,255,0.6)",
     fontSize: 12,
     textTransform: "uppercase",
     letterSpacing: 1,
+    marginBottom: 16,
+  },
+  walletCardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 16,
   },
   walletCardContent: {
@@ -207,6 +246,120 @@ const styles = StyleSheet.create({
   },
   walletBalance: {
     alignItems: "flex-end",
+  },
+  walletActiveBadge: {
+    color: "#8EA4FF",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  walletActionsRow: {
+    marginTop: 16,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+  },
+  walletActionLink: {
+    color: "#8EA4FF",
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  walletActionLinkSpacing: {
+    marginLeft: 16,
+  },
+  walletOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  walletOptionDisabled: {
+    opacity: 0.4,
+  },
+  walletOptionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 16,
+  },
+  walletOptionDetails: {
+    flex: 1,
+  },
+  walletOptionTitle: {
+    color: "white",
+    fontWeight: "700",
+    fontSize: 16,
+  },
+  walletOptionSubtitle: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 12,
+  },
+  walletOptionStatus: {
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  walletOptionStatusActive: {
+    color: "#8EA4FF",
+  },
+  walletOptionStatusInactive: {
+    color: "rgba(255,255,255,0.4)",
+  },
+  fullWidthButton: {
+    marginTop: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    borderRadius: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  fullWidthButtonText: {
+    color: "rgba(255,255,255,0.9)",
+    fontWeight: "700",
+  },
+  accountOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  accountOptionDetails: {
+    flex: 1,
+  },
+  checkbox: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.3)",
+    marginRight: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkboxChecked: {
+    borderColor: "#8EA4FF",
+    backgroundColor: "rgba(142,164,255,0.15)",
+  },
+  checkboxMark: {
+    color: "#8EA4FF",
+    fontWeight: "700",
+  },
+  modalActions: {
+    marginTop: 24,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 16,
+  },
+  confirmButton: {
+    flex: 1,
+  },
+  disabledButton: {
+    opacity: 0.4,
   },
   balanceAmount: {
     color: "white",
@@ -327,6 +480,11 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     fontSize: 14,
   },
+  sheetSubtitle: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 13,
+    marginBottom: 16,
+  },
   attributionText: {
     color: "rgba(255,255,255,0.65)",
     fontSize: 11,
@@ -336,11 +494,57 @@ const styles = StyleSheet.create({
 });
 
 export default function App() {
-  const { connect, disconnect, sendSol, balanceLamports } = useSolana();
+  const {
+    disconnect,
+    sendSol,
+    linkedWallets,
+    activeWallet,
+    selectActiveWallet,
+    balances,
+    refreshBalance,
+    availableWallets,
+    detectingWallets,
+    refreshWalletDetection,
+    startAuthorization,
+    finalizeAuthorization,
+  } = useSolana();
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionKeys, setSessionKeys] = useState<SessionKey[]>([]);
   const [showSessionModal, setShowSessionModal] = useState(false);
+  const [walletSelectionVisible, setWalletSelectionVisible] = useState(false);
+  const [accountSelectionVisible, setAccountSelectionVisible] = useState(false);
+  const [authorizationPreview, setAuthorizationPreview] =
+    useState<AuthorizationPreview | null>(null);
+  const [selectedAccounts, setSelectedAccounts] = useState<
+    Record<string, boolean>
+  >({});
+  const [authorizationLoading, setAuthorizationLoading] = useState(false);
+  const totalBalanceLamports = useMemo(
+    () =>
+      linkedWallets.reduce(
+        (sum, wallet) => sum + (balances[wallet.address] ?? 0),
+        0,
+      ),
+    [linkedWallets, balances],
+  );
+  const activeBalanceLamports = activeWallet
+    ? (balances[activeWallet.address] ?? null)
+    : null;
+  const isConnected = linkedWallets.length > 0;
+  const selectedAccountCount = useMemo(
+    () => Object.values(selectedAccounts).filter(Boolean).length,
+    [selectedAccounts],
+  );
+  const totalAccountsInPreview = authorizationPreview?.accounts.length ?? 0;
+  const sortedWalletOptions = useMemo(() => {
+    return [...availableWallets].sort((a, b) => {
+      if (a.installed === b.installed) {
+        return a.name.localeCompare(b.name);
+      }
+      return a.installed ? -1 : 1;
+    });
+  }, [availableWallets]);
 
   useEffect(() => {
     // Hide splash screen once app is ready
@@ -351,13 +555,23 @@ export default function App() {
     setRefreshing(true);
     try {
       setError(null);
-      // Refresh balance and session keys
+      await Promise.all([
+        refreshWalletDetection().catch((err) =>
+          console.warn("Wallet detection refresh failed", err),
+        ),
+        ...linkedWallets.map((wallet) =>
+          refreshBalance(wallet.address).catch((err) => {
+            console.warn(`Balance refresh failed for ${wallet.address}`, err);
+          }),
+        ),
+      ]);
+      // TODO: refresh session keys when backend wiring is live
     } catch (err) {
       setError("Failed to refresh data");
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [linkedWallets, refreshBalance, refreshWalletDetection]);
 
   const openCoinGecko = useCallback(() => {
     Linking.openURL(
@@ -365,35 +579,121 @@ export default function App() {
     ).catch((err) => console.warn("Failed to open CoinGecko", err));
   }, []);
 
-  const handleConnect = useCallback(async () => {
+  const openWalletSelector = useCallback(async () => {
+    setError(null);
+    setAuthorizationPreview(null);
+    setSelectedAccounts({});
+    setWalletSelectionVisible(true);
     try {
-      setError(null);
-      await connect();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await refreshWalletDetection();
     } catch (err) {
-      const message =
-        err instanceof Error && err.message
-          ? err.message
-          : "Failed to connect wallet";
-      setError(message);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      console.warn("Wallet detection refresh failed", err);
     }
-  }, [connect]);
+  }, [refreshWalletDetection]);
 
-  const handleDisconnect = useCallback(async () => {
+  const handleDisconnect = useCallback(
+    async (address?: string) => {
+      try {
+        setError(null);
+        await disconnect(address);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (err) {
+        const message =
+          err instanceof Error && err.message
+            ? err.message
+            : "Failed to disconnect wallet";
+        setError(message);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+    },
+    [disconnect],
+  );
+
+  const handleSelectWalletApp = useCallback(
+    async (wallet?: DetectedWalletApp) => {
+      try {
+        setAuthorizationLoading(true);
+        setError(null);
+        const preview = await startAuthorization(wallet);
+        const initialSelection = Object.fromEntries(
+          preview.accounts.map((account) => [account.address, true]),
+        );
+        setSelectedAccounts(initialSelection);
+        setAuthorizationPreview(preview);
+        setWalletSelectionVisible(false);
+        setAccountSelectionVisible(true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (err) {
+        const message =
+          err instanceof Error && err.message
+            ? err.message
+            : "Failed to authorize wallet";
+        setError(message);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      } finally {
+        setAuthorizationLoading(false);
+      }
+    },
+    [startAuthorization],
+  );
+
+  const handleToggleAccount = useCallback((address: string) => {
+    setSelectedAccounts((prev) => ({
+      ...prev,
+      [address]: !prev[address],
+    }));
+  }, []);
+
+  const handleConfirmAccounts = useCallback(async () => {
+    if (!authorizationPreview) return;
+    const selectedAddresses = Object.entries(selectedAccounts)
+      .filter(([, checked]) => checked)
+      .map(([address]) => address);
     try {
+      setAuthorizationLoading(true);
       setError(null);
-      await disconnect();
+
+      // Validate at least one account is selected
+      if (selectedAddresses.length === 0) {
+        throw new Error("Select at least one account to continue");
+      }
+
+      await finalizeAuthorization(authorizationPreview, selectedAddresses);
+      setAccountSelectionVisible(false);
+      setAuthorizationPreview(null);
+      setSelectedAccounts({});
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
       const message =
         err instanceof Error && err.message
           ? err.message
-          : "Failed to disconnect wallet";
+          : "Failed to link selected accounts";
       setError(message);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setAuthorizationLoading(false);
     }
-  }, [disconnect]);
+  }, [authorizationPreview, finalizeAuthorization, selectedAccounts]);
+
+  const handleCancelAccountSelection = useCallback(() => {
+    setAccountSelectionVisible(false);
+    setAuthorizationPreview(null);
+    setSelectedAccounts({});
+  }, []);
+
+  const handleSelectWallet = useCallback(
+    async (address: string) => {
+      selectActiveWallet(address);
+      try {
+        await refreshBalance(address);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (err) {
+        console.warn(`Failed to refresh balance for ${address}`, err);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      }
+    },
+    [refreshBalance, selectActiveWallet],
+  );
 
   const handleOpenSessionModal = useCallback(async () => {
     try {
@@ -446,13 +746,13 @@ export default function App() {
           <View style={styles.heroSection}>
             <Text style={styles.heroTitle}>Your Balance</Text>
             <Text style={styles.balanceText}>
-              {balanceLamports
-                ? `${(balanceLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL`
+              {totalBalanceLamports
+                ? `${(totalBalanceLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL`
                 : "0 SOL"}
             </Text>
             <Text style={styles.balanceValueText}>
-              {balanceLamports
-                ? formatUsd((balanceLamports / LAMPORTS_PER_SOL) * 100)
+              {totalBalanceLamports
+                ? formatUsd((totalBalanceLamports / LAMPORTS_PER_SOL) * 100)
                 : "$0.00"}
             </Text>
             <Text style={styles.attributionText} onPress={openCoinGecko}>
@@ -466,17 +766,34 @@ export default function App() {
               <View>
                 <Text style={styles.walletStatusText}>Wallet Status</Text>
                 <Text style={styles.walletAddressText}>
-                  {balanceLamports ? "Connected" : "Disconnected"}
+                  {isConnected
+                    ? `${linkedWallets.length} wallet${linkedWallets.length > 1 ? "s" : ""} connected`
+                    : "Disconnected"}
+                </Text>
+                <Text style={styles.walletActiveLabel}>
+                  Active: {formatAddress(activeWallet?.address)}
                 </Text>
               </View>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={balanceLamports ? handleDisconnect : handleConnect}
-              >
-                <Text style={styles.actionButtonText}>
-                  {balanceLamports ? "Disconnect" : "Connect Wallet"}
-                </Text>
-              </TouchableOpacity>
+              <View style={styles.walletActions}>
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={openWalletSelector}
+                >
+                  <Text style={styles.actionButtonText}>
+                    {isConnected ? "Add Wallet" : "Connect Wallet"}
+                  </Text>
+                </TouchableOpacity>
+                {activeWallet && (
+                  <TouchableOpacity
+                    style={styles.secondaryButton}
+                    onPress={() => handleDisconnect(activeWallet.address)}
+                  >
+                    <Text style={styles.secondaryButtonText}>
+                      Disconnect Active
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
           </View>
 
@@ -484,30 +801,86 @@ export default function App() {
           <View style={styles.walletsSection}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Wallets</Text>
+              {isConnected && (
+                <Text style={styles.sectionSubtitle}>
+                  {linkedWallets.length} linked
+                </Text>
+              )}
             </View>
-            <View style={styles.walletCard}>
-              <Text style={styles.walletCardTitle}>Primary Wallet</Text>
-              <View style={styles.walletCardContent}>
-                <View style={styles.walletInfo}>
-                  <Text style={styles.walletAddress}>
-                    {balanceLamports ? "..." : "Not Connected"}
-                  </Text>
-                  <Text style={styles.walletLabel}>Solana Mainnet</Text>
-                </View>
-                <View style={styles.walletBalance}>
-                  <Text style={styles.balanceAmount}>
-                    {balanceLamports
-                      ? `${(balanceLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL`
-                      : "0 SOL"}
-                  </Text>
-                  <Text style={styles.balanceValue}>
-                    {balanceLamports
-                      ? formatUsd((balanceLamports / LAMPORTS_PER_SOL) * 100)
-                      : "$0.00"}
-                  </Text>
-                </View>
+            {linkedWallets.length === 0 ? (
+              <View style={styles.walletCard}>
+                <Text style={styles.walletCardTitle}>No wallets linked</Text>
+                <Text style={styles.walletLabel}>
+                  Use “Connect Wallet” to add your first account.
+                </Text>
               </View>
-            </View>
+            ) : (
+              linkedWallets.map((wallet) => {
+                const walletBalance = balances[wallet.address] ?? null;
+                const isActiveWallet = activeWallet?.address === wallet.address;
+                return (
+                  <View
+                    key={wallet.address}
+                    style={[
+                      styles.walletCard,
+                      isActiveWallet && styles.walletCardActive,
+                    ]}
+                  >
+                    <View style={styles.walletCardHeader}>
+                      <View>
+                        <Text style={styles.walletCardTitle}>
+                          {wallet.label ?? "Linked Wallet"}
+                        </Text>
+                        <Text style={styles.walletAddress}>
+                          {formatAddress(wallet.address)}
+                        </Text>
+                        <Text style={styles.walletLabel}>Solana Mainnet</Text>
+                      </View>
+                      {isActiveWallet && (
+                        <Text style={styles.walletActiveBadge}>Active</Text>
+                      )}
+                    </View>
+                    <View style={styles.walletCardContent}>
+                      <View style={styles.walletBalance}>
+                        <Text style={styles.balanceAmount}>
+                          {walletBalance
+                            ? `${(walletBalance / LAMPORTS_PER_SOL).toFixed(4)} SOL`
+                            : "0 SOL"}
+                        </Text>
+                        <Text style={styles.balanceValue}>
+                          {walletBalance
+                            ? formatUsd(
+                                (walletBalance / LAMPORTS_PER_SOL) * 100,
+                              )
+                            : "$0.00"}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.walletActionsRow}>
+                      {!isActiveWallet && (
+                        <TouchableOpacity
+                          onPress={() => handleSelectWallet(wallet.address)}
+                        >
+                          <Text style={styles.walletActionLink}>
+                            Set Active
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        style={
+                          !isActiveWallet
+                            ? styles.walletActionLinkSpacing
+                            : undefined
+                        }
+                        onPress={() => handleDisconnect(wallet.address)}
+                      >
+                        <Text style={styles.walletActionLink}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })
+            )}
           </View>
 
           {/* Session Keys Section */}
@@ -554,6 +927,173 @@ export default function App() {
             )}
           </View>
         </ScrollView>
+
+        {/* Wallet Selection Modal */}
+        <Modal
+          visible={walletSelectionVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setWalletSelectionVisible(false)}
+        >
+          <Pressable
+            style={styles.sheetOverlay}
+            onPress={() => setWalletSelectionVisible(false)}
+          >
+            <Pressable
+              style={styles.sheetContent}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.sheetHandle} />
+              <Text style={styles.sheetTitle}>Select a Wallet</Text>
+              <Text style={styles.sheetSubtitle}>
+                Detected Mobile Wallet Adapter apps on your device
+              </Text>
+              {detectingWallets ? (
+                <ActivityIndicator style={styles.spinner} color="#8EA4FF" />
+              ) : (
+                sortedWalletOptions.map((wallet) => {
+                  const disabled =
+                    !wallet.installed && wallet.detectionMethod !== "fallback";
+                  return (
+                    <TouchableOpacity
+                      key={wallet.id}
+                      style={[
+                        styles.walletOption,
+                        disabled && styles.walletOptionDisabled,
+                      ]}
+                      disabled={disabled || authorizationLoading}
+                      onPress={() =>
+                        handleSelectWalletApp(
+                          wallet.detectionMethod === "fallback"
+                            ? undefined
+                            : wallet,
+                        )
+                      }
+                    >
+                      <View style={styles.walletOptionIcon}>
+                        <Text>{wallet.icon}</Text>
+                      </View>
+                      <View style={styles.walletOptionDetails}>
+                        <Text style={styles.walletOptionTitle}>
+                          {wallet.name}
+                        </Text>
+                        {wallet.subtitle && (
+                          <Text style={styles.walletOptionSubtitle}>
+                            {wallet.subtitle}
+                          </Text>
+                        )}
+                      </View>
+                      <Text
+                        style={[
+                          styles.walletOptionStatus,
+                          wallet.installed
+                            ? styles.walletOptionStatusActive
+                            : styles.walletOptionStatusInactive,
+                        ]}
+                      >
+                        {wallet.installed ? "Installed" : "Not detected"}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+              <TouchableOpacity
+                style={styles.fullWidthButton}
+                onPress={() => handleSelectWalletApp(undefined)}
+                disabled={authorizationLoading}
+              >
+                <Text style={styles.fullWidthButtonText}>
+                  Use system picker
+                </Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        {/* Account Selection Modal */}
+        <Modal
+          visible={accountSelectionVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={handleCancelAccountSelection}
+        >
+          <Pressable
+            style={styles.sheetOverlay}
+            onPress={handleCancelAccountSelection}
+          >
+            <Pressable
+              style={styles.sheetContent}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.sheetHandle} />
+              <Text style={styles.sheetTitle}>Choose Accounts</Text>
+              <Text style={styles.sheetSubtitle}>
+                Select the accounts from this wallet you want to aggregate
+              </Text>
+              {authorizationPreview ? (
+                authorizationPreview.accounts.map((account) => {
+                  const checked = selectedAccounts[account.address];
+                  return (
+                    <Pressable
+                      key={account.address}
+                      style={styles.accountOption}
+                      onPress={() => handleToggleAccount(account.address)}
+                    >
+                      <View
+                        style={[
+                          styles.checkbox,
+                          checked && styles.checkboxChecked,
+                        ]}
+                      >
+                        {checked && <Text style={styles.checkboxMark}>✓</Text>}
+                      </View>
+                      <View style={styles.accountOptionDetails}>
+                        <Text style={styles.walletCardTitle}>
+                          {account.label ?? "Wallet Account"}
+                        </Text>
+                        <Text style={styles.walletAddress}>
+                          {formatAddress(account.address)}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                })
+              ) : (
+                <View style={styles.glassCard}>
+                  <Text style={styles.balanceValueText}>
+                    No accounts returned from wallet
+                  </Text>
+                </View>
+              )}
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.secondaryButton}
+                  onPress={handleCancelAccountSelection}
+                >
+                  <Text style={styles.secondaryButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.actionButton,
+                    styles.confirmButton,
+                    (selectedAccountCount === 0 || authorizationLoading) &&
+                      styles.disabledButton,
+                  ]}
+                  disabled={selectedAccountCount === 0 || authorizationLoading}
+                  onPress={handleConfirmAccounts}
+                >
+                  {authorizationLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.actionButtonText}>
+                      Link {selectedAccountCount}/{totalAccountsInPreview || 1}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
 
         {/* Session Management Modal */}
         <Modal

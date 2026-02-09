@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Buffer } from "buffer";
+import { Linking } from "react-native";
 import {
   Connection,
   LAMPORTS_PER_SOL,
@@ -11,6 +12,7 @@ import {
   transact,
   type Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
+import type { AuthorizationResult } from "@solana-mobile/mobile-wallet-adapter-protocol";
 import { HELIUS_RPC_URL, SOLANA_CLUSTER } from "../config/env";
 import { requireBiometricApproval } from "../security/biometrics";
 
@@ -18,6 +20,82 @@ const APP_IDENTITY = {
   name: "WalletHub",
   uri: "https://wallethub.app",
 };
+
+interface WalletCatalogEntry {
+  id: string;
+  name: string;
+  icon: string;
+  scheme?: string;
+  baseUri?: string;
+  publisher?: string;
+  subtitle?: string;
+}
+
+export interface DetectedWalletApp extends WalletCatalogEntry {
+  installed: boolean;
+  detectionMethod: "scheme" | "fallback" | "error";
+}
+
+const WALLET_DIRECTORY: WalletCatalogEntry[] = [
+  {
+    id: "phantom",
+    name: "Phantom",
+    icon: "🟣",
+    scheme: "phantom://",
+    baseUri: "https://phantom.app/ul/v1/wallet/adapter",
+    subtitle: "Fast, secure & popular",
+  },
+  {
+    id: "solflare",
+    name: "Solflare",
+    icon: "🟠",
+    scheme: "solflare://",
+    baseUri: "https://solflare.com/ul/v1/wallet/adapter",
+    subtitle: "DeFi focused wallet",
+  },
+  {
+    id: "backpack",
+    name: "Backpack",
+    icon: "🧳",
+    scheme: "backpack://",
+    baseUri: "https://backpack.app/ul/v1/wallet/adapter",
+    subtitle: "xNFT capable",
+  },
+  {
+    id: "glow",
+    name: "Glow",
+    icon: "✨",
+    scheme: "glow://",
+    baseUri: "https://glow.app/ul/v1/wallet/adapter",
+    subtitle: "Simple & social",
+  },
+  {
+    id: "tiplink",
+    name: "TipLink",
+    icon: "🔗",
+    scheme: "tiplink://",
+    baseUri: "https://tiplink.io/ul/v1/wallet/adapter",
+    subtitle: "Link-based wallet",
+  },
+];
+
+interface AccountMeta {
+  address: string;
+  label?: string;
+}
+
+export interface LinkedWallet extends AccountMeta {
+  authToken: string;
+  walletUriBase?: string | null;
+  walletAppId?: string;
+  walletName?: string;
+  icon?: string;
+}
+
+export interface AuthorizationPreview {
+  walletApp?: DetectedWalletApp;
+  accounts: LinkedWallet[];
+}
 
 /**
  * Normalize wallet addresses emitted from Mobile Wallet Adapter.
@@ -50,20 +128,30 @@ const decodeWalletAddress = (rawAddress: string): string => {
   }
 };
 
-interface AccountMeta {
-  address: string;
-  label?: string;
-}
-
 interface UseSolanaResult {
-  connect: () => Promise<AccountMeta | null>;
-  disconnect: () => Promise<void>;
-  sendSol: (recipient: string, amountSol: number) => Promise<string>;
-  account: AccountMeta | null;
+  disconnect: (address?: string) => Promise<void>;
+  sendSol: (
+    recipient: string,
+    amountSol: number,
+    options?: { fromAddress?: string },
+  ) => Promise<string>;
+  linkedWallets: LinkedWallet[];
+  activeWallet: LinkedWallet | null;
+  selectActiveWallet: (address: string) => void;
   connection: Connection;
   isAuthenticated: boolean;
-  balanceLamports: number | null;
-  refreshBalance: () => Promise<number | null>;
+  balances: Record<string, number>;
+  refreshBalance: (address?: string) => Promise<number | null>;
+  availableWallets: DetectedWalletApp[];
+  detectingWallets: boolean;
+  refreshWalletDetection: () => Promise<DetectedWalletApp[]>;
+  startAuthorization: (
+    wallet?: DetectedWalletApp,
+  ) => Promise<AuthorizationPreview>;
+  finalizeAuthorization: (
+    preview: AuthorizationPreview,
+    selectedAddresses?: string[],
+  ) => Promise<LinkedWallet[]>;
 }
 
 /**
@@ -71,101 +159,268 @@ interface UseSolanaResult {
  * and exposes helpers for connecting, disconnecting, sending, and refreshing balances.
  */
 export function useSolana(): UseSolanaResult {
-  const [account, setAccount] = useState<AccountMeta | null>(null);
-  const [authToken, setAuthToken] = useState<any | null>(null);
-  const [balanceLamports, setBalanceLamports] = useState<number | null>(null);
+  const [linkedWallets, setLinkedWallets] = useState<LinkedWallet[]>([]);
+  const [activeWalletAddress, setActiveWalletAddress] = useState<string | null>(
+    null,
+  );
+  const [balances, setBalances] = useState<Record<string, number>>({});
+  const [availableWallets, setAvailableWallets] = useState<DetectedWalletApp[]>(
+    [],
+  );
+  const [detectingWallets, setDetectingWallets] = useState(false);
 
   const connection = useMemo(
     () => new Connection(HELIUS_RPC_URL, "confirmed"),
     [HELIUS_RPC_URL],
   );
 
-  const refreshBalance = useCallback(async () => {
-    if (!account?.address) {
-      setBalanceLamports(null);
-      return null;
-    }
-    let publicKey: PublicKey;
+  const refreshWalletDetection = useCallback(async () => {
+    setDetectingWallets(true);
     try {
-      publicKey = new PublicKey(account.address);
-    } catch (error) {
-      console.warn("Invalid account address when refreshing balance", error);
-      setBalanceLamports(null);
-      throw error;
-    }
-    const balance = await connection.getBalance(publicKey);
-    setBalanceLamports(balance);
-    return balance;
-  }, [account, connection]);
+      const results = await Promise.all(
+        WALLET_DIRECTORY.map<Promise<DetectedWalletApp>>(async (wallet) => {
+          if (!wallet.scheme) {
+            return { ...wallet, installed: true, detectionMethod: "fallback" };
+          }
+          try {
+            const canOpen = await Linking.canOpenURL(wallet.scheme);
+            return {
+              ...wallet,
+              installed: canOpen,
+              detectionMethod: "scheme",
+            };
+          } catch (error) {
+            console.warn(`Wallet detection failed for ${wallet.name}`, error);
+            return { ...wallet, installed: false, detectionMethod: "error" };
+          }
+        }),
+      );
 
-  const ensureWalletSession = useCallback(async () => {
-    await requireBiometricApproval("Authenticate to manage your WalletHub session");
-    return transact(async (wallet: Web3MobileWallet) => {
-      let authorization;
-      if (authToken) {
-        // Re-use prior auth token so wallets avoid re-prompting the user.
-        authorization = await wallet.authorize({
-          identity: APP_IDENTITY,
-          auth_token: authToken,
-        });
-      } else {
-        authorization = await wallet.authorize({
-          identity: APP_IDENTITY,
-          chain: SOLANA_CLUSTER,
+      if (!results.some((wallet) => wallet.installed)) {
+        results.push({
+          id: "system-picker",
+          name: "Any compatible wallet",
+          icon: "🌐",
+          installed: true,
+          detectionMethod: "fallback",
         });
       }
-      setAuthToken(authorization.auth_token);
-      const accountFromWallet = authorization.accounts[0];
-      const normalizedAccount = {
-        ...accountFromWallet,
-        address: decodeWalletAddress(accountFromWallet.address),
-      };
-      setAccount({
-        address: normalizedAccount.address,
-        label: normalizedAccount.label,
-      });
-      setBalanceLamports(null);
-      return { wallet, primaryAccount: normalizedAccount } as const;
-    });
-  }, [authToken]);
+
+      setAvailableWallets(results);
+      return results;
+    } finally {
+      setDetectingWallets(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (account?.address) {
-      refreshBalance().catch((err) => {
+    refreshWalletDetection().catch((error) => {
+      console.warn("Wallet detection failed", error);
+    });
+  }, [refreshWalletDetection]);
+
+  const activeWallet = useMemo(() => {
+    if (!activeWalletAddress) {
+      return linkedWallets[0] ?? null;
+    }
+    return (
+      linkedWallets.find((wallet) => wallet.address === activeWalletAddress) ??
+      null
+    );
+  }, [activeWalletAddress, linkedWallets]);
+
+  const refreshBalance = useCallback(
+    async (address?: string) => {
+      const targetAddress = address ?? activeWallet?.address;
+      if (!targetAddress) {
+        return null;
+      }
+      let publicKey: PublicKey;
+      try {
+        publicKey = new PublicKey(targetAddress);
+      } catch (error) {
+        console.warn("Invalid account address when refreshing balance", error);
+        setBalances((prev) => {
+          const next = { ...prev };
+          delete next[targetAddress];
+          return next;
+        });
+        throw error;
+      }
+      const balance = await connection.getBalance(publicKey);
+      setBalances((prev) => ({ ...prev, [targetAddress]: balance }));
+      return balance;
+    },
+    [activeWallet?.address, connection],
+  );
+
+  const normalizeAuthorization = useCallback(
+    (authorization: AuthorizationResult, walletApp?: DetectedWalletApp) => {
+      return authorization.accounts.map(
+        (accountFromWallet: { address: string; label?: string }) => ({
+          address: decodeWalletAddress(accountFromWallet.address),
+          label: accountFromWallet.label,
+          authToken: authorization.auth_token,
+          walletUriBase:
+            authorization.wallet_uri_base ?? walletApp?.baseUri ?? null,
+          walletAppId: walletApp?.id,
+          walletName: walletApp?.name ?? accountFromWallet.label,
+          icon: walletApp?.icon,
+        }),
+      );
+    },
+    [],
+  );
+
+  const upsertWallets = useCallback((nextWallets: LinkedWallet[]) => {
+    setLinkedWallets((prev) => {
+      const updated = [...prev];
+      nextWallets.forEach((walletAccount) => {
+        const existingIndex = updated.findIndex(
+          (entry) => entry.address === walletAccount.address,
+        );
+        if (existingIndex >= 0) {
+          updated[existingIndex] = {
+            ...updated[existingIndex],
+            ...walletAccount,
+          };
+        } else {
+          updated.push(walletAccount);
+        }
+      });
+      return updated;
+    });
+  }, []);
+
+  const selectActiveWallet = useCallback((address: string) => {
+    setActiveWalletAddress(address);
+  }, []);
+
+  useEffect(() => {
+    if (activeWallet?.address) {
+      refreshBalance(activeWallet.address).catch((err) => {
         console.warn("Balance refresh failed", err);
       });
-    } else {
-      setBalanceLamports(null);
     }
-  }, [account, refreshBalance]);
+  }, [activeWallet?.address, refreshBalance]);
 
-  const connect = useCallback(async () => {
-    try {
-      const { primaryAccount } = await ensureWalletSession();
-      return { address: primaryAccount.address, label: primaryAccount.label };
-    } catch (error) {
-      console.error("Wallet connect failed", error);
-      throw error;
-    }
-  }, [ensureWalletSession]);
+  const startAuthorization = useCallback(
+    async (wallet?: DetectedWalletApp): Promise<AuthorizationPreview> => {
+      try {
+        await requireBiometricApproval("Authenticate to choose a wallet");
+        // For installed wallets, don't pass baseUri - let the system handle it
+        // Only pass baseUri for fallback wallets or when wallet is not installed
+        const transactOptions =
+          wallet?.installed === false && wallet.baseUri
+            ? { baseUri: wallet.baseUri }
+            : undefined;
 
-  const disconnect = useCallback(async () => {
-    if (!authToken) return;
-    try {
-      await transact(async (wallet) => {
-        await wallet.deauthorize({ auth_token: authToken });
+        const authorization = await transact(
+          async (walletApi: Web3MobileWallet) => {
+            return walletApi.authorize({
+              identity: APP_IDENTITY,
+              chain: SOLANA_CLUSTER,
+            });
+          },
+          transactOptions,
+        );
+        const normalized = normalizeAuthorization(authorization, wallet);
+        return { walletApp: wallet, accounts: normalized };
+      } catch (error) {
+        console.error("Wallet authorization failed", error);
+        throw error;
+      }
+    },
+    [normalizeAuthorization],
+  );
+
+  const finalizeAuthorization = useCallback(
+    async (preview: AuthorizationPreview, selectedAddresses?: string[]) => {
+      const selection =
+        selectedAddresses && selectedAddresses.length > 0
+          ? new Set(selectedAddresses)
+          : null;
+
+      const accountsToLink = preview.accounts.filter((account) =>
+        selection ? selection.has(account.address) : true,
+      );
+
+      if (accountsToLink.length === 0) {
+        throw new Error("Select at least one account to continue");
+      }
+
+      upsertWallets(accountsToLink);
+      setActiveWalletAddress((current) => current ?? accountsToLink[0].address);
+
+      await Promise.all(
+        accountsToLink.map((walletAccount) =>
+          refreshBalance(walletAccount.address).catch((err) => {
+            console.warn("Balance refresh failed post-connect", err);
+          }),
+        ),
+      );
+
+      return accountsToLink;
+    },
+    [refreshBalance, upsertWallets],
+  );
+
+  const disconnect = useCallback(
+    async (address?: string) => {
+      const targetAddress = address ?? activeWallet?.address;
+      if (!targetAddress) return;
+
+      const walletEntry = linkedWallets.find(
+        (wallet) => wallet.address === targetAddress,
+      );
+
+      if (walletEntry) {
+        const remainingWithToken = linkedWallets.filter(
+          (wallet) =>
+            wallet.authToken === walletEntry.authToken &&
+            wallet.address !== targetAddress,
+        );
+        if (remainingWithToken.length === 0) {
+          try {
+            await transact(
+              async (wallet) => {
+                await wallet.deauthorize({ auth_token: walletEntry.authToken });
+              },
+              walletEntry.walletUriBase
+                ? { baseUri: walletEntry.walletUriBase }
+                : undefined,
+            );
+          } catch (error) {
+            console.warn("Deauthorize failed (ignored)", error);
+          }
+        }
+      }
+
+      setLinkedWallets((prev) => {
+        const next = prev.filter((wallet) => wallet.address !== targetAddress);
+        setActiveWalletAddress((current) => {
+          if (current && current !== targetAddress) {
+            return current;
+          }
+          return next[0]?.address ?? null;
+        });
+        return next;
       });
-    } catch (error) {
-      console.warn("Deauthorize failed (ignored)", error);
-    } finally {
-      setAuthToken(null);
-      setAccount(null);
-      setBalanceLamports(null);
-    }
-  }, [authToken]);
+
+      setBalances((prev) => {
+        const { [targetAddress]: _removed, ...rest } = prev;
+        return rest;
+      });
+    },
+    [activeWallet?.address, linkedWallets],
+  );
 
   const sendSol = useCallback(
-    async (recipientAddress: string, amountSol: number) => {
+    async (
+      recipientAddress: string,
+      amountSol: number,
+      options?: { fromAddress?: string },
+    ) => {
       if (!recipientAddress) {
         throw new Error("Recipient address is required");
       }
@@ -173,41 +428,119 @@ export function useSolana(): UseSolanaResult {
         throw new Error("Amount must be greater than zero");
       }
 
-      const { wallet, primaryAccount } = await ensureWalletSession();
-      const senderPubkey = new PublicKey(primaryAccount.address);
-      const recipientPubkey = new PublicKey(recipientAddress);
+      const sourceAddress = options?.fromAddress ?? activeWallet?.address;
+      if (!sourceAddress) {
+        throw new Error("Select a wallet before sending");
+      }
 
-      const { blockhash, lastValidBlockHeight } =
-        await connection.getLatestBlockhash();
-      const lamports = Math.round(amountSol * LAMPORTS_PER_SOL);
-      const transaction = new Transaction({
-        blockhash,
-        lastValidBlockHeight,
-        feePayer: senderPubkey,
-      }).add(
-        SystemProgram.transfer({
-          fromPubkey: senderPubkey,
-          toPubkey: recipientPubkey,
-          lamports,
-        }),
+      const walletEntry = linkedWallets.find(
+        (wallet) => wallet.address === sourceAddress,
+      );
+      if (!walletEntry) {
+        throw new Error("Wallet not linked");
+      }
+
+      await requireBiometricApproval("Authenticate to send SOL");
+
+      const walletMetadata = walletEntry.walletAppId
+        ? availableWallets.find(
+            (wallet) => wallet.id === walletEntry.walletAppId,
+          )
+        : undefined;
+
+      const signature = await transact(
+        async (wallet: Web3MobileWallet) => {
+          let authorization: AuthorizationResult;
+          try {
+            authorization = await wallet.reauthorize({
+              identity: APP_IDENTITY,
+              auth_token: walletEntry.authToken,
+            });
+          } catch (error) {
+            console.warn(
+              "Reauthorize failed, requesting fresh authorization",
+              error,
+            );
+            authorization = await wallet.authorize({
+              identity: APP_IDENTITY,
+              chain: SOLANA_CLUSTER,
+            });
+          }
+
+          const normalizedAccounts = normalizeAuthorization(
+            authorization,
+            walletMetadata,
+          );
+          upsertWallets(normalizedAccounts);
+
+          const primaryAccount =
+            normalizedAccounts.find(
+              (account: LinkedWallet) => account.address === sourceAddress,
+            ) ?? normalizedAccounts[0];
+
+          if (!primaryAccount) {
+            throw new Error("Wallet did not return the requested account");
+          }
+
+          const senderPubkey = new PublicKey(primaryAccount.address);
+          const recipientPubkey = new PublicKey(recipientAddress);
+
+          const { blockhash, lastValidBlockHeight } =
+            await connection.getLatestBlockhash();
+          const lamports = Math.round(amountSol * LAMPORTS_PER_SOL);
+          const transaction = new Transaction({
+            blockhash,
+            lastValidBlockHeight,
+            feePayer: senderPubkey,
+          }).add(
+            SystemProgram.transfer({
+              fromPubkey: senderPubkey,
+              toPubkey: recipientPubkey,
+              lamports,
+            }),
+          );
+
+          const [signature] = await wallet.signAndSendTransactions({
+            transactions: [transaction],
+          });
+          return signature;
+        },
+        walletEntry.walletUriBase
+          ? { baseUri: walletEntry.walletUriBase }
+          : undefined,
       );
 
-      const [signature] = await wallet.signAndSendTransactions({
-        transactions: [transaction],
+      await refreshBalance(sourceAddress).catch((err) => {
+        console.warn("Failed to refresh balance after send", err);
       });
+
       return signature;
     },
-    [connection, ensureWalletSession],
+    [
+      activeWallet?.address,
+      availableWallets,
+      connection,
+      linkedWallets,
+      normalizeAuthorization,
+      refreshBalance,
+      upsertWallets,
+    ],
   );
 
   return {
-    connect,
     disconnect,
     sendSol,
-    account,
+    linkedWallets,
+    activeWallet,
+    selectActiveWallet,
     connection,
-    isAuthenticated: !!authToken,
-    balanceLamports,
+    isAuthenticated: linkedWallets.length > 0,
+    balances,
     refreshBalance,
+    availableWallets,
+    detectingWallets,
+    refreshWalletDetection,
+    startAuthorization,
+    finalizeAuthorization,
   };
 }
