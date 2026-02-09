@@ -47,8 +47,6 @@ const decodeWalletAddress = (rawAddress: string): string => {
     console.error("Wallet provided invalid address", attempts);
     throw new Error("Wallet returned an invalid address.");
   }
-  console.error("Wallet provided invalid address", attempts);
-  throw new Error("Wallet returned an invalid address.");
 };
 
 interface AccountMeta {

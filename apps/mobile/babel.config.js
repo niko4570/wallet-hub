@@ -6,16 +6,7 @@ module.exports = function (api) {
       [
         "transform-inline-environment-variables",
         {
-          include: ["TAMAGUI_TARGET", "EXPO_ROUTER_APP_ROOT"],
-        },
-      ],
-      [
-        "@tamagui/babel-plugin",
-        {
-          components: ["tamagui"],
-          config: "./tamagui.config.js",
-          logTimings: true,
-          disableExtraction: true,
+          include: ["EXPO_ROUTER_APP_ROOT"],
         },
       ],
       "react-native-reanimated/plugin",

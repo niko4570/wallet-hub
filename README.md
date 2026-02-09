@@ -37,7 +37,7 @@ packages/
    EXPO_PUBLIC_API_URL=http://localhost:3000 npm run start
    ```
 
-   - **USB 真机调试**：先运行 `make adb-reverse ADB_PORT=3000`（或直接 `make android`，会自动调用）将手机的 `tcp:3000` 映射到宿主机端口，再保持 `EXPO_PUBLIC_API_URL=http://localhost:3000`。
+   - **USB device debugging**: First run `make adb-reverse ADB_PORT=3000` (or directly `make android`, which will call it automatically) to map the phone's `tcp:3000` to the host machine port, then keep `EXPO_PUBLIC_API_URL=http://localhost:3000`.
 
 4. **Mobile environment notes**
    - Tamagui config is consumed from `apps/mobile/tamagui.config.js` (CJS). If Metro warns about the TS config, clear cache: `cd apps/mobile && rm -rf .expo && npx expo start -c`.

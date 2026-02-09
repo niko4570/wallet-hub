@@ -1,9 +1,8 @@
-import dotenv from "dotenv";
-
-dotenv.config();
+// Expo inlines EXPO_PUBLIC_* values at build time; Node polyfills are not available on device.
+declare const process: { env?: Record<string, string | undefined> };
 
 const getEnv = (key: string, fallback?: string): string => {
-  const value = process.env[key];
+  const value = process.env?.[key];
   if (value && value.length > 0) {
     return value;
   }
@@ -15,5 +14,6 @@ const getEnv = (key: string, fallback?: string): string => {
 
 export const API_URL = getEnv("EXPO_PUBLIC_API_URL", "http://localhost:3000");
 export const HELIUS_API_KEY = getEnv("EXPO_PUBLIC_HELIUS_API_KEY", "demo");
+export const COINGECKO_API_KEY = getEnv("EXPO_PUBLIC_COINGECKO_API_KEY", "");
 export const SOLANA_CLUSTER = "solana:mainnet-beta";
 export const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
