@@ -12,6 +12,7 @@ import {
   type Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import { HELIUS_RPC_URL, SOLANA_CLUSTER } from "../config/env";
+import { requireBiometricApproval } from "../security/biometrics";
 
 const APP_IDENTITY = {
   name: "WalletHub",
@@ -98,6 +99,7 @@ export function useSolana(): UseSolanaResult {
   }, [account, connection]);
 
   const ensureWalletSession = useCallback(async () => {
+    await requireBiometricApproval("Authenticate to manage your WalletHub session");
     return transact(async (wallet: Web3MobileWallet) => {
       let authorization;
       if (authToken) {

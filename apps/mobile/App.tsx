@@ -20,6 +20,7 @@ import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import * as Haptics from "expo-haptics";
 import { useSolana } from "./src/hooks/useSolana";
 import { API_URL, COINGECKO_API_KEY } from "./src/config/env";
+import { requireBiometricApproval } from "./src/security/biometrics";
 
 // Suppress zeego warning (not using native menus yet)
 // import '@tamagui/native/setup-zeego';
@@ -370,7 +371,11 @@ export default function App() {
       await connect();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
-      setError("Failed to connect wallet");
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : "Failed to connect wallet";
+      setError(message);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
   }, [connect]);
@@ -381,10 +386,30 @@ export default function App() {
       await disconnect();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
-      setError("Failed to disconnect wallet");
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : "Failed to disconnect wallet";
+      setError(message);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
   }, [disconnect]);
+
+  const handleOpenSessionModal = useCallback(async () => {
+    try {
+      setError(null);
+      await requireBiometricApproval("Authenticate to manage session keys");
+      setShowSessionModal(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : "Biometric authentication failed";
+      setError(message);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
+  }, []);
 
   return (
     <SafeAreaProvider>
@@ -489,7 +514,7 @@ export default function App() {
           <View style={styles.sessionKeysSection}>
             <View style={styles.sessionKeysHeader}>
               <Text style={styles.sectionTitle}>Session Keys</Text>
-              <TouchableOpacity onPress={() => setShowSessionModal(true)}>
+              <TouchableOpacity onPress={handleOpenSessionModal}>
                 <Text style={styles.actionButtonText}>Manage</Text>
               </TouchableOpacity>
             </View>

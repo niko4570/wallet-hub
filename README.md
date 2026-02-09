@@ -42,6 +42,7 @@ packages/
 4. **Mobile environment notes**
    - Tamagui config is consumed from `apps/mobile/tamagui.config.js` (CJS). If Metro warns about the TS config, clear cache: `cd apps/mobile && rm -rf .expo && npx expo start -c`.
    - Solana RPC: set `EXPO_PUBLIC_HELIUS_API_KEY` or override `EXPO_PUBLIC_RPC_URL` via `apps/mobile/src/config/env.ts` to point at your node.
+   - Sensitive wallet actions (connect, send, session management) now require biometric approval via Expo Local Authentication.
 
 ## API Surface
 
@@ -67,5 +68,5 @@ The backend currently uses in-memory stores plus sample Helius-style balances, e
 ## Next Steps
 
 - Replace mock wallet data with live Solana RPC aggregation (Helius/QuickNode).
-- Add biometric & MPC provider integrations for session issuance.
+- Integrate MPC provider support for session issuance (biometric gating now ships on-device).
 - Extend Expo UI with onboarding, activity feed, and device trust center.
