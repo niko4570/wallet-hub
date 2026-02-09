@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Buffer } from "buffer";
-import { Linking } from "react-native";
 import {
   Connection,
   LAMPORTS_PER_SOL,
@@ -13,120 +11,26 @@ import {
   type Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import type { AuthorizationResult } from "@solana-mobile/mobile-wallet-adapter-protocol";
+import { walletService } from "../services/walletService";
+import { iconService } from "../services/iconService";
 import { HELIUS_RPC_URL, SOLANA_CLUSTER } from "../config/env";
 import { requireBiometricApproval } from "../security/biometrics";
+import { decodeWalletAddress } from "../utils/solanaAddress";
+import {
+  LinkedWallet,
+  DetectedWalletApp,
+  AuthorizationPreview,
+} from "../types/wallet";
 
 const APP_IDENTITY = {
   name: "WalletHub",
   uri: "https://wallethub.app",
 };
 
-interface WalletCatalogEntry {
-  id: string;
-  name: string;
-  icon: string;
-  scheme?: string;
-  baseUri?: string;
-  publisher?: string;
-  subtitle?: string;
-}
-
-export interface DetectedWalletApp extends WalletCatalogEntry {
-  installed: boolean;
-  detectionMethod: "scheme" | "fallback" | "error";
-}
-
-const WALLET_DIRECTORY: WalletCatalogEntry[] = [
-  {
-    id: "phantom",
-    name: "Phantom",
-    icon: "🟣",
-    scheme: "phantom://",
-    baseUri: "https://phantom.app/ul/v1/wallet/adapter",
-    subtitle: "Fast, secure & popular",
-  },
-  {
-    id: "solflare",
-    name: "Solflare",
-    icon: "🟠",
-    scheme: "solflare://",
-    baseUri: "https://solflare.com/ul/v1/wallet/adapter",
-    subtitle: "DeFi focused wallet",
-  },
-  {
-    id: "backpack",
-    name: "Backpack",
-    icon: "🧳",
-    scheme: "backpack://",
-    baseUri: "https://backpack.app/ul/v1/wallet/adapter",
-    subtitle: "xNFT capable",
-  },
-  {
-    id: "glow",
-    name: "Glow",
-    icon: "✨",
-    scheme: "glow://",
-    baseUri: "https://glow.app/ul/v1/wallet/adapter",
-    subtitle: "Simple & social",
-  },
-  {
-    id: "tiplink",
-    name: "TipLink",
-    icon: "🔗",
-    scheme: "tiplink://",
-    baseUri: "https://tiplink.io/ul/v1/wallet/adapter",
-    subtitle: "Link-based wallet",
-  },
-];
-
-interface AccountMeta {
-  address: string;
-  label?: string;
-}
-
-export interface LinkedWallet extends AccountMeta {
-  authToken: string;
-  walletUriBase?: string | null;
-  walletAppId?: string;
-  walletName?: string;
-  icon?: string;
-}
-
-export interface AuthorizationPreview {
-  walletApp?: DetectedWalletApp;
-  accounts: LinkedWallet[];
-}
-
 /**
- * Normalize wallet addresses emitted from Mobile Wallet Adapter.
- * Some wallets return base64-encoded 32 byte buffers, others return base58 strings.
+ * Shared Solana adapter hook that wraps Mobile Wallet Adapter authorization
+ * and exposes helpers for connecting, disconnecting, sending, and refreshing balances.
  */
-const decodeWalletAddress = (rawAddress: string): string => {
-  const trimmed = rawAddress.trim();
-  const attempts: Error[] = [];
-
-  const tryPublicKey = (input: Buffer | string) => {
-    const pubkey = new PublicKey(input);
-    return pubkey.toBase58();
-  };
-
-  try {
-    const asBase64 = Buffer.from(trimmed, "base64");
-    if (asBase64.length === 32) {
-      return tryPublicKey(asBase64);
-    }
-  } catch (error) {
-    attempts.push(error as Error);
-  }
-
-  try {
-    return tryPublicKey(trimmed);
-  } catch (error) {
-    attempts.push(error as Error);
-    console.error("Wallet provided invalid address", attempts);
-    throw new Error("Wallet returned an invalid address.");
-  }
-};
 
 interface UseSolanaResult {
   disconnect: (address?: string) => Promise<void>;
@@ -177,37 +81,17 @@ export function useSolana(): UseSolanaResult {
   const refreshWalletDetection = useCallback(async () => {
     setDetectingWallets(true);
     try {
-      const results = await Promise.all(
-        WALLET_DIRECTORY.map<Promise<DetectedWalletApp>>(async (wallet) => {
-          if (!wallet.scheme) {
-            return { ...wallet, installed: true, detectionMethod: "fallback" };
-          }
-          try {
-            const canOpen = await Linking.canOpenURL(wallet.scheme);
-            return {
-              ...wallet,
-              installed: canOpen,
-              detectionMethod: "scheme",
-            };
-          } catch (error) {
-            console.warn(`Wallet detection failed for ${wallet.name}`, error);
-            return { ...wallet, installed: false, detectionMethod: "error" };
-          }
-        }),
-      );
+      const detectedWallets = await walletService.detectWallets();
+      setAvailableWallets(detectedWallets);
 
-      if (!results.some((wallet) => wallet.installed)) {
-        results.push({
-          id: "system-picker",
-          name: "Any compatible wallet",
-          icon: "🌐",
-          installed: true,
-          detectionMethod: "fallback",
-        });
-      }
+      // Prefetch icons for detected wallets
+      const walletIds = detectedWallets.map((wallet) => wallet.id);
+      await iconService.prefetchWalletIcons(walletIds);
 
-      setAvailableWallets(results);
-      return results;
+      return detectedWallets;
+    } catch (error) {
+      console.error("Error refreshing wallet detection:", error);
+      return [];
     } finally {
       setDetectingWallets(false);
     }
@@ -307,60 +191,41 @@ export function useSolana(): UseSolanaResult {
   const startAuthorization = useCallback(
     async (wallet?: DetectedWalletApp): Promise<AuthorizationPreview> => {
       try {
-        await requireBiometricApproval("Authenticate to choose a wallet");
-        // For installed wallets, don't pass baseUri - let the system handle it
-        // Only pass baseUri for fallback wallets or when wallet is not installed
-        const transactOptions =
-          wallet?.installed === false && wallet.baseUri
-            ? { baseUri: wallet.baseUri }
-            : undefined;
-
-        const authorization = await transact(
-          async (walletApi: Web3MobileWallet) => {
-            return walletApi.authorize({
-              identity: APP_IDENTITY,
-              chain: SOLANA_CLUSTER,
-            });
-          },
-          transactOptions,
-        );
-        const normalized = normalizeAuthorization(authorization, wallet);
-        return { walletApp: wallet, accounts: normalized };
+        return await walletService.startWalletAuthorization(wallet);
       } catch (error) {
         console.error("Wallet authorization failed", error);
         throw error;
       }
     },
-    [normalizeAuthorization],
+    [],
   );
 
   const finalizeAuthorization = useCallback(
     async (preview: AuthorizationPreview, selectedAddresses?: string[]) => {
-      const selection =
-        selectedAddresses && selectedAddresses.length > 0
-          ? new Set(selectedAddresses)
-          : null;
+      try {
+        const accountsToLink = await walletService.finalizeWalletAuthorization(
+          preview,
+          selectedAddresses,
+        );
 
-      const accountsToLink = preview.accounts.filter((account) =>
-        selection ? selection.has(account.address) : true,
-      );
+        upsertWallets(accountsToLink);
+        setActiveWalletAddress(
+          (current) => current ?? accountsToLink[0].address,
+        );
 
-      if (accountsToLink.length === 0) {
-        throw new Error("Select at least one account to continue");
+        await Promise.all(
+          accountsToLink.map((walletAccount) =>
+            refreshBalance(walletAccount.address).catch((err) => {
+              console.warn("Balance refresh failed post-connect", err);
+            }),
+          ),
+        );
+
+        return accountsToLink;
+      } catch (error) {
+        console.error("Error finalizing authorization:", error);
+        throw error;
       }
-
-      upsertWallets(accountsToLink);
-      setActiveWalletAddress((current) => current ?? accountsToLink[0].address);
-
-      await Promise.all(
-        accountsToLink.map((walletAccount) =>
-          refreshBalance(walletAccount.address).catch((err) => {
-            console.warn("Balance refresh failed post-connect", err);
-          }),
-        ),
-      );
-
-      return accountsToLink;
     },
     [refreshBalance, upsertWallets],
   );
@@ -521,7 +386,6 @@ export function useSolana(): UseSolanaResult {
       availableWallets,
       connection,
       linkedWallets,
-      normalizeAuthorization,
       refreshBalance,
       upsertWallets,
     ],
