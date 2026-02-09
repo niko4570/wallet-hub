@@ -43,6 +43,7 @@ packages/
    - Tamagui config is consumed from `apps/mobile/tamagui.config.js` (CJS). If Metro warns about the TS config, clear cache: `cd apps/mobile && rm -rf .expo && npx expo start -c`.
    - Solana RPC: set `EXPO_PUBLIC_HELIUS_API_KEY` or override `EXPO_PUBLIC_RPC_URL` via `apps/mobile/src/config/env.ts` to point at your node.
    - Sensitive wallet actions (connect, send, session management) now require biometric approval via Expo Local Authentication.
+   - Security posture, threat model, and assumptions live in [`docs/threat-model.md`](./docs/threat-model.md).
 
 ## API Surface
 
