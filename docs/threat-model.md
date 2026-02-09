@@ -39,6 +39,7 @@ High-value assets:
 ## Current Mitigations
 
 - **Biometric gating** before session management, connect, and send actions (Expo Local Authentication).
+- **Backend biometric proof validation** to ensure session issuance is tied to device-bound attestation data before issuing new keys.
 - **Address normalization / validation** prevents base64/non-base58 injection.
 - **Mainnet-only RPC + chain IDs** to avoid devnet spoofing risks.
 - **Session revoke hooks & UI** (placeholder) with plan to enforce on backend once relayer is online.

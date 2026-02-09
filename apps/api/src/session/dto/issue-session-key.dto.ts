@@ -21,6 +21,10 @@ export class IssueSessionKeyDto implements IssueSessionKeyPayload {
   @IsString()
   devicePublicKey!: string;
 
+  @IsString()
+  @Length(16, 4096)
+  biometricProof!: string;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => SessionScopeDto)

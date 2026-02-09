@@ -73,6 +73,7 @@ export interface SessionPolicy {
 export interface IssueSessionKeyPayload {
   walletAddress: string;
   devicePublicKey: string;
+  biometricProof: string;
   scopes: SessionScope[];
   expiresInMinutes: number;
   metadata?: Record<string, string>;

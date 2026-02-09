@@ -3,9 +3,13 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { IssueSessionKeyDto } from './dto/issue-session-key.dto';
 import { RevokeSessionKeyDto } from './dto/revoke-session-key.dto';
+import { BiometricVerificationService } from '../security/biometric-verification.service';
 
 @Injectable()
 export class SessionService {
+  constructor(
+    private readonly biometricVerifier: BiometricVerificationService,
+  ) {}
   private readonly policies: SessionPolicy[] = [
     {
       id: 'policy-primary',
@@ -59,11 +63,28 @@ export class SessionService {
   }
 
   issueSessionKey(dto: IssueSessionKeyDto): SessionKey {
+    const biometricVerification = this.biometricVerifier.verifyProof(
+      dto.biometricProof,
+      {
+        walletAddress: dto.walletAddress,
+        devicePublicKey: dto.devicePublicKey,
+      },
+    );
     const policy =
       this.policies.find((item) => item.walletAddress === dto.walletAddress) ??
       this.createEphemeralPolicy(dto.walletAddress);
 
     const now = Date.now();
+    const metadata: Record<string, string> = {
+      ...(dto.metadata ?? {}),
+      biometricMethod: biometricVerification.method,
+      biometricConfidence: biometricVerification.confidence.toString(),
+      biometricIssuedAt: biometricVerification.issuedAt,
+    };
+    if (biometricVerification.deviceId) {
+      metadata.biometricDeviceId = biometricVerification.deviceId;
+    }
+
     const sessionKey: SessionKey = {
       id: randomUUID(),
       walletAddress: dto.walletAddress,
@@ -74,7 +95,7 @@ export class SessionService {
       scopes: dto.scopes,
       status: 'active',
       policyId: policy.id,
-      metadata: dto.metadata,
+      metadata,
     };
 
     this.sessionKeys = [sessionKey, ...this.sessionKeys];
