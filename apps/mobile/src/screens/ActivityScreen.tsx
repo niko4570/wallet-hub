@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,71 +7,42 @@ import {
   StyleSheet,
   RefreshControl,
   ActivityIndicator,
-} from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../navigation/AppNavigator';
-import { authorizationApi } from '../services/authorizationService';
-import { formatAddress, formatSignature } from '../utils/format';
+} from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import { StackNavigationProp } from "@react-navigation/stack";
+import { RootStackParamList } from "../navigation/AppNavigator";
+import { formatAddress, formatSignature } from "../utils/format";
 
-// Mock data for transactions
-const mockTransactions = [
-  {
-    id: '1',
-    signature: '23456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef01',
-    source: 'Hp7b8rDM3nxxBUjaN49JWZaw1rgPrrWEZeMpi2TShN8b',
-    destination: '9vMJfxuKxXBoEa7rM123456789abcdef0123456789abcdef0123456789abcdef01',
-    amount: 0.5,
-    status: 'success',
-    timestamp: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    signature: '3456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef012',
-    source: '9vMJfxuKxXBoEa7rM123456789abcdef0123456789abcdef0123456789abcdef01',
-    destination: 'Hp7b8rDM3nxxBUjaN49JWZaw1rgPrrWEZeMpi2TShN8b',
-    amount: 1.2,
-    status: 'success',
-    timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: '3',
-    signature: '456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123',
-    source: 'Hp7b8rDM3nxxBUjaN49JWZaw1rgPrrWEZeMpi2TShN8b',
-    destination: '8cY4m7P9QrStUvWxYzAbCdEfGhIjKlMnOpQrStUvWxYz',
-    amount: 0.3,
-    status: 'pending',
-    timestamp: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
-  },
-];
+type Transaction = {
+  id: string;
+  signature: string;
+  source: string;
+  destination: string;
+  amount: number;
+  status: "success" | "pending" | "failed";
+  timestamp: string;
+};
 
-// Mock data for authorizations
-const mockAuthorizations = [
-  {
-    id: '1',
-    walletAddress: 'Hp7b8rDM3nxxBUjaN49JWZaw1rgPrrWEZeMpi2TShN8b',
-    walletName: 'Phantom',
-    method: 'silent',
-    status: 'fresh',
-    timestamp: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    walletAddress: 'Hp7b8rDM3nxxBUjaN49JWZaw1rgPrrWEZeMpi2TShN8b',
-    walletName: 'Phantom',
-    method: 'prompted',
-    status: 'fresh',
-    timestamp: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
+type AuthorizationEvent = {
+  id: string;
+  walletAddress: string;
+  walletName?: string;
+  method: string;
+  status: "fresh" | "stale";
+  timestamp: string;
+};
 
 const ActivityScreen = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'transactions' | 'authorizations'>('transactions');
-  const [transactions, setTransactions] = useState(mockTransactions);
-  const [authorizations, setAuthorizations] = useState(mockAuthorizations);
+  const [activeTab, setActiveTab] = useState<"transactions" | "authorizations">(
+    "transactions",
+  );
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [authorizations, setAuthorizations] = useState<AuthorizationEvent[]>(
+    [],
+  );
 
   React.useEffect(() => {
     // Simulate loading
@@ -89,11 +60,11 @@ const ActivityScreen = () => {
   }, []);
 
   const handleTransactionDetail = (signature: string) => {
-    navigation.navigate('TransactionDetail', { signature });
+    navigation.navigate("TransactionDetail", { signature });
   };
 
   const handleAuthorizationDetail = (authorizationId: string) => {
-    navigation.navigate('AuthorizationDetail', { authorizationId });
+    navigation.navigate("AuthorizationDetail", { authorizationId });
   };
 
   if (loading) {
@@ -109,16 +80,13 @@ const ActivityScreen = () => {
       {/* Tab Bar */}
       <View style={styles.tabBar}>
         <TouchableOpacity
-          style={[
-            styles.tab,
-            activeTab === 'transactions' && styles.activeTab,
-          ]}
-          onPress={() => setActiveTab('transactions')}
+          style={[styles.tab, activeTab === "transactions" && styles.activeTab]}
+          onPress={() => setActiveTab("transactions")}
         >
           <Text
             style={[
               styles.tabText,
-              activeTab === 'transactions' && styles.activeTabText,
+              activeTab === "transactions" && styles.activeTabText,
             ]}
           >
             Transactions
@@ -127,14 +95,14 @@ const ActivityScreen = () => {
         <TouchableOpacity
           style={[
             styles.tab,
-            activeTab === 'authorizations' && styles.activeTab,
+            activeTab === "authorizations" && styles.activeTab,
           ]}
-          onPress={() => setActiveTab('authorizations')}
+          onPress={() => setActiveTab("authorizations")}
         >
           <Text
             style={[
               styles.tabText,
-              activeTab === 'authorizations' && styles.activeTabText,
+              activeTab === "authorizations" && styles.activeTabText,
             ]}
           >
             Authorizations
@@ -150,11 +118,11 @@ const ActivityScreen = () => {
             refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor="#7F56D9"
-            colors={['#7F56D9']}
+            colors={["#7F56D9"]}
           />
         }
       >
-        {activeTab === 'transactions' ? (
+        {activeTab === "transactions" ? (
           <View style={styles.section}>
             {transactions.length === 0 ? (
               <View style={styles.emptyState}>
@@ -174,7 +142,7 @@ const ActivityScreen = () => {
                     <View
                       style={[
                         styles.transactionStatus,
-                        transaction.status === 'success'
+                        transaction.status === "success"
                           ? styles.transactionStatusSuccess
                           : styles.transactionStatusPending,
                       ]}
@@ -182,7 +150,7 @@ const ActivityScreen = () => {
                       <Text
                         style={[
                           styles.transactionStatusText,
-                          transaction.status === 'success'
+                          transaction.status === "success"
                             ? styles.transactionStatusTextSuccess
                             : styles.transactionStatusTextPending,
                         ]}
@@ -193,12 +161,14 @@ const ActivityScreen = () => {
                   </View>
                   <View style={styles.transactionInfo}>
                     <Text style={styles.transactionAmount}>
-                      {transaction.source === 'Hp7b8rDM3nxxBUjaN49JWZaw1rgPrrWEZeMpi2TShN8b'
+                      {transaction.source ===
+                      "Hp7b8rDM3nxxBUjaN49JWZaw1rgPrrWEZeMpi2TShN8b"
                         ? `- ${transaction.amount} SOL`
                         : `+ ${transaction.amount} SOL`}
                     </Text>
                     <Text style={styles.transactionAddress}>
-                      {transaction.source === 'Hp7b8rDM3nxxBUjaN49JWZaw1rgPrrWEZeMpi2TShN8b'
+                      {transaction.source ===
+                      "Hp7b8rDM3nxxBUjaN49JWZaw1rgPrrWEZeMpi2TShN8b"
                         ? `To: ${formatAddress(transaction.destination)}`
                         : `From: ${formatAddress(transaction.source)}`}
                     </Text>
@@ -227,12 +197,13 @@ const ActivityScreen = () => {
                 >
                   <View style={styles.authorizationHeader}>
                     <Text style={styles.authorizationWallet}>
-                      {authorization.walletName || formatAddress(authorization.walletAddress)}
+                      {authorization.walletName ||
+                        formatAddress(authorization.walletAddress)}
                     </Text>
                     <View
                       style={[
                         styles.authorizationStatus,
-                        authorization.status === 'fresh'
+                        authorization.status === "fresh"
                           ? styles.authorizationStatusFresh
                           : styles.authorizationStatusStale,
                       ]}
@@ -240,7 +211,7 @@ const ActivityScreen = () => {
                       <Text
                         style={[
                           styles.authorizationStatusText,
-                          authorization.status === 'fresh'
+                          authorization.status === "fresh"
                             ? styles.authorizationStatusTextFresh
                             : styles.authorizationStatusTextStale,
                         ]}
@@ -273,34 +244,34 @@ const ActivityScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B1221',
+    backgroundColor: "#0B1221",
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0B1221',
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#0B1221",
   },
   tabBar: {
-    flexDirection: 'row',
+    flexDirection: "row",
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+    borderBottomColor: "rgba(255, 255, 255, 0.1)",
   },
   tab: {
     flex: 1,
     paddingVertical: 16,
-    alignItems: 'center',
+    alignItems: "center",
   },
   activeTab: {
     borderBottomWidth: 2,
-    borderBottomColor: '#7F56D9',
+    borderBottomColor: "#7F56D9",
   },
   tabText: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontWeight: '600',
+    color: "rgba(255, 255, 255, 0.6)",
+    fontWeight: "600",
   },
   activeTabText: {
-    color: '#7F56D9',
+    color: "#7F56D9",
   },
   content: {
     flex: 1,
@@ -309,33 +280,33 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   emptyState: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
     borderRadius: 24,
     padding: 32,
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 24,
   },
   emptyStateText: {
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: "rgba(255, 255, 255, 0.6)",
     fontSize: 16,
   },
   transactionCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 20,
     padding: 16,
     marginBottom: 12,
   },
   transactionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 8,
   },
   transactionSignature: {
-    color: '#FFFFFF',
-    fontWeight: '600',
+    color: "#FFFFFF",
+    fontWeight: "600",
     fontSize: 14,
     flex: 1,
   },
@@ -346,60 +317,60 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   transactionStatusSuccess: {
-    backgroundColor: 'rgba(0, 255, 179, 0.2)',
+    backgroundColor: "rgba(0, 255, 179, 0.2)",
     borderWidth: 1,
-    borderColor: 'rgba(0, 255, 179, 0.4)',
+    borderColor: "rgba(0, 255, 179, 0.4)",
   },
   transactionStatusPending: {
-    backgroundColor: 'rgba(255, 204, 0, 0.2)',
+    backgroundColor: "rgba(255, 204, 0, 0.2)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 204, 0, 0.4)',
+    borderColor: "rgba(255, 204, 0, 0.4)",
   },
   transactionStatusText: {
     fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
+    fontWeight: "700",
+    textTransform: "uppercase",
   },
   transactionStatusTextSuccess: {
-    color: '#00FFB3',
+    color: "#00FFB3",
   },
   transactionStatusTextPending: {
-    color: '#FFCC00',
+    color: "#FFCC00",
   },
   transactionInfo: {
     marginBottom: 8,
   },
   transactionAmount: {
-    color: '#FFFFFF',
-    fontWeight: '700',
+    color: "#FFFFFF",
+    fontWeight: "700",
     fontSize: 16,
     marginBottom: 4,
   },
   transactionAddress: {
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: "rgba(255, 255, 255, 0.6)",
     fontSize: 12,
   },
   transactionTimestamp: {
-    color: 'rgba(255, 255, 255, 0.4)',
+    color: "rgba(255, 255, 255, 0.4)",
     fontSize: 11,
   },
   authorizationCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 20,
     padding: 16,
     marginBottom: 12,
   },
   authorizationHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 8,
   },
   authorizationWallet: {
-    color: '#FFFFFF',
-    fontWeight: '600',
+    color: "#FFFFFF",
+    fontWeight: "600",
     fontSize: 14,
     flex: 1,
   },
@@ -410,40 +381,40 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   authorizationStatusFresh: {
-    backgroundColor: 'rgba(127, 86, 217, 0.2)',
+    backgroundColor: "rgba(127, 86, 217, 0.2)",
     borderWidth: 1,
-    borderColor: 'rgba(127, 86, 217, 0.4)',
+    borderColor: "rgba(127, 86, 217, 0.4)",
   },
   authorizationStatusStale: {
-    backgroundColor: 'rgba(255, 77, 77, 0.2)',
+    backgroundColor: "rgba(255, 77, 77, 0.2)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 77, 77, 0.4)',
+    borderColor: "rgba(255, 77, 77, 0.4)",
   },
   authorizationStatusText: {
     fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
+    fontWeight: "700",
+    textTransform: "uppercase",
   },
   authorizationStatusTextFresh: {
-    color: '#7F56D9',
+    color: "#7F56D9",
   },
   authorizationStatusTextStale: {
-    color: '#FF4D4D',
+    color: "#FF4D4D",
   },
   authorizationInfo: {
     marginBottom: 8,
   },
   authorizationMethod: {
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: "rgba(255, 255, 255, 0.8)",
     fontSize: 14,
     marginBottom: 4,
   },
   authorizationAddress: {
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: "rgba(255, 255, 255, 0.6)",
     fontSize: 12,
   },
   authorizationTimestamp: {
-    color: 'rgba(255, 255, 255, 0.4)',
+    color: "rgba(255, 255, 255, 0.4)",
     fontSize: 11,
   },
 });

@@ -12,31 +12,6 @@ import { useNavigation } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
 
-// Mock data for NFTs
-const mockNFTs = [
-  {
-    id: "1",
-    name: "Solana Monkey Business",
-    description: "Limited edition NFT collection on Solana",
-    price: 2.5,
-    image: "🖼️",
-  },
-  {
-    id: "2",
-    name: "Degenerate Ape Academy",
-    description: "Popular NFT collection with unique traits",
-    price: 1.8,
-    image: "🐒",
-  },
-  {
-    id: "3",
-    name: "Star Atlas",
-    description: "Space exploration metaverse NFTs",
-    price: 3.2,
-    image: "🚀",
-  },
-];
-
 // Type definitions
 interface NFT {
   id: string;
@@ -63,63 +38,13 @@ interface DApp {
   logo: string;
 }
 
-// Mock data for DeFi projects
-const mockDeFiProjects: DeFiProject[] = [
-  {
-    id: "1",
-    name: "Raydium",
-    description: "AMM and liquidity provider on Solana",
-    tvl: 1200000000,
-    apr: 15.5,
-    logo: "💎",
-  },
-  {
-    id: "2",
-    name: "Serum",
-    description: "Decentralized exchange on Solana",
-    tvl: 800000000,
-    apr: 12.3,
-    logo: "💧",
-  },
-  {
-    id: "3",
-    name: "Marinade Finance",
-    description: "Liquid staking solution for Solana",
-    tvl: 600000000,
-    apr: 7.8,
-    logo: "🧂",
-  },
-];
-
-// Mock data for DApps
-const mockDApps: DApp[] = [
-  {
-    id: "1",
-    name: "Magic Eden",
-    description: "NFT marketplace for Solana",
-    category: "NFT Marketplace",
-    logo: "🪄",
-  },
-  {
-    id: "2",
-    name: "StepN",
-    description: "Move-to-earn fitness app",
-    category: "Fitness",
-    logo: "👟",
-  },
-  {
-    id: "3",
-    name: "Solanart",
-    description: "Digital art marketplace",
-    category: "NFT Marketplace",
-    logo: "🎨",
-  },
-];
-
 const ExploreScreen = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [nfts] = useState<NFT[]>([]);
+  const [defiProjects] = useState<DeFiProject[]>([]);
+  const [dapps] = useState<DApp[]>([]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -164,82 +89,100 @@ const ExploreScreen = () => {
       {/* Trending Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Trending NFTs</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.nftScrollContainer}
-        >
-          {mockNFTs.map((nft) => (
-            <TouchableOpacity
-              key={nft.id}
-              style={styles.nftCard}
-              onPress={() => handleNFTDetail(nft.id)}
-            >
-              <View style={styles.nftImage}>
-                <Text style={styles.nftImageEmoji}>{nft.image}</Text>
-              </View>
-              <Text style={styles.nftName}>{nft.name}</Text>
-              <Text style={styles.nftPrice}>{nft.price} SOL</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        {nfts.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>No NFTs yet</Text>
+          </View>
+        ) : (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.nftScrollContainer}
+          >
+            {nfts.map((nft) => (
+              <TouchableOpacity
+                key={nft.id}
+                style={styles.nftCard}
+                onPress={() => handleNFTDetail(nft.id)}
+              >
+                <View style={styles.nftImage}>
+                  <Text style={styles.nftImageEmoji}>{nft.image}</Text>
+                </View>
+                <Text style={styles.nftName}>{nft.name}</Text>
+                <Text style={styles.nftPrice}>{nft.price} SOL</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
       </View>
 
       {/* DeFi Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Top DeFi Projects</Text>
-        {mockDeFiProjects.map((project) => (
-          <TouchableOpacity
-            key={project.id}
-            style={styles.projectCard}
-            onPress={() => handleProjectDetail(project.id)}
-          >
-            <View style={styles.projectHeader}>
-              <View style={styles.projectLogo}>
-                <Text style={styles.projectLogoEmoji}>{project.logo}</Text>
+        {defiProjects.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>No DeFi projects yet</Text>
+          </View>
+        ) : (
+          defiProjects.map((project) => (
+            <TouchableOpacity
+              key={project.id}
+              style={styles.projectCard}
+              onPress={() => handleProjectDetail(project.id)}
+            >
+              <View style={styles.projectHeader}>
+                <View style={styles.projectLogo}>
+                  <Text style={styles.projectLogoEmoji}>{project.logo}</Text>
+                </View>
+                <View style={styles.projectInfo}>
+                  <Text style={styles.projectName}>{project.name}</Text>
+                  <Text style={styles.projectDescription}>
+                    {project.description}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.projectInfo}>
-                <Text style={styles.projectName}>{project.name}</Text>
-                <Text style={styles.projectDescription}>
-                  {project.description}
-                </Text>
+              <View style={styles.projectStats}>
+                <View style={styles.projectStat}>
+                  <Text style={styles.projectStatLabel}>TVL</Text>
+                  <Text style={styles.projectStatValue}>
+                    ${(project.tvl / 1000000).toFixed(0)}M
+                  </Text>
+                </View>
+                <View style={styles.projectStat}>
+                  <Text style={styles.projectStatLabel}>APR</Text>
+                  <Text style={styles.projectStatValue}>{project.apr}%</Text>
+                </View>
               </View>
-            </View>
-            <View style={styles.projectStats}>
-              <View style={styles.projectStat}>
-                <Text style={styles.projectStatLabel}>TVL</Text>
-                <Text style={styles.projectStatValue}>
-                  ${(project.tvl / 1000000).toFixed(0)}M
-                </Text>
-              </View>
-              <View style={styles.projectStat}>
-                <Text style={styles.projectStatLabel}>APR</Text>
-                <Text style={styles.projectStatValue}>{project.apr}%</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        ))}
+            </TouchableOpacity>
+          ))
+        )}
       </View>
 
       {/* DApps Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Popular DApps</Text>
-        {mockDApps.map((dapp) => (
-          <TouchableOpacity key={dapp.id} style={styles.dappCard}>
-            <View style={styles.dappHeader}>
-              <View style={styles.dappLogo}>
-                <Text style={styles.dappLogoEmoji}>{dapp.logo}</Text>
+        {dapps.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>No dapps yet</Text>
+          </View>
+        ) : (
+          dapps.map((dapp) => (
+            <TouchableOpacity key={dapp.id} style={styles.dappCard}>
+              <View style={styles.dappHeader}>
+                <View style={styles.dappLogo}>
+                  <Text style={styles.dappLogoEmoji}>{dapp.logo}</Text>
+                </View>
+                <View style={styles.dappInfo}>
+                  <Text style={styles.dappName}>{dapp.name}</Text>
+                  <Text style={styles.dappDescription}>{dapp.description}</Text>
+                </View>
               </View>
-              <View style={styles.dappInfo}>
-                <Text style={styles.dappName}>{dapp.name}</Text>
-                <Text style={styles.dappDescription}>{dapp.description}</Text>
+              <View style={styles.dappCategory}>
+                <Text style={styles.dappCategoryText}>{dapp.category}</Text>
               </View>
-            </View>
-            <View style={styles.dappCategory}>
-              <Text style={styles.dappCategoryText}>{dapp.category}</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+            </TouchableOpacity>
+          ))
+        )}
       </View>
     </ScrollView>
   );
@@ -418,6 +361,18 @@ const styles = StyleSheet.create({
     color: "#7F56D9",
     fontSize: 11,
     fontWeight: "600",
+  },
+  emptyState: {
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderRadius: 18,
+    padding: 16,
+    alignItems: "center",
+  },
+  emptyStateText: {
+    color: "rgba(255, 255, 255, 0.6)",
+    fontSize: 14,
   },
 });
 
