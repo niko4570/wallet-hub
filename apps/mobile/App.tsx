@@ -614,6 +614,8 @@ export default function App() {
   >([]);
   const [auditLog, setAuditLog] = useState<TransactionAuditEntry[]>([]);
   const [silentRefreshLoading, setSilentRefreshLoading] = useState(false);
+  const [securityLoading, setSecurityLoading] = useState(false);
+  const [securityError, setSecurityError] = useState<string | null>(null);
   const [showSessionModal, setShowSessionModal] = useState(false);
   const [walletSelectionVisible, setWalletSelectionVisible] = useState(false);
   const [accountSelectionVisible, setAccountSelectionVisible] = useState(false);
@@ -650,27 +652,73 @@ export default function App() {
   }, [availableWallets]);
 
   const loadSecurityData = useCallback(async () => {
+    setSecurityLoading(true);
+    setSecurityError(null);
     try {
+      const sessionPromise = authorizationApi.fetchSessionKeys();
+      const silentPromise = authorizationApi.fetchSilentReauthorizations();
+      const settingsPromise = authorizationApi.fetchSessionSettings();
+      const auditPromise = authorizationApi.fetchTransactionAudits();
+
       const [
-        fetchedSessionKeys,
-        fetchedSilentReauths,
-        fetchedSettings,
-        fetchedAudits,
-      ] = await Promise.all([
-        authorizationApi.fetchSessionKeys().catch(() => []),
-        authorizationApi.fetchSilentReauthorizations().catch(() => []),
-        authorizationApi.fetchSessionSettings().catch(() => null),
-        authorizationApi.fetchTransactionAudits().catch(() => []),
+        sessionResult,
+        silentResult,
+        settingsResult,
+        auditResult,
+      ] = await Promise.allSettled([
+        sessionPromise,
+        silentPromise,
+        settingsPromise,
+        auditPromise,
       ]);
 
-      setSessionKeys(fetchedSessionKeys);
-      setSilentReauths(fetchedSilentReauths);
-      if (fetchedSettings) {
-        setSessionSettings(fetchedSettings);
+      const failedSlices: string[] = [];
+
+      if (sessionResult.status === "fulfilled") {
+        setSessionKeys(sessionResult.value);
+      } else {
+        failedSlices.push("session keys");
       }
-      setAuditLog(fetchedAudits);
+
+      if (silentResult.status === "fulfilled") {
+        setSilentReauths(silentResult.value);
+      } else {
+        failedSlices.push("authorization events");
+      }
+
+      if (settingsResult.status === "fulfilled") {
+        if (settingsResult.value) {
+          setSessionSettings(settingsResult.value);
+        }
+      } else {
+        failedSlices.push("session settings");
+      }
+
+      if (auditResult.status === "fulfilled") {
+        setAuditLog(auditResult.value);
+      } else {
+        failedSlices.push("audit log");
+      }
+
+      if (failedSlices.length > 0) {
+        const readable =
+          failedSlices.length === 1
+            ? failedSlices[0]
+            : `${failedSlices.slice(0, -1).join(", ")} and ${
+                failedSlices[failedSlices.length - 1]
+              }`;
+        setSecurityError(
+          `Unable to refresh ${readable}. Showing last known values.`,
+        );
+      }
     } catch (err) {
-      console.warn("Failed to load security data", err);
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Unable to load authorization data.";
+      setSecurityError(message);
+    } finally {
+      setSecurityLoading(false);
     }
   }, []);
 
@@ -830,7 +878,7 @@ export default function App() {
   const handleSilentRefresh = useCallback(async () => {
     if (linkedWallets.length === 0) {
       const message = "Connect a wallet before refreshing tokens";
-      setError(message);
+      setSecurityError(message);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       return;
     }
@@ -873,17 +921,18 @@ export default function App() {
         });
       }
 
-      setError(null);
+      setSecurityError(null);
+      await loadSecurityData();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to refresh authorizations";
-      setError(message);
+      setSecurityError(message);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setSilentRefreshLoading(false);
     }
-  }, [linkedWallets, silentRefreshAuthorization]);
+  }, [linkedWallets, loadSecurityData, silentRefreshAuthorization]);
 
   const handleOpenSessionModal = useCallback(async () => {
     try {
@@ -930,6 +979,11 @@ export default function App() {
           {error && (
             <View style={styles.errorCard}>
               <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
+          {securityError && (
+            <View style={styles.errorCard}>
+              <Text style={styles.errorText}>{securityError}</Text>
             </View>
           )}
 
@@ -1087,6 +1141,9 @@ export default function App() {
                 {sessionSettings.message}
               </Text>
             )}
+            {securityLoading && (
+              <ActivityIndicator style={styles.spinner} color="#8EA4FF" />
+            )}
             {sessionKeys.length === 0 ? (
               <View style={styles.glassCard}>
                 <Text style={styles.balanceValueText}>No active sessions</Text>
@@ -1144,6 +1201,9 @@ export default function App() {
                 )}
               </TouchableOpacity>
             </View>
+            {securityLoading && (
+              <ActivityIndicator style={styles.spinner} color="#8EA4FF" />
+            )}
             {silentReauths.length === 0 ? (
               <View style={styles.glassCard}>
                 <Text style={styles.balanceValueText}>
@@ -1206,6 +1266,9 @@ export default function App() {
             <View style={styles.sessionKeysHeader}>
               <Text style={styles.sectionTitle}>Recent Signatures</Text>
             </View>
+            {securityLoading && (
+              <ActivityIndicator style={styles.spinner} color="#8EA4FF" />
+            )}
             {auditLog.length === 0 ? (
               <View style={styles.glassCard}>
                 <Text style={styles.balanceValueText}>
