@@ -1,14 +1,15 @@
-import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { createStackNavigator } from '@react-navigation/stack';
-import { Text, View } from 'react-native';
+import React from "react";
+import { NavigationContainer } from "@react-navigation/native";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { createStackNavigator } from "@react-navigation/stack";
+import { Text, View } from "react-native";
+import { Feather } from "@expo/vector-icons";
 
 // Import screens
-import WalletScreen from '../screens/WalletScreen';
-import ExploreScreen from '../screens/ExploreScreen';
-import ActivityScreen from '../screens/ActivityScreen';
-import SettingsScreen from '../screens/SettingsScreen';
+import WalletScreen from "../screens/WalletScreen";
+import ExploreScreen from "../screens/ExploreScreen";
+import ActivityScreen from "../screens/ActivityScreen";
+import SettingsScreen from "../screens/SettingsScreen";
 
 // Import types
 export type RootStackParamList = {
@@ -34,79 +35,71 @@ function MainTabs() {
   return (
     <Tab.Navigator
       screenOptions={{
-        tabBarActiveTintColor: '#7F56D9',
-        tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.6)',
+        tabBarActiveTintColor: "#C7B5FF",
+        tabBarInactiveTintColor: "rgba(255, 255, 255, 0.5)",
         tabBarStyle: {
-          backgroundColor: 'rgba(11, 18, 33, 0.95)',
-          borderTopColor: 'rgba(255, 255, 255, 0.1)',
+          backgroundColor: "rgba(7, 10, 20, 0.9)",
+          borderTopColor: "rgba(255, 255, 255, 0.06)",
           borderTopWidth: 1,
-          paddingBottom: 5,
-          paddingTop: 5,
-          height: 60,
+          paddingBottom: 6,
+          paddingTop: 6,
+          height: 64,
         },
         tabBarLabelStyle: {
           fontSize: 12,
-          fontWeight: '600',
+          fontWeight: "600",
         },
         headerStyle: {
-          backgroundColor: '#0B1221',
-          borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+          backgroundColor: "#0B1221",
+          borderBottomColor: "rgba(255, 255, 255, 0.1)",
           borderBottomWidth: 1,
         },
-        headerTintColor: '#FFFFFF',
+        headerTintColor: "#FFFFFF",
         headerTitleStyle: {
-          fontWeight: '700',
+          fontWeight: "700",
           fontSize: 18,
         },
       }}
     >
-      <Tab.Screen 
-        name="Wallet" 
-        component={WalletScreen} 
-        options={{ 
-          title: 'Wallet',
+      <Tab.Screen
+        name="Wallet"
+        component={WalletScreen}
+        options={{
+          title: "Wallet",
           tabBarIcon: ({ color, size }) => (
-            <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color, fontSize: size * 0.7 }}>💰</Text>
-            </View>
+            <Feather name="credit-card" size={size} color={color} />
           ),
-        }} 
+        }}
       />
-      <Tab.Screen 
-        name="Explore" 
-        component={ExploreScreen} 
-        options={{ 
-          title: 'Explore',
+      <Tab.Screen
+        name="Explore"
+        component={ExploreScreen}
+        options={{
+          title: "Explore",
           tabBarIcon: ({ color, size }) => (
-            <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color, fontSize: size * 0.7 }}>🔍</Text>
-            </View>
+            <Feather name="compass" size={size} color={color} />
           ),
-        }} 
+        }}
       />
-      <Tab.Screen 
-        name="Activity" 
-        component={ActivityScreen} 
-        options={{ 
-          title: 'Activity',
+      <Tab.Screen
+        name="Activity"
+        component={ActivityScreen}
+        options={{
+          title: "Activity",
           tabBarIcon: ({ color, size }) => (
-            <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color, fontSize: size * 0.7 }}>📊</Text>
-            </View>
+            <Feather name="activity" size={size} color={color} />
           ),
-        }} 
+        }}
       />
-      <Tab.Screen 
-        name="Settings" 
-        component={SettingsScreen} 
-        options={{ 
-          title: 'Settings',
+      <Tab.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{
+          title: "Settings",
           tabBarIcon: ({ color, size }) => (
-            <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color, fontSize: size * 0.7 }}>⚙️</Text>
-            </View>
+            <Feather name="settings" size={size} color={color} />
           ),
-        }} 
+        }}
       />
     </Tab.Navigator>
   );
@@ -119,41 +112,41 @@ function AppNavigator() {
       <Stack.Navigator
         screenOptions={{
           headerStyle: {
-            backgroundColor: '#0B1221',
-            borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+            backgroundColor: "#0B1221",
+            borderBottomColor: "rgba(255, 255, 255, 0.1)",
             borderBottomWidth: 1,
           },
-          headerTintColor: '#FFFFFF',
+          headerTintColor: "#FFFFFF",
           headerTitleStyle: {
-            fontWeight: '700',
+            fontWeight: "700",
             fontSize: 18,
           },
         }}
       >
-        <Stack.Screen 
-          name="MainTabs" 
-          component={MainTabs} 
-          options={{ headerShown: false }} 
+        <Stack.Screen
+          name="MainTabs"
+          component={MainTabs}
+          options={{ headerShown: false }}
         />
-        <Stack.Screen 
-          name="TransactionDetail" 
-          component={TransactionDetailScreen} 
-          options={{ title: 'Transaction Detail' }} 
+        <Stack.Screen
+          name="TransactionDetail"
+          component={TransactionDetailScreen}
+          options={{ title: "Transaction Detail" }}
         />
-        <Stack.Screen 
-          name="NFTDetail" 
-          component={NFTDetailScreen} 
-          options={{ title: 'NFT Detail' }} 
+        <Stack.Screen
+          name="NFTDetail"
+          component={NFTDetailScreen}
+          options={{ title: "NFT Detail" }}
         />
-        <Stack.Screen 
-          name="ProjectDetail" 
-          component={ProjectDetailScreen} 
-          options={{ title: 'Project Detail' }} 
+        <Stack.Screen
+          name="ProjectDetail"
+          component={ProjectDetailScreen}
+          options={{ title: "Project Detail" }}
         />
-        <Stack.Screen 
-          name="AuthorizationDetail" 
-          component={AuthorizationDetailScreen} 
-          options={{ title: 'Authorization Detail' }} 
+        <Stack.Screen
+          name="AuthorizationDetail"
+          component={AuthorizationDetailScreen}
+          options={{ title: "Authorization Detail" }}
         />
       </Stack.Navigator>
     </NavigationContainer>
@@ -164,8 +157,15 @@ function AppNavigator() {
 function TransactionDetailScreen({ route }: any) {
   const { signature } = route.params;
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0B1221' }}>
-      <Text style={{ color: '#FFFFFF' }}>Transaction Detail: {signature}</Text>
+    <View
+      style={{
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "#0B1221",
+      }}
+    >
+      <Text style={{ color: "#FFFFFF" }}>Transaction Detail: {signature}</Text>
     </View>
   );
 }
@@ -173,8 +173,15 @@ function TransactionDetailScreen({ route }: any) {
 function NFTDetailScreen({ route }: any) {
   const { nftId } = route.params;
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0B1221' }}>
-      <Text style={{ color: '#FFFFFF' }}>NFT Detail: {nftId}</Text>
+    <View
+      style={{
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "#0B1221",
+      }}
+    >
+      <Text style={{ color: "#FFFFFF" }}>NFT Detail: {nftId}</Text>
     </View>
   );
 }
@@ -182,8 +189,15 @@ function NFTDetailScreen({ route }: any) {
 function ProjectDetailScreen({ route }: any) {
   const { projectId } = route.params;
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0B1221' }}>
-      <Text style={{ color: '#FFFFFF' }}>Project Detail: {projectId}</Text>
+    <View
+      style={{
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "#0B1221",
+      }}
+    >
+      <Text style={{ color: "#FFFFFF" }}>Project Detail: {projectId}</Text>
     </View>
   );
 }
@@ -191,8 +205,17 @@ function ProjectDetailScreen({ route }: any) {
 function AuthorizationDetailScreen({ route }: any) {
   const { authorizationId } = route.params;
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0B1221' }}>
-      <Text style={{ color: '#FFFFFF' }}>Authorization Detail: {authorizationId}</Text>
+    <View
+      style={{
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "#0B1221",
+      }}
+    >
+      <Text style={{ color: "#FFFFFF" }}>
+        Authorization Detail: {authorizationId}
+      </Text>
     </View>
   );
 }

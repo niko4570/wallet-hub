@@ -11,6 +11,8 @@ import {
   TextInput,
   Alert,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { Feather } from "@expo/vector-icons";
 import { useSolana } from "../hooks/useSolana";
 import { formatUsd, formatAddress } from "../utils/format";
 import { DetectedWalletApp } from "../types/wallet";
@@ -48,6 +50,10 @@ const WalletScreen = () => {
 
   const totalBalanceSol = totalBalanceLamports / LAMPORTS_PER_SOL;
   const totalBalanceUsd = totalBalanceSol * 100; // Mock USD value
+
+  const activeWalletLabel =
+    activeWallet?.label ||
+    (activeWallet ? formatAddress(activeWallet.address) : "Select a wallet");
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -190,40 +196,116 @@ const WalletScreen = () => {
         />
       }
     >
-      {/* Balance Section */}
-      <View style={styles.balanceSection}>
-        <Text style={styles.balanceLabel}>Total Balance</Text>
-        <Text style={styles.balanceValue}>{formatUsd(totalBalanceUsd)}</Text>
-        <Text style={styles.balanceSol}>{totalBalanceSol.toFixed(4)} SOL</Text>
-      </View>
+      <View style={styles.heroCard}>
+        <LinearGradient
+          colors={["#A855F7", "#6366F1", "#7C3AED"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroGradient}
+        >
+          <View style={styles.heroTopRow}>
+            <View style={styles.pill}>
+              <Feather name="server" size={14} color="#E9D8FD" />
+              <Text style={styles.pillText}>Solana Mainnet</Text>
+            </View>
+            <View style={styles.pillMuted}>
+              <Feather name="shield" size={14} color="#DAD5FF" />
+              <Text style={styles.pillMutedText}>Secure session</Text>
+            </View>
+          </View>
 
-      {/* Quick Actions */}
-      <View style={styles.quickActions}>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => setSendModalVisible(true)}
-        >
-          <Text style={styles.actionIcon}>📤</Text>
-          <Text style={styles.actionText}>Send</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={handleReceive}>
-          <Text style={styles.actionIcon}>📥</Text>
-          <Text style={styles.actionText}>Receive</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => handleStub("Swap")}
-        >
-          <Text style={styles.actionIcon}>🔄</Text>
-          <Text style={styles.actionText}>Swap</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => handleStub("Stake")}
-        >
-          <Text style={styles.actionIcon}>📊</Text>
-          <Text style={styles.actionText}>Stake</Text>
-        </TouchableOpacity>
+          <View style={styles.heroBalanceBlock}>
+            <Text style={styles.balanceLabel}>Portfolio</Text>
+            <Text style={styles.balanceValue}>
+              {formatUsd(totalBalanceUsd)}
+            </Text>
+            <Text style={styles.balanceSol}>
+              {totalBalanceSol.toFixed(4)} SOL
+            </Text>
+          </View>
+
+          <View style={styles.heroWalletRow}>
+            <View style={styles.avatar}>
+              <Feather name="key" size={18} color="#0B1221" />
+            </View>
+            <View style={styles.walletMeta}>
+              <Text style={styles.walletMetaLabel}>Active wallet</Text>
+              <Text style={styles.walletMetaValue}>{activeWalletLabel}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.switchButton}
+              onPress={handleConnectPress}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.switchButtonText}>
+                {activeWallet ? "Switch" : "Connect"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.heroActions}>
+            <TouchableOpacity
+              style={styles.heroActionButton}
+              onPress={() => setSendModalVisible(true)}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={["rgba(255,255,255,0.24)", "rgba(255,255,255,0.08)"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.heroActionCircle}
+              >
+                <Feather name="arrow-up-right" size={18} color="#0B1221" />
+              </LinearGradient>
+              <Text style={styles.heroActionText}>Send</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.heroActionButton}
+              onPress={handleReceive}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={["rgba(255,255,255,0.22)", "rgba(255,255,255,0.08)"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.heroActionCircle}
+              >
+                <Feather name="arrow-down-left" size={18} color="#0B1221" />
+              </LinearGradient>
+              <Text style={styles.heroActionText}>Receive</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.heroActionButton}
+              onPress={() => handleStub("Swap")}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={["rgba(255,255,255,0.2)", "rgba(255,255,255,0.08)"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.heroActionCircle}
+              >
+                <Feather name="shuffle" size={18} color="#0B1221" />
+              </LinearGradient>
+              <Text style={styles.heroActionText}>Swap</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.heroActionButton}
+              onPress={() => handleStub("Stake")}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={["rgba(255,255,255,0.2)", "rgba(255,255,255,0.08)"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.heroActionCircle}
+              >
+                <Feather name="trending-up" size={18} color="#0B1221" />
+              </LinearGradient>
+              <Text style={styles.heroActionText}>Stake</Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
       </View>
 
       {/* Linked Wallets */}
@@ -370,54 +452,154 @@ const WalletScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0B1221",
+    backgroundColor: "#050814",
   },
   contentContainer: {
     padding: 24,
     paddingBottom: 48,
-  },
-  balanceSection: {
-    marginBottom: 32,
+    gap: 16,
   },
   balanceLabel: {
-    color: "rgba(255, 255, 255, 0.6)",
-    fontSize: 14,
-    marginBottom: 8,
+    color: "rgba(255, 255, 255, 0.76)",
+    fontSize: 13,
+    marginBottom: 6,
+    letterSpacing: 0.2,
   },
   balanceValue: {
-    fontSize: 36,
+    fontSize: 38,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: "#F8F5FF",
     marginBottom: 4,
   },
   balanceSol: {
-    fontSize: 16,
-    color: "rgba(255, 255, 255, 0.7)",
+    fontSize: 15,
+    color: "rgba(255, 255, 255, 0.82)",
   },
-  quickActions: {
+  heroCard: {
+    marginBottom: 12,
+  },
+  heroGradient: {
+    borderRadius: 28,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 6,
+  },
+  heroTopRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 32,
-  },
-  actionButton: {
-    flex: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    borderRadius: 16,
-    padding: 16,
-    marginHorizontal: 4,
     alignItems: "center",
+    marginBottom: 16,
   },
-  actionIcon: {
-    fontSize: 24,
-    marginBottom: 8,
+  pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(11, 18, 33, 0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 6,
   },
-  actionText: {
-    color: "#FFFFFF",
+  pillText: {
+    color: "#E9D8FD",
+    fontWeight: "700",
     fontSize: 12,
+    letterSpacing: 0.2,
+  },
+  pillMuted: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(11, 18, 33, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  pillMutedText: {
+    color: "#DAD5FF",
     fontWeight: "600",
+    fontSize: 12,
+    letterSpacing: 0.2,
+  },
+  heroBalanceBlock: {
+    marginBottom: 16,
+  },
+  heroWalletRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 16,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  walletMeta: {
+    flex: 1,
+  },
+  walletMetaLabel: {
+    color: "rgba(255,255,255,0.65)",
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  walletMetaValue: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 16,
+  },
+  switchButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "rgba(11, 18, 33, 0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.22)",
+  },
+  switchButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+    fontSize: 13,
+    letterSpacing: 0.2,
+  },
+  heroActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 4,
+  },
+  heroActionButton: {
+    flex: 1,
+    alignItems: "center",
+    gap: 8,
+  },
+  heroActionCircle: {
+    width: 54,
+    height: 54,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+  },
+  heroActionText: {
+    color: "#F8F5FF",
+    fontWeight: "700",
+    fontSize: 12,
   },
   walletsSection: {
     marginBottom: 24,
+    marginTop: 8,
   },
   sectionTitle: {
     color: "rgba(255, 255, 255, 0.8)",
@@ -438,22 +620,27 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   connectButton: {
-    backgroundColor: "#7F56D9",
+    backgroundColor: "#9B8CFF",
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 16,
   },
   connectButtonText: {
-    color: "#FFFFFF",
+    color: "#0B1221",
     fontWeight: "700",
   },
   walletCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    borderRadius: 24,
-    padding: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderRadius: 22,
+    padding: 18,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
   },
   walletHeader: {
     flexDirection: "row",
@@ -472,12 +659,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   activeBadge: {
-    backgroundColor: "rgba(127, 86, 217, 0.2)",
+    backgroundColor: "rgba(127, 86, 217, 0.22)",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(127, 86, 217, 0.4)",
+    borderColor: "rgba(127, 86, 217, 0.38)",
   },
   activeBadgeText: {
     color: "#7F56D9",
@@ -507,7 +694,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   walletActionText: {
-    color: "#7F56D9",
+    color: "#C7B5FF",
     fontWeight: "600",
     fontSize: 14,
   },
@@ -518,10 +705,12 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   modalContent: {
-    backgroundColor: "#0B1221",
-    borderRadius: 16,
+    backgroundColor: "#0F1526",
+    borderRadius: 18,
     padding: 20,
     maxHeight: "80%",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
   },
   modalTitle: {
     color: "#FFFFFF",
@@ -530,11 +719,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   modalClose: {
-    paddingVertical: 10,
+    paddingVertical: 12,
     alignItems: "center",
   },
   modalCloseText: {
-    color: "#7F56D9",
+    color: "#C7B5FF",
     fontWeight: "700",
   },
   modalLoading: {
@@ -547,12 +736,12 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    borderRadius: 12,
-    padding: 12,
+    borderColor: "rgba(255,255,255,0.16)",
+    borderRadius: 14,
+    padding: 14,
     color: "#FFFFFF",
     marginBottom: 12,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(255,255,255,0.06)",
   },
   modalActions: {
     flexDirection: "row",
@@ -561,7 +750,7 @@ const styles = StyleSheet.create({
   },
   modalPrimary: {
     flex: 1,
-    backgroundColor: "#7F56D9",
+    backgroundColor: "#9B8CFF",
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
