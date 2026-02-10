@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -11,17 +11,23 @@ import {
   TextInput,
   Alert,
   Share,
+  Linking,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import QRCode from "react-native-qrcode-svg";
 import * as Clipboard from "expo-clipboard";
+import { WebView } from "react-native-webview";
 import { useSolana } from "../hooks/useSolana";
 import { formatUsd, formatAddress } from "../utils/format";
 import { DetectedWalletApp } from "../types/wallet";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import * as Haptics from "expo-haptics";
 import { WalletOption } from "../components/wallet/WalletOption";
+import {
+  JUPITER_PLUGIN_ALLOWED_HOSTS,
+  JUPITER_PLUGIN_URL,
+} from "../config/env";
 
 const WalletScreen = () => {
   const {
@@ -43,9 +49,13 @@ const WalletScreen = () => {
   const [connectModalVisible, setConnectModalVisible] = useState(false);
   const [sendModalVisible, setSendModalVisible] = useState(false);
   const [receiveModalVisible, setReceiveModalVisible] = useState(false);
+  const [swapModalVisible, setSwapModalVisible] = useState(false);
   const [sendRecipient, setSendRecipient] = useState("");
   const [sendAmount, setSendAmount] = useState("");
   const [sending, setSending] = useState(false);
+  const [swapLoading, setSwapLoading] = useState(true);
+  const [swapError, setSwapError] = useState<string | null>(null);
+  const swapWebViewRef = useRef<WebView>(null);
 
   const totalBalanceLamports = linkedWallets.reduce(
     (sum, wallet) => sum + (balances[wallet.address] ?? 0),
@@ -223,6 +233,58 @@ const WalletScreen = () => {
     Alert.alert(label, "Coming soon");
   }, []);
 
+  const normalizedPluginHosts = useMemo(
+    () =>
+      JUPITER_PLUGIN_ALLOWED_HOSTS.map((host) => host.trim().toLowerCase()).filter(
+        Boolean,
+      ),
+    [JUPITER_PLUGIN_ALLOWED_HOSTS],
+  );
+
+  const handleShouldLoadPlugin = useCallback(
+    (request: { url: string }) => {
+      const { url } = request;
+      if (!url) {
+        return false;
+      }
+      try {
+        const host = new URL(url).host.toLowerCase();
+        if (normalizedPluginHosts.includes(host)) {
+          return true;
+        }
+      } catch (error) {
+        console.warn("Invalid URL in swap WebView", error);
+      }
+      Linking.openURL(url).catch((err) => {
+        console.warn("Failed to open external URL", err);
+      });
+      return false;
+    },
+    [normalizedPluginHosts],
+  );
+
+  const handleOpenSwap = useCallback(() => {
+    if (!activeWallet) {
+      Alert.alert("Select wallet", "Connect or select a wallet before swapping.");
+      return;
+    }
+    setSwapModalVisible(true);
+    setSwapLoading(true);
+    setSwapError(null);
+  }, [activeWallet]);
+
+  const handleCloseSwap = useCallback(() => {
+    setSwapModalVisible(false);
+    setSwapError(null);
+    setSwapLoading(true);
+  }, []);
+
+  const handleReloadSwap = useCallback(() => {
+    setSwapError(null);
+    setSwapLoading(true);
+    swapWebViewRef.current?.reload();
+  }, []);
+
   const renderAvailableWallets = useMemo(() => {
     if (detectingWallets) {
       return (
@@ -334,7 +396,7 @@ const WalletScreen = () => {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.heroActionButton}
-              onPress={() => handleStub("Swap")}
+              onPress={handleOpenSwap}
               activeOpacity={0.85}
             >
               <LinearGradient
@@ -577,6 +639,91 @@ const WalletScreen = () => {
             >
               <Text style={styles.modalCloseText}>Close</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Swap Modal */}
+      <Modal
+        animationType="slide"
+        transparent
+        visible={swapModalVisible}
+        onRequestClose={handleCloseSwap}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.swapModalContent}>
+            <View style={styles.swapHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Swap with Jupiter</Text>
+                <Text style={styles.swapSubtitle}>
+                  Aggregated Solana liquidity inside WalletHub.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.swapCloseButton}
+                onPress={handleCloseSwap}
+                accessibilityLabel="Close swap modal"
+              >
+                <Feather name="x" size={18} color="#C7B5FF" />
+              </TouchableOpacity>
+            </View>
+            {activeWallet && (
+              <View style={styles.swapWalletTag}>
+                <Feather name="key" size={14} color="#0B1221" />
+                <Text style={styles.swapWalletTagText}>
+                  {formatAddress(activeWallet.address)}
+                </Text>
+              </View>
+            )}
+            <View style={styles.swapWebViewWrapper}>
+              <WebView
+                ref={swapWebViewRef}
+                source={{ uri: JUPITER_PLUGIN_URL }}
+                style={styles.swapWebView}
+                onLoadStart={() => {
+                  setSwapLoading(true);
+                  setSwapError(null);
+                }}
+                onLoadEnd={() => setSwapLoading(false)}
+                onError={() => {
+                  setSwapLoading(false);
+                  setSwapError("Unable to load Jupiter Plugin.");
+                }}
+                onHttpError={() => {
+                  setSwapLoading(false);
+                  setSwapError("Unable to load Jupiter Plugin.");
+                }}
+                onShouldStartLoadWithRequest={handleShouldLoadPlugin}
+                originWhitelist={["*"]}
+                javaScriptEnabled
+                domStorageEnabled
+              />
+              {swapLoading && (
+                <View style={styles.swapLoadingOverlay}>
+                  <ActivityIndicator color="#7F56D9" />
+                  <Text style={styles.swapLoadingText}>
+                    Connecting to Jupiter...
+                  </Text>
+                </View>
+              )}
+              {swapError && (
+                <View style={styles.swapErrorOverlay}>
+                  <Text style={styles.swapErrorText}>{swapError}</Text>
+                  <TouchableOpacity
+                    style={styles.swapRetryButton}
+                    onPress={handleReloadSwap}
+                  >
+                    <Text style={styles.swapRetryText}>Retry</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+            <View style={styles.swapFooter}>
+              <Text style={styles.swapFooterText}>
+                Jupiter Plugin handles routing & transaction building. Approve
+                swaps in your wallet app when prompted.
+              </Text>
+            </View>
           </View>
         </View>
       </Modal>
@@ -962,6 +1109,98 @@ const styles = StyleSheet.create({
   addressPillText: {
     color: "#FFFFFF",
     fontSize: 13,
+    textAlign: "center",
+  },
+  swapModalContent: {
+    backgroundColor: "#050814",
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    maxHeight: "90%",
+    minHeight: "70%",
+  },
+  swapHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 8,
+  },
+  swapSubtitle: {
+    color: "rgba(255,255,255,0.68)",
+    fontSize: 13,
+    marginTop: 4,
+  },
+  swapCloseButton: {
+    padding: 6,
+  },
+  swapWalletTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#9B8CFF",
+    borderRadius: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    alignSelf: "flex-start",
+    marginBottom: 12,
+  },
+  swapWalletTagText: {
+    color: "#0B1221",
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  swapWebViewWrapper: {
+    flex: 1,
+    borderRadius: 20,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(5,8,20,0.95)",
+    minHeight: 360,
+  },
+  swapWebView: {
+    flex: 1,
+  },
+  swapLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(5,8,20,0.92)",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+  },
+  swapLoadingText: {
+    color: "rgba(255,255,255,0.78)",
+  },
+  swapErrorOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(5,8,20,0.95)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+    gap: 16,
+  },
+  swapErrorText: {
+    color: "#FFB4B4",
+    textAlign: "center",
+  },
+  swapRetryButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "#9B8CFF",
+  },
+  swapRetryText: {
+    color: "#0B1221",
+    fontWeight: "700",
+  },
+  swapFooter: {
+    marginTop: 12,
+  },
+  swapFooterText: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 12,
+    lineHeight: 18,
     textAlign: "center",
   },
 });

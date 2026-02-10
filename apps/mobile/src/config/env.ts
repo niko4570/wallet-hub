@@ -44,5 +44,24 @@ export const EXTERNAL_EXPLORE_ALLOWED_HOSTS = exploreAllowlistRaw
   .map((entry) => entry.trim())
   .filter(Boolean);
 
+const defaultJupiterPluginUrl = getEnv(
+  "EXPO_PUBLIC_JUPITER_PLUGIN_URL",
+  "https://plugin.jup.ag/?displayMode=integrated&theme=dark&bgColor=050814&primaryColor=9B8CFF",
+);
+
+const defaultJupiterPluginHost =
+  deriveHostFromUrl(defaultJupiterPluginUrl) || "plugin.jup.ag";
+
+const jupiterPluginAllowlistRaw = getEnv(
+  "EXPO_PUBLIC_JUPITER_PLUGIN_ALLOWLIST",
+  defaultJupiterPluginHost,
+);
+
+export const JUPITER_PLUGIN_URL = defaultJupiterPluginUrl;
+export const JUPITER_PLUGIN_ALLOWED_HOSTS = jupiterPluginAllowlistRaw
+  .split(",")
+  .map((entry) => entry.trim())
+  .filter(Boolean);
+
 export const TELEMETRY_ENDPOINT =
   process.env?.EXPO_PUBLIC_TELEMETRY_URL?.trim() ?? "";
