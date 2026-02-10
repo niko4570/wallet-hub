@@ -82,7 +82,7 @@ const mapCapabilities = (
  * and exposes helpers for connecting, disconnecting, sending, and refreshing balances.
  */
 
-interface UseSolanaResult {
+export interface UseSolanaResult {
   disconnect: (address?: string) => Promise<void>;
   sendSol: (
     recipient: string,

@@ -17,9 +17,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import QRCode from "react-native-qrcode-svg";
 import * as Clipboard from "expo-clipboard";
-import { useSolana } from "../hooks/useSolana";
+import { useSolana } from "../context/SolanaContext";
 import { formatUsd, formatAddress } from "../utils/format";
-import { DetectedWalletApp } from "../types/wallet";
+import { DetectedWalletApp, LinkedWallet } from "../types/wallet";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import * as Haptics from "expo-haptics";
 import { WalletOption } from "../components/wallet/WalletOption";
@@ -49,7 +49,7 @@ const WalletScreen = () => {
   const [sending, setSending] = useState(false);
 
   const totalBalanceLamports = linkedWallets.reduce(
-    (sum, wallet) => sum + (balances[wallet.address] ?? 0),
+    (sum: number, wallet: LinkedWallet) => sum + (balances[wallet.address] ?? 0),
     0,
   );
 
@@ -69,16 +69,16 @@ const WalletScreen = () => {
     setRefreshing(true);
     try {
       await Promise.all([
-        refreshWalletDetection().catch((err) =>
+        refreshWalletDetection().catch((err: any) =>
           console.warn("Wallet detection refresh failed", err),
         ),
-        ...linkedWallets.map((wallet) =>
-          refreshBalance(wallet.address).catch((err) => {
+        ...linkedWallets.map((wallet: LinkedWallet) =>
+          refreshBalance(wallet.address).catch((err: any) => {
             console.warn(`Balance refresh failed for ${wallet.address}`, err);
           }),
         ),
       ]);
-    } catch (err) {
+    } catch (err: any) {
       console.warn("Refresh failed", err);
     } finally {
       setRefreshing(false);
@@ -99,7 +99,7 @@ const WalletScreen = () => {
         .then(() =>
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success),
         )
-        .catch((err) => {
+        .catch((err: any) => {
           console.warn("Disconnect failed", err);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         });
@@ -118,14 +118,14 @@ const WalletScreen = () => {
         const preview = await startAuthorization(walletChoice);
         const accounts = await finalizeAuthorization(preview);
         await Promise.all(
-          accounts.map((account) =>
-            refreshBalance(account.address).catch((err) =>
+          accounts.map((account: LinkedWallet) =>
+            refreshBalance(account.address).catch((err: any) =>
               console.warn("Balance refresh failed post-connect", err),
             ),
           ),
         );
         setConnectModalVisible(false);
-      } catch (err) {
+      } catch (err: any) {
         console.warn("Connect flow failed", err);
         Alert.alert("Connect failed", "Please try again.");
       }
@@ -155,14 +155,14 @@ const WalletScreen = () => {
       const signature = await sendSol(sendRecipient.trim(), amount, {
         fromAddress: activeWallet.address,
       });
-      await refreshBalance(activeWallet.address).catch((err) =>
+      await refreshBalance(activeWallet.address).catch((err: any) =>
         console.warn("Balance refresh failed after send", err),
       );
       setSendModalVisible(false);
       setSendRecipient("");
       setSendAmount("");
       Alert.alert("Sent", `Transaction signature:\n${signature}`);
-    } catch (err) {
+    } catch (err: any) {
       console.warn("Send failed", err);
       Alert.alert("Send failed", "Please check details and try again.");
     } finally {
@@ -232,7 +232,7 @@ const WalletScreen = () => {
         </View>
       );
     }
-    return availableWallets.map((wallet) => (
+    return availableWallets.map((wallet: DetectedWalletApp) => (
       <WalletOption
         key={wallet.id}
         wallet={wallet}
@@ -366,7 +366,7 @@ const WalletScreen = () => {
             </TouchableOpacity>
           </View>
         ) : (
-          linkedWallets.map((wallet) => {
+          linkedWallets.map((wallet: LinkedWallet) => {
             const isActiveWallet = activeWallet?.address === wallet.address;
             const walletBalanceLamports = balances[wallet.address] ?? 0;
             const walletBalanceSol = walletBalanceLamports / LAMPORTS_PER_SOL;

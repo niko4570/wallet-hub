@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { Feather } from "@expo/vector-icons";
-import { useSolana } from "../hooks/useSolana";
+import { useSolana } from "../context/SolanaContext";
 import {
   JUPITER_PLUGIN_URL,
   JUPITER_PLUGIN_ALLOWED_HOSTS,
