@@ -11,3 +11,4 @@ apps/mobile/node_modules
 apps/api/node_modules
 packages/contracts/dist
 .env.local
+.md

@@ -1,4 +1,9 @@
-import { SessionKey } from "@wallethub/contracts";
+import {
+  SessionKey,
+  SessionKeySettings,
+  SilentReauthorizationRecord,
+  TransactionAuditEntry,
+} from "@wallethub/contracts";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -18,13 +23,14 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import * as Haptics from "expo-haptics";
-import {
-  useSolana,
-  type AuthorizationPreview,
-  type DetectedWalletApp,
-} from "./src/hooks/useSolana";
-import { API_URL, COINGECKO_API_KEY } from "./src/config/env";
+import { useSolana } from "./src/hooks/useSolana";
+import type {
+  AuthorizationPreview,
+  DetectedWalletApp,
+  LinkedWallet,
+} from "./src/types/wallet";
 import { requireBiometricApproval } from "./src/security/biometrics";
+import { authorizationApi } from "./src/services/authorizationService";
 
 // Suppress zeego warning (not using native menus yet)
 // import '@tamagui/native/setup-zeego';
@@ -40,6 +46,38 @@ const formatAddress = (address?: string | null) => {
   }
   return `${address.slice(0, 4)}...${address.slice(-4)}`;
 };
+
+const formatSignature = (signature: string) =>
+  `${signature.slice(0, 6)}...${signature.slice(-4)}`;
+
+const reauthStatusColors: Record<
+  SilentReauthorizationRecord["status"],
+  { bg: string; border: string; text: string }
+> = {
+  fresh: {
+    bg: "rgba(0, 255, 179, 0.12)",
+    border: "rgba(0, 255, 179, 0.4)",
+    text: "#00FFB3",
+  },
+  stale: {
+    bg: "rgba(255, 196, 0, 0.15)",
+    border: "rgba(255, 196, 0, 0.4)",
+    text: "#FFC400",
+  },
+  expired: {
+    bg: "rgba(255, 77, 77, 0.15)",
+    border: "rgba(255, 77, 77, 0.5)",
+    text: "#FF4D4D",
+  },
+  error: {
+    bg: "rgba(255, 77, 77, 0.15)",
+    border: "rgba(255, 77, 77, 0.5)",
+    text: "#FF4D4D",
+  },
+};
+
+const getReauthStatusStyle = (status: SilentReauthorizationRecord["status"]) =>
+  reauthStatusColors[status] ?? reauthStatusColors.fresh;
 
 const styles = StyleSheet.create({
   container: {
@@ -423,6 +461,11 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.05)",
     marginVertical: 16,
   },
+  headerActionButton: {
+    minWidth: 140,
+    height: 40,
+    paddingVertical: 8,
+  },
   sessionScopes: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -453,6 +496,58 @@ const styles = StyleSheet.create({
   revokeButtonText: {
     color: "rgba(255,255,255,0.7)",
     fontSize: 12,
+  },
+  statusChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  statusChipText: {
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  reauthMeta: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 12,
+    marginTop: 8,
+  },
+  auditCard: {
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderRadius: 24,
+    padding: 20,
+    marginBottom: 12,
+  },
+  auditSignature: {
+    color: "white",
+    fontWeight: "700",
+    fontSize: 15,
+    marginBottom: 4,
+  },
+  auditMeta: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 12,
+  },
+  auditStatus: {
+    marginTop: 12,
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  auditStatusSubmitted: {
+    backgroundColor: "rgba(0, 255, 179, 0.12)",
+    color: "#00FFB3",
+  },
+  auditStatusFailed: {
+    backgroundColor: "rgba(255, 77, 77, 0.12)",
+    color: "#FF4D4D",
   },
   sheetOverlay: {
     flex: 1,
@@ -507,10 +602,18 @@ export default function App() {
     refreshWalletDetection,
     startAuthorization,
     finalizeAuthorization,
+    silentRefreshAuthorization,
   } = useSolana();
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionKeys, setSessionKeys] = useState<SessionKey[]>([]);
+  const [sessionSettings, setSessionSettings] =
+    useState<SessionKeySettings | null>(null);
+  const [silentReauths, setSilentReauths] = useState<
+    SilentReauthorizationRecord[]
+  >([]);
+  const [auditLog, setAuditLog] = useState<TransactionAuditEntry[]>([]);
+  const [silentRefreshLoading, setSilentRefreshLoading] = useState(false);
   const [showSessionModal, setShowSessionModal] = useState(false);
   const [walletSelectionVisible, setWalletSelectionVisible] = useState(false);
   const [accountSelectionVisible, setAccountSelectionVisible] = useState(false);
@@ -546,10 +649,39 @@ export default function App() {
     });
   }, [availableWallets]);
 
+  const loadSecurityData = useCallback(async () => {
+    try {
+      const [
+        fetchedSessionKeys,
+        fetchedSilentReauths,
+        fetchedSettings,
+        fetchedAudits,
+      ] = await Promise.all([
+        authorizationApi.fetchSessionKeys().catch(() => []),
+        authorizationApi.fetchSilentReauthorizations().catch(() => []),
+        authorizationApi.fetchSessionSettings().catch(() => null),
+        authorizationApi.fetchTransactionAudits().catch(() => []),
+      ]);
+
+      setSessionKeys(fetchedSessionKeys);
+      setSilentReauths(fetchedSilentReauths);
+      if (fetchedSettings) {
+        setSessionSettings(fetchedSettings);
+      }
+      setAuditLog(fetchedAudits);
+    } catch (err) {
+      console.warn("Failed to load security data", err);
+    }
+  }, []);
+
   useEffect(() => {
     // Hide splash screen once app is ready
     SplashScreen.hideAsync();
   }, []);
+
+  useEffect(() => {
+    loadSecurityData();
+  }, [loadSecurityData]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -559,19 +691,19 @@ export default function App() {
         refreshWalletDetection().catch((err) =>
           console.warn("Wallet detection refresh failed", err),
         ),
+        loadSecurityData(),
         ...linkedWallets.map((wallet) =>
           refreshBalance(wallet.address).catch((err) => {
             console.warn(`Balance refresh failed for ${wallet.address}`, err);
           }),
         ),
       ]);
-      // TODO: refresh session keys when backend wiring is live
     } catch (err) {
       setError("Failed to refresh data");
     } finally {
       setRefreshing(false);
     }
-  }, [linkedWallets, refreshBalance, refreshWalletDetection]);
+  }, [linkedWallets, loadSecurityData, refreshBalance, refreshWalletDetection]);
 
   const openCoinGecko = useCallback(() => {
     Linking.openURL(
@@ -695,10 +827,69 @@ export default function App() {
     [refreshBalance, selectActiveWallet],
   );
 
+  const handleSilentRefresh = useCallback(async () => {
+    if (linkedWallets.length === 0) {
+      const message = "Connect a wallet before refreshing tokens";
+      setError(message);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      return;
+    }
+
+    setSilentRefreshLoading(true);
+    try {
+      const results = await Promise.all(
+        linkedWallets.map((wallet) =>
+          silentRefreshAuthorization(wallet.address).catch((err) => {
+            console.warn(
+              `Silent re-authorization failed for ${wallet.address}`,
+              err,
+            );
+            return null;
+          }),
+        ),
+      );
+
+      const nextRecords = results.filter(
+        (record): record is SilentReauthorizationRecord => Boolean(record),
+      );
+
+      if (nextRecords.length > 0) {
+        setSilentReauths((prev) => {
+          const map = new Map(
+            prev.map((record) => [
+              `${record.walletAddress}-${record.walletAppId ?? "default"}`,
+              record,
+            ]),
+          );
+
+          nextRecords.forEach((record) => {
+            map.set(
+              `${record.walletAddress}-${record.walletAppId ?? "default"}`,
+              record,
+            );
+          });
+
+          return Array.from(map.values());
+        });
+      }
+
+      setError(null);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to refresh authorizations";
+      setError(message);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setSilentRefreshLoading(false);
+    }
+  }, [linkedWallets, silentRefreshAuthorization]);
+
   const handleOpenSessionModal = useCallback(async () => {
     try {
       setError(null);
       await requireBiometricApproval("Authenticate to manage session keys");
+      await loadSecurityData();
       setShowSessionModal(true);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
@@ -709,7 +900,7 @@ export default function App() {
       setError(message);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
-  }, []);
+  }, [loadSecurityData]);
 
   return (
     <SafeAreaProvider>
@@ -891,6 +1082,11 @@ export default function App() {
                 <Text style={styles.actionButtonText}>Manage</Text>
               </TouchableOpacity>
             </View>
+            {sessionSettings && (
+              <Text style={styles.sectionSubtitle}>
+                {sessionSettings.message}
+              </Text>
+            )}
             {sessionKeys.length === 0 ? (
               <View style={styles.glassCard}>
                 <Text style={styles.balanceValueText}>No active sessions</Text>
@@ -922,6 +1118,124 @@ export default function App() {
                   <TouchableOpacity style={styles.revokeButton}>
                     <Text style={styles.revokeButtonText}>Revoke</Text>
                   </TouchableOpacity>
+                </View>
+              ))
+            )}
+          </View>
+
+          {/* Silent Re-Authorization Section */}
+          <View style={styles.sessionKeysSection}>
+            <View style={styles.sessionKeysHeader}>
+              <Text style={styles.sectionTitle}>Silent Re-Authorization</Text>
+              <TouchableOpacity
+                style={[
+                  styles.actionButton,
+                  styles.headerActionButton,
+                  (silentRefreshLoading || linkedWallets.length === 0) &&
+                    styles.disabledButton,
+                ]}
+                onPress={handleSilentRefresh}
+                disabled={silentRefreshLoading || linkedWallets.length === 0}
+              >
+                {silentRefreshLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.actionButtonText}>Refresh Tokens</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+            {silentReauths.length === 0 ? (
+              <View style={styles.glassCard}>
+                <Text style={styles.balanceValueText}>
+                  No silent re-authorization events yet.
+                </Text>
+              </View>
+            ) : (
+              silentReauths.map((record) => {
+                const statusStyle = getReauthStatusStyle(record.status);
+                return (
+                  <View key={record.id} style={styles.sessionCard}>
+                    <View style={styles.sessionCardHeader}>
+                      <View>
+                        <Text style={styles.sessionDevice}>
+                          {record.walletName ??
+                            formatAddress(record.walletAddress)}
+                        </Text>
+                        <Text style={styles.sessionExpires}>
+                          Last refreshed:{" "}
+                          {new Date(record.lastRefreshedAt).toLocaleString()}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.statusChip,
+                          {
+                            backgroundColor: statusStyle.bg,
+                            borderColor: statusStyle.border,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.statusChipText,
+                            { color: statusStyle.text },
+                          ]}
+                        >
+                          {record.status.toUpperCase()}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.reauthMeta}>
+                      Method: {record.method} · Token ••••
+                      {record.authTokenHint ?? "----"}
+                    </Text>
+                    <Text style={styles.reauthMeta}>
+                      Capabilities:{" "}
+                      {record.capabilities.supportedTransactionVersions?.join(
+                        ", ",
+                      ) || "legacy"}
+                    </Text>
+                  </View>
+                );
+              })
+            )}
+          </View>
+
+          {/* Audit Log Section */}
+          <View style={styles.sessionKeysSection}>
+            <View style={styles.sessionKeysHeader}>
+              <Text style={styles.sectionTitle}>Recent Signatures</Text>
+            </View>
+            {auditLog.length === 0 ? (
+              <View style={styles.glassCard}>
+                <Text style={styles.balanceValueText}>
+                  No audited transactions yet.
+                </Text>
+              </View>
+            ) : (
+              auditLog.slice(0, 4).map((entry) => (
+                <View key={entry.id} style={styles.auditCard}>
+                  <Text style={styles.auditSignature}>
+                    {formatSignature(entry.signature)}
+                  </Text>
+                  <Text style={styles.auditMeta}>
+                    {formatAddress(entry.sourceWalletAddress)} →{" "}
+                    {formatAddress(entry.destinationAddress)}
+                  </Text>
+                  <Text style={styles.auditMeta}>
+                    Primitive: {entry.authorizationPrimitive} ·{" "}
+                    {(entry.amountLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL
+                  </Text>
+                  <Text
+                    style={[
+                      styles.auditStatus,
+                      entry.status === "submitted"
+                        ? styles.auditStatusSubmitted
+                        : styles.auditStatusFailed,
+                    ]}
+                  >
+                    {entry.status}
+                  </Text>
                 </View>
               ))
             )}
@@ -1031,7 +1345,7 @@ export default function App() {
                 Select the accounts from this wallet you want to aggregate
               </Text>
               {authorizationPreview ? (
-                authorizationPreview.accounts.map((account) => {
+                authorizationPreview.accounts.map((account: LinkedWallet) => {
                   const checked = selectedAccounts[account.address];
                   return (
                     <Pressable
@@ -1112,7 +1426,42 @@ export default function App() {
             >
               <View style={styles.sheetHandle} />
               <Text style={styles.sheetTitle}>Session Management</Text>
-              {/* Add session management content here */}
+              <Text style={styles.sheetSubtitle}>
+                {sessionSettings?.message ??
+                  "Review authorization health and audit history."}
+              </Text>
+              <View style={styles.separator} />
+              <Text style={styles.sectionTitle}>Audit Trail</Text>
+              {auditLog.length === 0 ? (
+                <Text style={styles.balanceValueText}>
+                  No transactions recorded yet.
+                </Text>
+              ) : (
+                auditLog.slice(0, 5).map((entry) => (
+                  <View key={entry.id} style={styles.auditCard}>
+                    <Text style={styles.auditSignature}>
+                      {formatSignature(entry.signature)}
+                    </Text>
+                    <Text style={styles.auditMeta}>
+                      {new Date(entry.recordedAt).toLocaleString()}
+                    </Text>
+                    <Text style={styles.auditMeta}>
+                      {entry.authorizationPrimitive} ·{" "}
+                      {(entry.amountLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL
+                    </Text>
+                    <Text
+                      style={[
+                        styles.auditStatus,
+                        entry.status === "submitted"
+                          ? styles.auditStatusSubmitted
+                          : styles.auditStatusFailed,
+                      ]}
+                    >
+                      {entry.status}
+                    </Text>
+                  </View>
+                ))
+              )}
             </Pressable>
           </Pressable>
         </Modal>

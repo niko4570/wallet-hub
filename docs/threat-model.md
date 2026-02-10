@@ -42,16 +42,17 @@ High-value assets:
 - **Backend biometric proof validation** to ensure session issuance is tied to device-bound attestation data before issuing new keys.
 - **Address normalization / validation** prevents base64/non-base58 injection.
 - **Mainnet-only RPC + chain IDs** to avoid devnet spoofing risks.
-- **Session revoke hooks & UI** (placeholder) with plan to enforce on backend once relayer is online.
+- **Silent re-authorization watchdog + auditing** proactively refreshes wallet tokens, records wallet capability probes, and captures all signed transactions (incl. method + signature) in backend memory for anomaly review.
+- **Session keys gated behind feature flag** (`SESSION_KEYS_ENABLED`) so the legacy signer path can be re-enabled deliberately without code changes.
 - **Env centralization** ensures RPC/API endpoints configured consistently; no ad-hoc `.env` parsing.
 - **Expo doctor & dependency pinning** keeps native stack aligned for predictable builds.
 
 ## Planned Controls
 
 1. **MPC / multi-sig signer abstraction** for backend-issued session keys, with biometric attestation payloads.
-2. **Session key registry program** to anchor issuance & revocation on-chain.
+2. **Session key registry program** to anchor issuance & revocation on-chain once feature flag is flipped.
 3. **Policy engine** (rate limits, amount caps, device trust) enforced before relaying txns.
-4. **Audit logging + anomaly detection** feeding SIEM.
+4. **Audit anomaly detection pipeline** that streams the existing logs into SIEM for automated investigations.
 5. **Secure bootstrap scripts/CI** for reproducible build artifacts and supply-chain monitoring.
 
 ## Compliance & Privacy Notes

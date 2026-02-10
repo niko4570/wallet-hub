@@ -11,7 +11,12 @@ import {
   type Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import type { AuthorizationResult } from "@solana-mobile/mobile-wallet-adapter-protocol";
+import type {
+  SilentReauthorizationRecord,
+  WalletCapabilityReport,
+} from "@wallethub/contracts";
 import { walletService } from "../services/walletService";
+import { authorizationApi } from "../services/authorizationService";
 import { iconService } from "../services/iconService";
 import { HELIUS_RPC_URL, SOLANA_CLUSTER } from "../config/env";
 import { requireBiometricApproval } from "../security/biometrics";
@@ -25,6 +30,50 @@ import {
 const APP_IDENTITY = {
   name: "WalletHub",
   uri: "https://wallethub.app",
+};
+
+const DEFAULT_CAPABILITIES: WalletCapabilityReport = {
+  supportsCloneAuthorization: false,
+  supportsSignAndSendTransactions: true,
+  supportsSignTransactions: true,
+  supportsSignMessages: false,
+  supportedTransactionVersions: [],
+  featureFlags: [],
+};
+
+type WalletCapabilitiesResponse = Awaited<
+  ReturnType<Web3MobileWallet["getCapabilities"]>
+> | null;
+
+const mapCapabilities = (
+  capabilities: WalletCapabilitiesResponse,
+): WalletCapabilityReport => {
+  if (!capabilities) {
+    return { ...DEFAULT_CAPABILITIES };
+  }
+
+  const featureFlags = Array.isArray(capabilities.features)
+    ? capabilities.features.map(String)
+    : [];
+
+  return {
+    supportsCloneAuthorization:
+      capabilities.supports_clone_authorization ||
+      featureFlags.includes("solana:cloneAuthorization"),
+    supportsSignAndSendTransactions:
+      capabilities.supports_sign_and_send_transactions ||
+      featureFlags.includes("solana:signAndSendTransactions"),
+    supportsSignTransactions:
+      featureFlags.includes("solana:signTransactions") ||
+      DEFAULT_CAPABILITIES.supportsSignTransactions,
+    supportsSignMessages: featureFlags.includes("solana:signMessages"),
+    maxTransactionsPerRequest: capabilities.max_transactions_per_request,
+    maxMessagesPerRequest: capabilities.max_messages_per_request,
+    supportedTransactionVersions: capabilities.supported_transaction_versions
+      ? capabilities.supported_transaction_versions.map(String)
+      : DEFAULT_CAPABILITIES.supportedTransactionVersions,
+    featureFlags,
+  };
 };
 
 /**
@@ -56,6 +105,9 @@ interface UseSolanaResult {
     preview: AuthorizationPreview,
     selectedAddresses?: string[],
   ) => Promise<LinkedWallet[]>;
+  silentRefreshAuthorization: (
+    address?: string,
+  ) => Promise<SilentReauthorizationRecord | null>;
 }
 
 /**
@@ -139,7 +191,10 @@ export function useSolana(): UseSolanaResult {
   );
 
   const normalizeAuthorization = useCallback(
-    (authorization: AuthorizationResult, walletApp?: DetectedWalletApp) => {
+    (
+      authorization: AuthorizationResult,
+      walletApp?: DetectedWalletApp,
+    ): LinkedWallet[] => {
       return authorization.accounts.map(
         (accountFromWallet: { address: string; label?: string }) => ({
           address: decodeWalletAddress(accountFromWallet.address),
@@ -230,6 +285,117 @@ export function useSolana(): UseSolanaResult {
     [refreshBalance, upsertWallets],
   );
 
+  const silentRefreshAuthorization = useCallback(
+    async (address?: string) => {
+      const targetAddress = address ?? activeWallet?.address;
+      if (!targetAddress) {
+        throw new Error("Select a wallet to refresh authorization");
+      }
+
+      const walletEntry = linkedWallets.find(
+        (wallet) => wallet.address === targetAddress,
+      );
+      if (!walletEntry) {
+        throw new Error("Wallet not linked");
+      }
+
+      const walletMetadata = walletEntry.walletAppId
+        ? availableWallets.find(
+            (wallet) => wallet.id === walletEntry.walletAppId,
+          )
+        : undefined;
+
+      let reauthMethod: "silent" | "prompted" = "silent";
+
+      try {
+        const result = await transact(
+          async (wallet: Web3MobileWallet) => {
+            const capabilities = await wallet.getCapabilities().catch((err) => {
+              console.warn("Capability probe failed", err);
+              return null;
+            });
+
+            let authorization: AuthorizationResult;
+            try {
+              authorization = await wallet.reauthorize({
+                identity: APP_IDENTITY,
+                auth_token: walletEntry.authToken,
+              });
+            } catch (error) {
+              reauthMethod = "prompted";
+              authorization = await wallet.authorize({
+                identity: APP_IDENTITY,
+                chain: SOLANA_CLUSTER,
+              });
+            }
+
+            return { authorization, capabilities };
+          },
+          walletEntry.walletUriBase
+            ? { baseUri: walletEntry.walletUriBase }
+            : undefined,
+        );
+
+        const normalizedAccounts = normalizeAuthorization(
+          result.authorization,
+          walletMetadata,
+        );
+        upsertWallets(normalizedAccounts);
+
+        const refreshedAccount =
+          normalizedAccounts.find(
+            (account) => account.address === walletEntry.address,
+          ) ?? normalizedAccounts[0];
+
+        if (!refreshedAccount) {
+          throw new Error("Wallet did not return any accounts");
+        }
+
+        const recorded = await authorizationApi
+          .recordSilentReauthorization({
+            walletAddress: refreshedAccount.address,
+            walletAppId:
+              refreshedAccount.walletAppId ?? walletEntry.walletAppId,
+            walletName: refreshedAccount.walletName ?? walletEntry.walletName,
+            authToken: refreshedAccount.authToken,
+            method: reauthMethod,
+            capabilities: mapCapabilities(result.capabilities),
+          })
+          .catch((err) => {
+            console.warn("Failed to persist silent re-authorization", err);
+            return null;
+          });
+
+        return recorded;
+      } catch (error) {
+        console.error("Silent re-authorization failed", error);
+        try {
+          await authorizationApi.recordSilentReauthorization({
+            walletAddress: walletEntry.address,
+            walletAppId: walletEntry.walletAppId,
+            walletName: walletEntry.walletName,
+            method: reauthMethod,
+            capabilities: { ...DEFAULT_CAPABILITIES },
+            error: error instanceof Error ? error.message : "unknown_error",
+          });
+        } catch (persistError) {
+          console.warn(
+            "Failed to record silent re-authorization failure",
+            persistError,
+          );
+        }
+        throw error;
+      }
+    },
+    [
+      activeWallet?.address,
+      availableWallets,
+      linkedWallets,
+      normalizeAuthorization,
+      upsertWallets,
+    ],
+  );
+
   const disconnect = useCallback(
     async (address?: string) => {
       const targetAddress = address ?? activeWallet?.address;
@@ -313,9 +479,22 @@ export function useSolana(): UseSolanaResult {
           )
         : undefined;
 
+      let reauthMethod: "silent" | "prompted" = "silent";
+      let capabilityReport: WalletCapabilityReport = {
+        ...DEFAULT_CAPABILITIES,
+      };
+      let refreshedAccount: LinkedWallet | null = null;
+      const lamports = Math.round(amountSol * LAMPORTS_PER_SOL);
+
       const signature = await transact(
         async (wallet: Web3MobileWallet) => {
           let authorization: AuthorizationResult;
+          const capabilities = await wallet.getCapabilities().catch((err) => {
+            console.warn("Capability probe failed", err);
+            return null;
+          });
+          capabilityReport = mapCapabilities(capabilities);
+
           try {
             authorization = await wallet.reauthorize({
               identity: APP_IDENTITY,
@@ -326,6 +505,7 @@ export function useSolana(): UseSolanaResult {
               "Reauthorize failed, requesting fresh authorization",
               error,
             );
+            reauthMethod = "prompted";
             authorization = await wallet.authorize({
               identity: APP_IDENTITY,
               chain: SOLANA_CLUSTER,
@@ -338,10 +518,14 @@ export function useSolana(): UseSolanaResult {
           );
           upsertWallets(normalizedAccounts);
 
-          const primaryAccount =
+          const primaryAccount: LinkedWallet | undefined =
             normalizedAccounts.find(
               (account: LinkedWallet) => account.address === sourceAddress,
             ) ?? normalizedAccounts[0];
+
+          if (primaryAccount) {
+            refreshedAccount = primaryAccount;
+          }
 
           if (!primaryAccount) {
             throw new Error("Wallet did not return the requested account");
@@ -352,7 +536,6 @@ export function useSolana(): UseSolanaResult {
 
           const { blockhash, lastValidBlockHeight } =
             await connection.getLatestBlockhash();
-          const lamports = Math.round(amountSol * LAMPORTS_PER_SOL);
           const transaction = new Transaction({
             blockhash,
             lastValidBlockHeight,
@@ -378,6 +561,41 @@ export function useSolana(): UseSolanaResult {
       await refreshBalance(sourceAddress).catch((err) => {
         console.warn("Failed to refresh balance after send", err);
       });
+
+      if (refreshedAccount) {
+        const typedAccount = refreshedAccount as LinkedWallet;
+        authorizationApi
+          .recordSilentReauthorization({
+            walletAddress: typedAccount.address,
+            walletAppId: typedAccount.walletAppId ?? walletEntry.walletAppId,
+            walletName: typedAccount.walletName ?? walletEntry.walletName,
+            authToken: typedAccount.authToken,
+            method: reauthMethod,
+            capabilities: capabilityReport,
+          })
+          .catch((err) => {
+            console.warn(
+              "Failed to persist silent re-authorization event",
+              err,
+            );
+          });
+
+        authorizationApi
+          .recordTransactionAudit({
+            signature,
+            sourceWalletAddress: typedAccount.address,
+            destinationAddress: recipientAddress,
+            amountLamports: lamports,
+            authorizationPrimitive: "silent-reauthorization",
+            metadata: {
+              walletAppId: typedAccount.walletAppId ?? "unknown",
+              reauthorizationMethod: reauthMethod,
+            },
+          })
+          .catch((err) => {
+            console.warn("Failed to record transaction audit", err);
+          });
+      }
 
       return signature;
     },
@@ -406,5 +624,6 @@ export function useSolana(): UseSolanaResult {
     refreshWalletDetection,
     startAuthorization,
     finalizeAuthorization,
+    silentRefreshAuthorization,
   };
 }

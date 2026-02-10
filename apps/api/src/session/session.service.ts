@@ -1,5 +1,13 @@
-import { SessionKey, SessionPolicy } from '@wallethub/contracts';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  SessionKey,
+  SessionPolicy,
+  SessionKeySettings,
+} from '@wallethub/contracts';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { IssueSessionKeyDto } from './dto/issue-session-key.dto';
 import { RevokeSessionKeyDto } from './dto/revoke-session-key.dto';
@@ -12,6 +20,8 @@ export class SessionService {
     private readonly biometricVerifier: BiometricVerificationService,
     private readonly mpcSigner: MpcSignerService,
   ) {}
+  private readonly sessionKeysEnabled =
+    (process.env.SESSION_KEYS_ENABLED ?? '').toLowerCase() === 'true';
   private readonly policies: SessionPolicy[] = [
     {
       id: 'policy-primary',
@@ -61,10 +71,11 @@ export class SessionService {
   }
 
   listSessionKeys(): SessionKey[] {
-    return this.sessionKeys;
+    return this.sessionKeysEnabled ? this.sessionKeys : [];
   }
 
   issueSessionKey(dto: IssueSessionKeyDto): SessionKey {
+    this.ensureSessionKeysEnabled();
     const policy =
       this.policies.find((item) => item.walletAddress === dto.walletAddress) ??
       this.createEphemeralPolicy(dto.walletAddress);
@@ -117,6 +128,7 @@ export class SessionService {
   }
 
   revokeSessionKey(id: string, dto: RevokeSessionKeyDto): SessionKey {
+    this.ensureSessionKeysEnabled();
     const session = this.sessionKeys.find((key) => key.id === id);
     if (!session) {
       throw new NotFoundException(`Session key ${id} not found`);
@@ -136,6 +148,15 @@ export class SessionService {
     return session;
   }
 
+  getSettings(): SessionKeySettings {
+    return {
+      enabled: this.sessionKeysEnabled,
+      message: this.sessionKeysEnabled
+        ? 'Session key issuance is active for this environment.'
+        : 'Session keys are disabled by default. Set SESSION_KEYS_ENABLED=true to re-enable legacy signing.',
+    };
+  }
+
   private createEphemeralPolicy(walletAddress: string): SessionPolicy {
     const policy: SessionPolicy = {
       id: randomUUID(),
@@ -148,5 +169,13 @@ export class SessionService {
 
     this.policies.push(policy);
     return policy;
+  }
+
+  private ensureSessionKeysEnabled() {
+    if (!this.sessionKeysEnabled) {
+      throw new BadRequestException(
+        'Session keys are disabled. Set SESSION_KEYS_ENABLED=true to re-enable issuance.',
+      );
+    }
   }
 }

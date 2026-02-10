@@ -79,6 +79,73 @@ export interface IssueSessionKeyPayload {
   metadata?: Record<string, string>;
 }
 
+export interface SessionKeySettings {
+  enabled: boolean;
+  message: string;
+}
+
+export type ReauthorizationMethod = 'silent' | 'prompted';
+
+export type SilentReauthorizationStatus = 'fresh' | 'stale' | 'expired' | 'error';
+
+export interface WalletCapabilityReport {
+  supportsCloneAuthorization: boolean;
+  supportsSignAndSendTransactions: boolean;
+  supportsSignTransactions: boolean;
+  supportsSignMessages: boolean;
+  maxTransactionsPerRequest?: number;
+  maxMessagesPerRequest?: number;
+  supportedTransactionVersions?: string[];
+  featureFlags?: string[];
+}
+
+export interface RecordSilentReauthorizationPayload {
+  walletAddress: string;
+  walletAppId?: string;
+  walletName?: string;
+  authToken?: string;
+  expiresAt?: string;
+  method: ReauthorizationMethod;
+  capabilities: WalletCapabilityReport;
+  error?: string;
+}
+
+export interface SilentReauthorizationRecord
+  extends RecordSilentReauthorizationPayload {
+  id: string;
+  authTokenHint?: string;
+  lastRefreshedAt: string;
+  status: SilentReauthorizationStatus;
+}
+
+export type AuthorizationPrimitive = 'silent-reauthorization' | 'session-key';
+
+export type TransactionAuditStatus = 'submitted' | 'failed';
+
+export interface TransactionAuditEntry {
+  id: string;
+  signature: string;
+  sourceWalletAddress: string;
+  destinationAddress: string;
+  amountLamports: number;
+  authorizationPrimitive: AuthorizationPrimitive;
+  recordedAt: string;
+  status: TransactionAuditStatus;
+  failureReason?: string;
+  metadata?: Record<string, string>;
+}
+
+export interface RecordTransactionAuditPayload {
+  signature: string;
+  sourceWalletAddress: string;
+  destinationAddress: string;
+  amountLamports: number;
+  authorizationPrimitive: AuthorizationPrimitive;
+  status?: TransactionAuditStatus;
+  failureReason?: string;
+  metadata?: Record<string, string>;
+}
+
 export const computeAggregatedPortfolio = (
   wallets: WalletAccount[],
   pendingActions: PendingAction[] = [],
