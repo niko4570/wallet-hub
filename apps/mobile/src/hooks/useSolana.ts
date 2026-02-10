@@ -473,6 +473,20 @@ export function useSolana(): UseSolanaResult {
 
       await requireBiometricApproval("Authenticate to send SOL");
 
+      let senderPubkey: PublicKey;
+      let recipientPubkey: PublicKey;
+      try {
+        senderPubkey = new PublicKey(sourceAddress);
+      } catch (error) {
+        throw new Error("Invalid source wallet address");
+      }
+
+      try {
+        recipientPubkey = new PublicKey(recipientAddress);
+      } catch (error) {
+        throw new Error("Invalid recipient address");
+      }
+
       const walletMetadata = walletEntry.walletAppId
         ? availableWallets.find(
             (wallet) => wallet.id === walletEntry.walletAppId,
@@ -485,8 +499,23 @@ export function useSolana(): UseSolanaResult {
       };
       let refreshedAccount: LinkedWallet | null = null;
       const lamports = Math.round(amountSol * LAMPORTS_PER_SOL);
+      const latestBlockhash = await connection.getLatestBlockhash();
+      const transaction = new Transaction({
+        blockhash: latestBlockhash.blockhash,
+        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+        feePayer: senderPubkey,
+      }).add(
+        SystemProgram.transfer({
+          fromPubkey: senderPubkey,
+          toPubkey: recipientPubkey,
+          lamports,
+        }),
+      );
 
-      const signature = await transact(
+      let fallbackSignedTransaction: Transaction | null = null;
+      let submittedSignature: string | null = null;
+
+      await transact(
         async (wallet: Web3MobileWallet) => {
           let authorization: AuthorizationResult;
           const capabilities = await wallet.getCapabilities().catch((err) => {
@@ -531,32 +560,63 @@ export function useSolana(): UseSolanaResult {
             throw new Error("Wallet did not return the requested account");
           }
 
-          const senderPubkey = new PublicKey(primaryAccount.address);
-          const recipientPubkey = new PublicKey(recipientAddress);
+          const canSignAndSend =
+            capabilityReport.supportsSignAndSendTransactions !== false;
+          const canSign =
+            capabilityReport.supportsSignTransactions ??
+            DEFAULT_CAPABILITIES.supportsSignTransactions;
 
-          const { blockhash, lastValidBlockHeight } =
-            await connection.getLatestBlockhash();
-          const transaction = new Transaction({
-            blockhash,
-            lastValidBlockHeight,
-            feePayer: senderPubkey,
-          }).add(
-            SystemProgram.transfer({
-              fromPubkey: senderPubkey,
-              toPubkey: recipientPubkey,
-              lamports,
-            }),
-          );
+          if (canSignAndSend) {
+            const [signature] = await wallet.signAndSendTransactions({
+              transactions: [transaction],
+            });
+            submittedSignature = signature;
+            return;
+          }
 
-          const [signature] = await wallet.signAndSendTransactions({
+          if (!canSign) {
+            throw new Error("Wallet cannot sign transactions");
+          }
+
+          const signedTransactions = await wallet.signTransactions({
             transactions: [transaction],
           });
-          return signature;
+          fallbackSignedTransaction = signedTransactions[0] ?? null;
         },
         walletEntry.walletUriBase
           ? { baseUri: walletEntry.walletUriBase }
           : undefined,
       );
+
+      if (!submittedSignature) {
+        if (!fallbackSignedTransaction) {
+          throw new Error("No signed transaction returned by wallet");
+        }
+        try {
+          submittedSignature = await connection.sendRawTransaction(
+            fallbackSignedTransaction.serialize(),
+            {
+              skipPreflight: false,
+            },
+          );
+        } catch (error) {
+          console.error("sendRawTransaction failed", error);
+          throw error;
+        }
+      }
+
+      try {
+        await connection.confirmTransaction(
+          {
+            signature: submittedSignature,
+            blockhash: latestBlockhash.blockhash,
+            lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+          },
+          "confirmed",
+        );
+      } catch (error) {
+        console.warn("Transaction confirmation failed", error);
+      }
 
       await refreshBalance(sourceAddress).catch((err) => {
         console.warn("Failed to refresh balance after send", err);
@@ -582,14 +642,18 @@ export function useSolana(): UseSolanaResult {
 
         authorizationApi
           .recordTransactionAudit({
-            signature,
+            signature: submittedSignature,
             sourceWalletAddress: typedAccount.address,
             destinationAddress: recipientAddress,
             amountLamports: lamports,
-            authorizationPrimitive: "silent-reauthorization",
+            authorizationPrimitive:
+              reauthMethod === "silent"
+                ? "silent-reauthorization"
+                : "prompted-reauthorization",
             metadata: {
               walletAppId: typedAccount.walletAppId ?? "unknown",
               reauthorizationMethod: reauthMethod,
+              capabilities: capabilityReport.featureFlags,
             },
           })
           .catch((err) => {
@@ -597,7 +661,7 @@ export function useSolana(): UseSolanaResult {
           });
       }
 
-      return signature;
+      return submittedSignature;
     },
     [
       activeWallet?.address,

@@ -10,9 +10,12 @@ import {
   Modal,
   TextInput,
   Alert,
+  Share,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
+import QRCode from "react-native-qrcode-svg";
+import * as Clipboard from "expo-clipboard";
 import { useSolana } from "../hooks/useSolana";
 import { formatUsd, formatAddress } from "../utils/format";
 import { DetectedWalletApp } from "../types/wallet";
@@ -39,6 +42,7 @@ const WalletScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [connectModalVisible, setConnectModalVisible] = useState(false);
   const [sendModalVisible, setSendModalVisible] = useState(false);
+  const [receiveModalVisible, setReceiveModalVisible] = useState(false);
   const [sendRecipient, setSendRecipient] = useState("");
   const [sendAmount, setSendAmount] = useState("");
   const [sending, setSending] = useState(false);
@@ -50,6 +54,12 @@ const WalletScreen = () => {
 
   const totalBalanceSol = totalBalanceLamports / LAMPORTS_PER_SOL;
   const totalBalanceUsd = totalBalanceSol * 100; // Mock USD value
+
+  const activeWalletBalanceLamports = activeWallet
+    ? balances[activeWallet.address] ?? 0
+    : 0;
+  const activeWalletBalanceSol =
+    activeWalletBalanceLamports / LAMPORTS_PER_SOL;
 
   const activeWalletLabel =
     activeWallet?.label ||
@@ -133,6 +143,13 @@ const WalletScreen = () => {
       Alert.alert("Invalid input", "Enter a valid recipient and amount.");
       return;
     }
+    if (amount > activeWalletBalanceSol) {
+      Alert.alert(
+        "Insufficient balance",
+        `You can send up to ${activeWalletBalanceSol.toFixed(4)} SOL.`,
+      );
+      return;
+    }
     setSending(true);
     try {
       const signature = await sendSol(sendRecipient.trim(), amount, {
@@ -151,15 +168,56 @@ const WalletScreen = () => {
     } finally {
       setSending(false);
     }
-  }, [activeWallet, refreshBalance, sendAmount, sendRecipient, sendSol]);
+  }, [
+    activeWallet,
+    activeWalletBalanceSol,
+    refreshBalance,
+    sendAmount,
+    sendRecipient,
+    sendSol,
+  ]);
 
   const handleReceive = useCallback(() => {
     if (!activeWallet) {
       Alert.alert("No wallet", "Connect a wallet to receive.");
       return;
     }
-    Alert.alert("Receive", `Your address:\n${activeWallet.address}`);
+    setReceiveModalVisible(true);
   }, [activeWallet]);
+
+  const handleCopyAddress = useCallback(async () => {
+    if (!activeWallet) {
+      return;
+    }
+    try {
+      await Clipboard.setStringAsync(activeWallet.address);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Copied", "Wallet address copied to clipboard.");
+    } catch (err) {
+      console.warn("Copy failed", err);
+      Alert.alert("Copy failed", "Try again in a moment.");
+    }
+  }, [activeWallet]);
+
+  const handleShareAddress = useCallback(async () => {
+    if (!activeWallet) {
+      return;
+    }
+    try {
+      await Share.share({
+        message: `Send SOL to ${activeWallet.address}`,
+      });
+    } catch (err) {
+      console.warn("Share failed", err);
+    }
+  }, [activeWallet]);
+
+  const handleUseMaxAmount = useCallback(() => {
+    if (!activeWallet) {
+      return;
+    }
+    setSendAmount(activeWalletBalanceSol.toFixed(4));
+  }, [activeWallet, activeWalletBalanceSol]);
 
   const handleStub = useCallback((label: string) => {
     Alert.alert(label, "Coming soon");
@@ -422,6 +480,19 @@ const WalletScreen = () => {
               onChangeText={setSendAmount}
               keyboardType="decimal-pad"
             />
+            {activeWallet && (
+              <View style={styles.availableRow}>
+                <Text style={styles.availableLabel}>Available</Text>
+                <TouchableOpacity
+                  onPress={handleUseMaxAmount}
+                  style={styles.inlineActionButton}
+                >
+                  <Text style={styles.inlineActionText}>
+                    Use max ({activeWalletBalanceSol.toFixed(4)} SOL)
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.modalClose}
@@ -442,6 +513,70 @@ const WalletScreen = () => {
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Receive Modal */}
+      <Modal
+        animationType="slide"
+        transparent
+        visible={receiveModalVisible}
+        onRequestClose={() => setReceiveModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Receive SOL</Text>
+            {activeWallet ? (
+              <>
+                <Text style={styles.receiveHint}>
+                  Share this QR or address to receive funds.
+                </Text>
+                <View style={styles.qrWrapper}>
+                  <QRCode
+                    value={activeWallet.address}
+                    size={180}
+                    color="#FFFFFF"
+                    backgroundColor="transparent"
+                  />
+                </View>
+                <TouchableOpacity
+                  style={styles.addressPill}
+                  onLongPress={handleCopyAddress}
+                  onPress={handleCopyAddress}
+                >
+                  <Text style={styles.addressPillText}>
+                    {activeWallet.address}
+                  </Text>
+                </TouchableOpacity>
+                <View style={styles.receiveActions}>
+                  <TouchableOpacity
+                    style={styles.receiveActionButton}
+                    onPress={handleCopyAddress}
+                  >
+                    <Feather name="copy" size={16} color="#0B1221" />
+                    <Text style={styles.receiveActionText}>Copy</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.receiveActionButton}
+                    onPress={handleShareAddress}
+                  >
+                    <Feather name="share-2" size={16} color="#0B1221" />
+                    <Text style={styles.receiveActionText}>Share</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <Text style={styles.receiveHint}>
+                Connect a wallet to view your receive address.
+              </Text>
+            )}
+            <TouchableOpacity
+              style={styles.modalClose}
+              onPress={() => setReceiveModalVisible(false)}
+            >
+              <Text style={styles.modalCloseText}>Close</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -762,6 +897,72 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.5,
+  },
+  availableRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  availableLabel: {
+    color: "rgba(255,255,255,0.7)",
+  },
+  inlineActionButton: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  inlineActionText: {
+    color: "#9B8CFF",
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  receiveHint: {
+    color: "rgba(255,255,255,0.72)",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  qrWrapper: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    marginBottom: 16,
+  },
+  receiveActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  receiveActionButton: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#9B8CFF",
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  receiveActionText: {
+    color: "#0B1221",
+    fontWeight: "700",
+  },
+  addressPill: {
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    borderRadius: 16,
+    padding: 12,
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  addressPillText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    textAlign: "center",
   },
 });
 
