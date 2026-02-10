@@ -1,31 +1,35 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Linking,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
   View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  Linking,
+  Alert,
 } from "react-native";
-import { useFocusEffect } from "@react-navigation/native";
+import { WebView } from "react-native-webview";
 import { Feather } from "@expo/vector-icons";
-import WebView from "react-native-webview";
+import { useSolana } from "../hooks/useSolana";
 import {
-  EXTERNAL_EXPLORE_ALLOWED_HOSTS,
-  EXTERNAL_EXPLORE_URL,
+  JUPITER_PLUGIN_URL,
+  JUPITER_PLUGIN_ALLOWED_HOSTS,
 } from "../config/env";
 import { telemetryService } from "../services/telemetryService";
 
-const ExploreScreen = () => {
-  const [webViewKey, setWebViewKey] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [currentUrl, setCurrentUrl] = useState(EXTERNAL_EXPLORE_URL);
+const SwapScreen = () => {
+  const { activeWallet } = useSolana();
+  const [swapLoading, setSwapLoading] = useState(true);
+  const [swapError, setSwapError] = useState<string | null>(null);
+  const [currentUrl, setCurrentUrl] = useState(JUPITER_PLUGIN_URL);
+  const swapWebViewRef = useRef<WebView>(null);
 
-  const allowedHosts = useMemo(
-    () => new Set(EXTERNAL_EXPLORE_ALLOWED_HOSTS),
-    [],
+  const normalizedPluginHosts = useMemo(
+    () =>
+      JUPITER_PLUGIN_ALLOWED_HOSTS.map((host) =>
+        host.trim().toLowerCase(),
+      ).filter(Boolean),
+    [JUPITER_PLUGIN_ALLOWED_HOSTS],
   );
 
   const recordTelemetry = useCallback(
@@ -43,89 +47,60 @@ const ExploreScreen = () => {
     [currentUrl],
   );
 
-  useFocusEffect(
-    useCallback(() => {
-      recordTelemetry("explore_screen_focus");
-      return () => {
-        recordTelemetry("explore_screen_blur");
-      };
-    }, [recordTelemetry]),
-  );
-
-  const isHostAllowed = useCallback(
-    (url: string) => {
-      try {
-        const host = new URL(url).host;
-        if (allowedHosts.has(host)) {
-          return true;
-        }
-        // allow subdomains of any host in the allowlist
-        return Array.from(allowedHosts).some((allowedHost) =>
-          host.endsWith(`.${allowedHost}`),
-        );
-      } catch (_error) {
+  const handleShouldLoadPlugin = useCallback(
+    (request: { url: string }) => {
+      const { url } = request;
+      if (!url) {
         return false;
       }
+      try {
+        const host = new URL(url).host.toLowerCase();
+        if (normalizedPluginHosts.includes(host)) {
+          setCurrentUrl(url);
+          return true;
+        }
+      } catch (error) {
+        console.warn("Invalid URL in swap WebView", error);
+      }
+      Linking.openURL(url).catch((err) => {
+        console.warn("Failed to open external URL", err);
+      });
+      return false;
     },
-    [allowedHosts],
+    [normalizedPluginHosts],
   );
 
-  const handleReload = useCallback(() => {
-    setErrorMessage(null);
-    setIsLoading(true);
-    setWebViewKey((prev) => prev + 1);
-    recordTelemetry("explore_reload");
+  const handleReloadSwap = useCallback(() => {
+    setSwapError(null);
+    setSwapLoading(true);
+    swapWebViewRef.current?.reload();
+    recordTelemetry("swap_reload");
   }, [recordTelemetry]);
 
   const handleOpenExternal = useCallback(async () => {
-    recordTelemetry("explore_open_external");
+    recordTelemetry("swap_open_external");
     try {
-      await Linking.openURL(EXTERNAL_EXPLORE_URL);
+      await Linking.openURL(JUPITER_PLUGIN_URL);
     } catch (error) {
       Alert.alert("Unable to open browser", "Please try again later.");
-      console.warn("Open external explore failed", error);
+      console.warn("Open external swap failed", error);
     }
   }, [recordTelemetry]);
 
-  const handleBlockedNavigation = useCallback(
-    async (targetUrl: string) => {
-      recordTelemetry("explore_navigation_blocked", { targetUrl });
-      try {
-        await Linking.openURL(targetUrl);
-      } catch (error) {
-        console.warn("Failed to open blocked URL externally", error);
-        Alert.alert("Navigation blocked", "Unable to open the requested link.");
-      }
-    },
-    [recordTelemetry],
-  );
-
-  const onShouldStartLoadWithRequest = useCallback(
-    (request: any) => {
-      if (!isHostAllowed(request.url)) {
-        handleBlockedNavigation(request.url);
-        return false;
-      }
-      setCurrentUrl(request.url);
-      return true;
-    },
-    [handleBlockedNavigation, isHostAllowed],
-  );
-
   const onLoadStart = useCallback(
     (event: any) => {
-      setIsLoading(true);
-      setErrorMessage(null);
-      recordTelemetry("explore_load_start", { url: event.nativeEvent.url });
+      setSwapLoading(true);
+      setSwapError(null);
+      recordTelemetry("swap_load_start", { url: event.nativeEvent.url });
     },
     [recordTelemetry],
   );
 
   const onLoadEnd = useCallback(
     (event: any) => {
-      setIsLoading(false);
-      setErrorMessage(null);
-      recordTelemetry("explore_load_success", { url: event.nativeEvent.url });
+      setSwapLoading(false);
+      setSwapError(null);
+      recordTelemetry("swap_load_success", { url: event.nativeEvent.url });
     },
     [recordTelemetry],
   );
@@ -133,10 +108,10 @@ const ExploreScreen = () => {
   const onError = useCallback(
     (event: any) => {
       const message =
-        event.nativeEvent.description || "Unable to load Explore view.";
-      setIsLoading(false);
-      setErrorMessage(message);
-      recordTelemetry("explore_load_error", {
+        event.nativeEvent.description || "Unable to load Swap view.";
+      setSwapLoading(false);
+      setSwapError(message);
+      recordTelemetry("swap_load_error", {
         url: event.nativeEvent.url,
         message,
       });
@@ -144,19 +119,36 @@ const ExploreScreen = () => {
     [recordTelemetry],
   );
 
+  if (!activeWallet) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.noWalletState}>
+          <Feather
+            name="credit-card"
+            size={48}
+            color="rgba(255, 255, 255, 0.3)"
+          />
+          <Text style={styles.noWalletTitle}>No Wallet Connected</Text>
+          <Text style={styles.noWalletDescription}>
+            Connect a wallet to use the swap feature
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.heroCard}>
         <View style={styles.heroTextGroup}>
-          <Text style={styles.heroTitle}>Explore Solana dApps</Text>
+          <Text style={styles.heroTitle}>Swap Tokens</Text>
           <Text style={styles.heroSubtitle}>
-            Powered by an external Explore experience so you always see the most
-            up-to-date catalog.
+            Powered by Jupiter Aggregator for best rates and minimal slippage
           </Text>
         </View>
         <View style={styles.heroActions}>
           <TouchableOpacity
-            onPress={handleReload}
+            onPress={handleReloadSwap}
             style={styles.heroButton}
             activeOpacity={0.85}
           >
@@ -175,13 +167,13 @@ const ExploreScreen = () => {
       </View>
 
       <View style={styles.webviewCard}>
-        {errorMessage ? (
+        {swapError ? (
           <View style={styles.errorState}>
             <Feather name="alert-triangle" size={28} color="#F97316" />
             <Text style={styles.errorTitle}>Connection issue</Text>
-            <Text style={styles.errorMessage}>{errorMessage}</Text>
+            <Text style={styles.errorMessage}>{swapError}</Text>
             <TouchableOpacity
-              onPress={handleReload}
+              onPress={handleReloadSwap}
               style={styles.retryButton}
               activeOpacity={0.9}
             >
@@ -191,19 +183,26 @@ const ExploreScreen = () => {
         ) : (
           <>
             <WebView
-              key={webViewKey}
-              source={{ uri: EXTERNAL_EXPLORE_URL }}
+              ref={swapWebViewRef}
+              source={{ uri: JUPITER_PLUGIN_URL }}
               style={styles.webview}
               originWhitelist={["*"]}
-              onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
+              onShouldStartLoadWithRequest={handleShouldLoadPlugin}
               onLoadStart={onLoadStart}
               onLoadEnd={onLoadEnd}
               onError={onError}
+              allowsInlineMediaPlayback
+              mediaPlaybackRequiresUserAction={false}
+              javaScriptEnabled
+              domStorageEnabled
+              showsHorizontalScrollIndicator={false}
+              showsVerticalScrollIndicator={false}
+              scrollEnabled
             />
-            {isLoading && (
+            {swapLoading && (
               <View style={styles.webviewOverlay}>
                 <ActivityIndicator color="#C7B5FF" />
-                <Text style={styles.overlayText}>Loading Explore...</Text>
+                <Text style={styles.overlayText}>Loading Swap...</Text>
               </View>
             )}
           </>
@@ -211,20 +210,17 @@ const ExploreScreen = () => {
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerTitle}>Safety guardrails</Text>
+        <Text style={styles.footerTitle}>Powered by Jupiter</Text>
         <Text style={styles.footerText}>
-          WalletHub only loads Explore content from approved hosts:
+          Best rates and routes across all Solana DEXes
         </Text>
         <View style={styles.hostList}>
-          {Array.from(allowedHosts).map((host) => (
+          {normalizedPluginHosts.map((host) => (
             <View key={host} style={styles.hostPill}>
               <Text style={styles.hostPillText}>{host}</Text>
             </View>
           ))}
         </View>
-        <Text style={styles.footerText}>
-          Tapping out-of-scope links will open your system browser instead.
-        </Text>
       </View>
     </View>
   );
@@ -371,6 +367,23 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: 12,
   },
+  noWalletState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+    paddingHorizontal: 24,
+  },
+  noWalletTitle: {
+    color: "#FFFFFF",
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  noWalletDescription: {
+    color: "rgba(255,255,255,0.6)",
+    textAlign: "center",
+    fontSize: 16,
+  },
 });
 
-export default ExploreScreen;
+export default SwapScreen;

@@ -7,7 +7,7 @@ import { Feather } from "@expo/vector-icons";
 
 // Import screens
 import WalletScreen from "../screens/WalletScreen";
-import ExploreScreen from "../screens/ExploreScreen";
+import SwapScreen from "../screens/SwapScreen";
 import ActivityScreen from "../screens/ActivityScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 
@@ -22,7 +22,7 @@ export type RootStackParamList = {
 
 export type MainTabParamList = {
   Wallet: undefined;
-  Explore: undefined;
+  Swap: undefined;
   Activity: undefined;
   Settings: undefined;
 };
@@ -72,12 +72,12 @@ function MainTabs() {
         }}
       />
       <Tab.Screen
-        name="Explore"
-        component={ExploreScreen}
+        name="Swap"
+        component={SwapScreen}
         options={{
-          title: "Explore",
+          title: "Swap",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="compass" size={size} color={color} />
+            <Feather name="shuffle" size={size} color={color} />
           ),
         }}
       />
