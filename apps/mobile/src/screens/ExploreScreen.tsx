@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,93 +7,119 @@ import {
   StyleSheet,
   TextInput,
   RefreshControl,
-} from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../navigation/AppNavigator';
+} from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import { StackNavigationProp } from "@react-navigation/stack";
+import { RootStackParamList } from "../navigation/AppNavigator";
 
 // Mock data for NFTs
 const mockNFTs = [
   {
-    id: '1',
-    name: 'Solana Monkey Business',
-    description: 'Limited edition NFT collection on Solana',
+    id: "1",
+    name: "Solana Monkey Business",
+    description: "Limited edition NFT collection on Solana",
     price: 2.5,
-    image: '🖼️',
+    image: "🖼️",
   },
   {
-    id: '2',
-    name: 'Degenerate Ape Academy',
-    description: 'Popular NFT collection with unique traits',
+    id: "2",
+    name: "Degenerate Ape Academy",
+    description: "Popular NFT collection with unique traits",
     price: 1.8,
-    image: '🐒',
+    image: "🐒",
   },
   {
-    id: '3',
-    name: 'Star Atlas',
-    description: 'Space exploration metaverse NFTs',
+    id: "3",
+    name: "Star Atlas",
+    description: "Space exploration metaverse NFTs",
     price: 3.2,
-    image: '🚀',
+    image: "🚀",
   },
 ];
 
+// Type definitions
+interface NFT {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  image: string;
+}
+
+interface DeFiProject {
+  id: string;
+  name: string;
+  description: string;
+  tvl: number;
+  apr: number;
+  logo: string;
+}
+
+interface DApp {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  logo: string;
+}
+
 // Mock data for DeFi projects
-const mockDeFiProjects = [
+const mockDeFiProjects: DeFiProject[] = [
   {
-    id: '1',
-    name: 'Raydium',
-    description: 'AMM and liquidity provider on Solana',
+    id: "1",
+    name: "Raydium",
+    description: "AMM and liquidity provider on Solana",
     tvl: 1200000000,
     apr: 15.5,
-    logo: '💎',
+    logo: "💎",
   },
   {
-    id: '2',
-    name: 'Serum',
-    description: 'Decentralized exchange on Solana',
+    id: "2",
+    name: "Serum",
+    description: "Decentralized exchange on Solana",
     tvl: 800000000,
     apr: 12.3,
-    logo: '💧',
+    logo: "💧",
   },
   {
-    id: '3',
-    name: 'Marinade Finance',
-    description: 'Liquid staking solution for Solana',
+    id: "3",
+    name: "Marinade Finance",
+    description: "Liquid staking solution for Solana",
     tvl: 600000000,
     apr: 7.8,
-    logo: '🧂',
+    logo: "🧂",
   },
 ];
 
 // Mock data for DApps
-const mockDApps = [
+const mockDApps: DApp[] = [
   {
-    id: '1',
-    name: 'Magic Eden',
-    description: 'NFT marketplace for Solana',
-    category: 'NFT Marketplace',
-    logo: '🪄',
+    id: "1",
+    name: "Magic Eden",
+    description: "NFT marketplace for Solana",
+    category: "NFT Marketplace",
+    logo: "🪄",
   },
   {
-    id: '2',
-    name: 'StepN',
-    description: 'Move-to-earn fitness app',
-    category: 'Fitness',
-    logo: '👟',
+    id: "2",
+    name: "StepN",
+    description: "Move-to-earn fitness app",
+    category: "Fitness",
+    logo: "👟",
   },
   {
-    id: '3',
-    name: 'Solanart',
-    description: 'Digital art marketplace',
-    category: 'NFT Marketplace',
-    logo: '🎨',
+    id: "3",
+    name: "Solanart",
+    description: "Digital art marketplace",
+    category: "NFT Marketplace",
+    logo: "🎨",
   },
 ];
 
 const ExploreScreen = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const [refreshing, setRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -104,11 +130,11 @@ const ExploreScreen = () => {
   }, []);
 
   const handleNFTDetail = (nftId: string) => {
-    navigation.navigate('NFTDetail', { nftId });
+    navigation.navigate("NFTDetail", { nftId });
   };
 
   const handleProjectDetail = (projectId: string) => {
-    navigation.navigate('ProjectDetail', { projectId });
+    navigation.navigate("ProjectDetail", { projectId });
   };
 
   return (
@@ -120,7 +146,7 @@ const ExploreScreen = () => {
           refreshing={refreshing}
           onRefresh={onRefresh}
           tintColor="#7F56D9"
-          colors={['#7F56D9']}
+          colors={["#7F56D9"]}
         />
       }
     >
@@ -174,7 +200,9 @@ const ExploreScreen = () => {
               </View>
               <View style={styles.projectInfo}>
                 <Text style={styles.projectName}>{project.name}</Text>
-                <Text style={styles.projectDescription}>{project.description}</Text>
+                <Text style={styles.projectDescription}>
+                  {project.description}
+                </Text>
               </View>
             </View>
             <View style={styles.projectStats}>
@@ -220,7 +248,7 @@ const ExploreScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B1221',
+    backgroundColor: "#0B1221",
   },
   contentContainer: {
     padding: 24,
@@ -230,80 +258,80 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   searchInput: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 16,
   },
   section: {
     marginBottom: 32,
   },
   sectionTitle: {
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: "rgba(255, 255, 255, 0.8)",
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 16,
   },
   nftScrollContainer: {
     paddingRight: 24,
   },
   nftCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 20,
     padding: 16,
     marginRight: 12,
     width: 200,
-    alignItems: 'center',
+    alignItems: "center",
   },
   nftImage: {
     width: 120,
     height: 120,
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 12,
   },
   nftImageEmoji: {
     fontSize: 48,
   },
   nftName: {
-    color: '#FFFFFF',
-    fontWeight: '700',
+    color: "#FFFFFF",
+    fontWeight: "700",
     fontSize: 14,
     marginBottom: 4,
-    textAlign: 'center',
+    textAlign: "center",
   },
   nftPrice: {
-    color: '#7F56D9',
-    fontWeight: '600',
+    color: "#7F56D9",
+    fontWeight: "600",
     fontSize: 14,
   },
   projectCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 20,
     padding: 16,
     marginBottom: 12,
   },
   projectHeader: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginBottom: 12,
   },
   projectLogo: {
     width: 48,
     height: 48,
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 12,
   },
   projectLogoEmoji: {
@@ -313,52 +341,52 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   projectName: {
-    color: '#FFFFFF',
-    fontWeight: '700',
+    color: "#FFFFFF",
+    fontWeight: "700",
     fontSize: 16,
     marginBottom: 4,
   },
   projectDescription: {
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: "rgba(255, 255, 255, 0.6)",
     fontSize: 14,
   },
   projectStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   projectStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   projectStatLabel: {
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: "rgba(255, 255, 255, 0.6)",
     fontSize: 12,
     marginRight: 4,
   },
   projectStatValue: {
-    color: '#FFFFFF',
-    fontWeight: '600',
+    color: "#FFFFFF",
+    fontWeight: "600",
     fontSize: 14,
   },
   dappCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 20,
     padding: 16,
     marginBottom: 12,
   },
   dappHeader: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginBottom: 12,
   },
   dappLogo: {
     width: 48,
     height: 48,
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 12,
   },
   dappLogoEmoji: {
@@ -368,28 +396,28 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   dappName: {
-    color: '#FFFFFF',
-    fontWeight: '700',
+    color: "#FFFFFF",
+    fontWeight: "700",
     fontSize: 16,
     marginBottom: 4,
   },
   dappDescription: {
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: "rgba(255, 255, 255, 0.6)",
     fontSize: 14,
   },
   dappCategory: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(127, 86, 217, 0.2)',
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(127, 86, 217, 0.2)",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(127, 86, 217, 0.4)',
+    borderColor: "rgba(127, 86, 217, 0.4)",
   },
   dappCategoryText: {
-    color: '#7F56D9',
+    color: "#7F56D9",
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });
 
