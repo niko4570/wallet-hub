@@ -14,6 +14,7 @@ import type { AuthorizationResult } from "@solana-mobile/mobile-wallet-adapter-p
 import type {
   SilentReauthorizationRecord,
   WalletCapabilityReport,
+  AuthorizationPrimitive,
 } from "@wallethub/contracts";
 import { walletService } from "../services/walletService";
 import { authorizationApi } from "../services/authorizationService";
@@ -594,7 +595,7 @@ export function useSolana(): UseSolanaResult {
         }
         try {
           submittedSignature = await connection.sendRawTransaction(
-            fallbackSignedTransaction.serialize(),
+            (fallbackSignedTransaction as Transaction).serialize(),
             {
               skipPreflight: false,
             },
@@ -646,14 +647,11 @@ export function useSolana(): UseSolanaResult {
             sourceWalletAddress: typedAccount.address,
             destinationAddress: recipientAddress,
             amountLamports: lamports,
-            authorizationPrimitive:
-              reauthMethod === "silent"
-                ? "silent-reauthorization"
-                : "prompted-reauthorization",
+            authorizationPrimitive: "silent-reauthorization",
             metadata: {
               walletAppId: typedAccount.walletAppId ?? "unknown",
               reauthorizationMethod: reauthMethod,
-              capabilities: capabilityReport.featureFlags,
+              capabilities: (capabilityReport.featureFlags || []).join(","),
             },
           })
           .catch((err) => {
