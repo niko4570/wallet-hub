@@ -49,7 +49,7 @@ export const decodeWalletAddress = (rawAddress: string): string => {
     }
   }
 
-  let lastError: unknown;
+  const errors: Record<string, unknown> = {};
   for (const attempt of attempts) {
     try {
       const base58 = toBase58(attempt.value);
@@ -58,14 +58,13 @@ export const decodeWalletAddress = (rawAddress: string): string => {
       }
       return base58;
     } catch (error) {
-      lastError = error;
-      console.warn(`Failed to decode address via ${attempt.label}`, error);
+      errors[attempt.label] = error;
     }
   }
 
   console.error("Failed to normalize wallet address; giving up", {
     raw: rawAddress,
-    lastError,
+    errors,
   });
   throw new Error("Invalid Solana address format - must be valid base58");
 };
