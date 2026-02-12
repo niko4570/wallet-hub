@@ -1,16 +1,24 @@
-import { Connection, PublicKey, GetProgramAccountsConfig, ParsedAccountData } from '@solana/web3.js';
-import { HELIUS_RPC_URL } from '../config/env';
+import {
+  Connection,
+  PublicKey,
+  GetProgramAccountsConfig,
+} from "@solana/web3.js";
+import { HELIUS_RPC_URL } from "../config/env";
 
 class RpcService {
   private static instance: RpcService;
   private connection: Connection;
-  private balanceCache: Map<string, { balance: number; timestamp: number }> = new Map();
-  private transactionCache: Map<string, { transaction: any; timestamp: number }> = new Map();
+  private balanceCache: Map<string, { balance: number; timestamp: number }> =
+    new Map();
+  private transactionCache: Map<
+    string,
+    { transaction: any; timestamp: number }
+  > = new Map();
   private cacheTTL = 30000; // 30 seconds
   private maxRetries = 3;
 
   private constructor() {
-    this.connection = new Connection(HELIUS_RPC_URL, 'confirmed');
+    this.connection = new Connection(HELIUS_RPC_URL, "confirmed");
   }
 
   static getInstance(): RpcService {
@@ -44,16 +52,16 @@ class RpcService {
       const balance = await this.retry(async () => {
         return await this.connection.getBalance(publicKey);
       });
-      
+
       // Update cache
       this.balanceCache.set(address, {
         balance,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
-      
+
       return balance;
     } catch (error) {
-      console.error('Error fetching balance:', error);
+      console.error("Error fetching balance:", error);
       throw error;
     }
   }
@@ -63,7 +71,9 @@ class RpcService {
    * @param addresses Array of wallet addresses
    * @returns Object mapping addresses to balances
    */
-  async getMultipleBalances(addresses: string[]): Promise<Record<string, number>> {
+  async getMultipleBalances(
+    addresses: string[],
+  ): Promise<Record<string, number>> {
     const result: Record<string, number> = {};
     const uncachedAddresses: string[] = [];
 
@@ -80,26 +90,26 @@ class RpcService {
     // Fetch uncached balances in bulk
     if (uncachedAddresses.length > 0) {
       try {
-        const publicKeys = uncachedAddresses.map(addr => new PublicKey(addr));
+        const publicKeys = uncachedAddresses.map((addr) => new PublicKey(addr));
         const accounts = await this.retry(async () => {
           return await this.connection.getMultipleAccountsInfo(publicKeys);
         });
-        
+
         for (let i = 0; i < uncachedAddresses.length; i++) {
           const address = uncachedAddresses[i];
           const account = accounts[i];
           const balance = account?.lamports || 0;
-          
+
           result[address] = balance;
-          
+
           // Update cache
           this.balanceCache.set(address, {
             balance,
-            timestamp: Date.now()
+            timestamp: Date.now(),
           });
         }
       } catch (error) {
-        console.error('Error fetching multiple balances:', error);
+        console.error("Error fetching multiple balances:", error);
         // Fallback to individual requests
         for (const address of uncachedAddresses) {
           try {
@@ -129,20 +139,20 @@ class RpcService {
     try {
       const transaction = await this.retry(async () => {
         return await this.connection.getTransaction(signature, {
-          commitment: 'confirmed',
-          maxSupportedTransactionVersion: 0
+          commitment: "confirmed",
+          maxSupportedTransactionVersion: 0,
         });
       });
-      
+
       // Update cache
       this.transactionCache.set(signature, {
         transaction,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
-      
+
       return transaction;
     } catch (error) {
-      console.error('Error fetching transaction:', error);
+      console.error("Error fetching transaction:", error);
       throw error;
     }
   }
@@ -154,17 +164,21 @@ class RpcService {
    * @param before Optional signature to start from
    * @returns Array of transaction signatures
    */
-  async getSignaturesForAddress(address: string, limit = 10, before?: string): Promise<any[]> {
+  async getSignaturesForAddress(
+    address: string,
+    limit = 10,
+    before?: string,
+  ): Promise<any[]> {
     try {
       const publicKey = new PublicKey(address);
       return await this.retry(async () => {
         return await this.connection.getSignaturesForAddress(publicKey, {
           limit,
-          before
+          before,
         });
       });
     } catch (error) {
-      console.error('Error fetching signatures:', error);
+      console.error("Error fetching signatures:", error);
       throw error;
     }
   }
@@ -175,13 +189,17 @@ class RpcService {
    * @param config Optional configuration
    * @returns Array of program accounts
    */
-  async getProgramAccounts(programId: PublicKey, config?: GetProgramAccountsConfig): Promise<any[]> {
+  async getProgramAccounts(
+    programId: PublicKey,
+    config?: GetProgramAccountsConfig,
+  ): Promise<any[]> {
     try {
-      return await this.retry(async () => {
+      const result = await this.retry(async () => {
         return await this.connection.getProgramAccounts(programId, config);
       });
+      return Array.from(result);
     } catch (error) {
-      console.error('Error fetching program accounts:', error);
+      console.error("Error fetching program accounts:", error);
       throw error;
     }
   }
@@ -192,21 +210,27 @@ class RpcService {
    * @param mint Optional mint public key
    * @returns Array of token accounts
    */
-  async getTokenAccountsByOwner(owner: PublicKey, mint?: PublicKey): Promise<any[]> {
+  async getTokenAccountsByOwner(
+    owner: PublicKey,
+    mint?: PublicKey,
+  ): Promise<any[]> {
     try {
-      return await this.retry(async () => {
+      const result = await this.retry(async () => {
         if (mint) {
           return await this.connection.getTokenAccountsByOwner(owner, {
-            mint
+            mint,
           });
         } else {
           return await this.connection.getTokenAccountsByOwner(owner, {
-            programId: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
+            programId: new PublicKey(
+              "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            ),
           });
         }
       });
+      return Array.from(result.value);
     } catch (error) {
-      console.error('Error fetching token accounts:', error);
+      console.error("Error fetching token accounts:", error);
       throw error;
     }
   }
@@ -215,13 +239,16 @@ class RpcService {
    * Get recent blockhash
    * @returns Recent blockhash and last valid block height
    */
-  async getLatestBlockhash(): Promise<{ blockhash: string; lastValidBlockHeight: number }> {
+  async getLatestBlockhash(): Promise<{
+    blockhash: string;
+    lastValidBlockHeight: number;
+  }> {
     try {
       return await this.retry(async () => {
         return await this.connection.getLatestBlockhash();
       });
     } catch (error) {
-      console.error('Error fetching latest blockhash:', error);
+      console.error("Error fetching latest blockhash:", error);
       throw error;
     }
   }
@@ -249,7 +276,10 @@ class RpcService {
    * @param retries Number of retries
    * @returns Result of the function
    */
-  private async retry<T>(fn: () => Promise<T>, retries = this.maxRetries): Promise<T> {
+  private async retry<T>(
+    fn: () => Promise<T>,
+    retries = this.maxRetries,
+  ): Promise<T> {
     let lastError: Error;
 
     for (let i = 0; i < retries; i++) {
@@ -258,16 +288,16 @@ class RpcService {
       } catch (error) {
         lastError = error as Error;
         console.warn(`Retry ${i + 1}/${retries} failed:`, lastError.message);
-        
+
         // Exponential backoff
         if (i < retries - 1) {
           const delay = Math.pow(2, i) * 1000;
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
     }
 
-    throw lastError!
+    throw lastError!;
   }
 }
 

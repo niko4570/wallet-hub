@@ -42,35 +42,94 @@ const ActivityScreen = () => {
       status: string,
       walletAddress: string,
     ) => {
-      if (!tx || !tx.transaction) return null;
+      try {
+        if (!tx?.transaction?.message) return null;
 
-      const { transaction, meta } = tx;
-      const instructions = transaction.message.instructions;
+        const { transaction } = tx;
+        const message = transaction.message;
+        const instructions = message?.instructions;
 
-      // Look for transfer instructions
-      for (const instruction of instructions) {
-        const programIdBase58 =
-          typeof instruction?.programId?.toBase58 === "function"
-            ? instruction.programId.toBase58()
-            : undefined;
+        if (!Array.isArray(instructions) || instructions.length === 0) {
+          return null;
+        }
 
-        if (programIdBase58 === "11111111111111111111111111111111") {
-          // System program transfer
-          const data = instruction.data;
-          if (data && data.length >= 8) {
-            const lamports = parseInt(data.slice(0, 8), 16);
-            const amount = lamports / LAMPORTS_PER_SOL;
+        const accountKeys = Array.isArray(message?.accountKeys)
+          ? message.accountKeys
+          : undefined;
 
-            const keys = instruction.keys;
-            if (keys?.length >= 2) {
-              const source =
-                typeof keys[0]?.pubkey?.toBase58 === "function"
-                  ? keys[0].pubkey.toBase58()
-                  : undefined;
-              const destination =
-                typeof keys[1]?.pubkey?.toBase58 === "function"
-                  ? keys[1].pubkey.toBase58()
-                  : undefined;
+        const resolveAccountKey = (index?: number) => {
+          if (typeof index !== "number") return undefined;
+          if (accountKeys?.[index]) return accountKeys[index];
+          if (typeof message?.getAccountKeys === "function") {
+            const keys = message.getAccountKeys();
+            if (typeof keys?.get === "function") {
+              return keys.get(index);
+            }
+
+            if (Array.isArray(keys?.staticAccountKeys)) {
+              const lookupKeys = Array.isArray(keys?.accountKeysFromLookups)
+                ? keys.accountKeysFromLookups
+                : Array.isArray(keys?.accountKeysFromLookups?.writable)
+                  ? [
+                      ...keys.accountKeysFromLookups.writable,
+                      ...keys.accountKeysFromLookups.readonly,
+                    ]
+                  : [];
+
+              return [...keys.staticAccountKeys, ...lookupKeys][index];
+            }
+          }
+
+          return undefined;
+        };
+
+        // Look for transfer instructions
+        for (const instruction of instructions) {
+          const programId =
+            typeof instruction?.programId?.toBase58 === "function"
+              ? instruction.programId
+              : resolveAccountKey(instruction?.programIdIndex);
+          const programIdBase58 =
+            typeof programId?.toBase58 === "function"
+              ? programId.toBase58()
+              : undefined;
+
+          if (programIdBase58 === "11111111111111111111111111111111") {
+            // System program transfer
+            const data = instruction?.data;
+            if (typeof data === "string" && data.length >= 8) {
+              const lamports = parseInt(data.slice(0, 8), 16);
+              const amount = lamports / LAMPORTS_PER_SOL;
+
+              let source: string | undefined;
+              let destination: string | undefined;
+
+              if (
+                Array.isArray(instruction?.keys) &&
+                instruction.keys.length >= 2
+              ) {
+                source =
+                  typeof instruction.keys[0]?.pubkey?.toBase58 === "function"
+                    ? instruction.keys[0].pubkey.toBase58()
+                    : undefined;
+                destination =
+                  typeof instruction.keys[1]?.pubkey?.toBase58 === "function"
+                    ? instruction.keys[1].pubkey.toBase58()
+                    : undefined;
+              } else if (Array.isArray(instruction?.accounts)) {
+                const sourceKey = resolveAccountKey(instruction.accounts[0]);
+                const destinationKey = resolveAccountKey(
+                  instruction.accounts[1],
+                );
+                source =
+                  typeof sourceKey?.toBase58 === "function"
+                    ? sourceKey.toBase58()
+                    : undefined;
+                destination =
+                  typeof destinationKey?.toBase58 === "function"
+                    ? destinationKey.toBase58()
+                    : undefined;
+              }
 
               if (!source || !destination) {
                 continue;
@@ -91,9 +150,12 @@ const ActivityScreen = () => {
             }
           }
         }
-      }
 
-      return null;
+        return null;
+      } catch (error) {
+        console.warn(`Failed to parse transaction ${signature}:`, error);
+        return null;
+      }
     },
     [],
   );

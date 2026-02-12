@@ -1,4 +1,4 @@
-import { Linking, Platform } from "react-native";
+import { Linking } from "react-native";
 import {
   transact,
   type Web3MobileWallet,
@@ -84,16 +84,6 @@ class WalletService {
           : undefined;
 
       const result = await transact(async (walletApi: Web3MobileWallet) => {
-        // Get wallet capabilities first (optional but recommended)
-        let capabilities: WalletCapabilities | null = null;
-        try {
-          capabilities = await walletApi.getCapabilities();
-          console.log("Wallet capabilities:", capabilities);
-        } catch (error) {
-          console.warn("Failed to get wallet capabilities:", error);
-          // Continue even if capabilities check fails
-        }
-
         // Request authorization
         const authorization = await walletApi.authorize({
           identity: {
@@ -103,7 +93,7 @@ class WalletService {
           chain: "solana:mainnet",
         });
 
-        return { authorization, capabilities };
+        return { authorization };
       }, transactOptions);
 
       const normalized = this.normalizeAuthorization(
