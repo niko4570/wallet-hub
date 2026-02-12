@@ -17,11 +17,38 @@ import {
 } from "../config/env";
 import { telemetryService } from "../services/telemetryService";
 
+const SWAP_THEME_PARAMS: Record<string, string> = {
+  displayMode: "integrated",
+  theme: "dark",
+  bgColor: "0B1221",
+  primaryColor: "9B8CFF",
+  secondaryColor: "C7B5FF",
+  textColor: "FFFFFF",
+  borderRadius: "20",
+};
+
+const buildSwapUrl = (rawUrl: string): string => {
+  try {
+    const url = new URL(rawUrl);
+    Object.entries(SWAP_THEME_PARAMS).forEach(([key, value]) => {
+      url.searchParams.set(key, value);
+    });
+    return url.toString();
+  } catch (error) {
+    console.warn("Invalid Jupiter plugin URL", error);
+    return rawUrl;
+  }
+};
+
 const SwapScreen = () => {
   const { activeWallet } = useSolana();
+  const swapUrl = useMemo(
+    () => buildSwapUrl(JUPITER_PLUGIN_URL),
+    [JUPITER_PLUGIN_URL],
+  );
   const [swapLoading, setSwapLoading] = useState(true);
   const [swapError, setSwapError] = useState<string | null>(null);
-  const [currentUrl, setCurrentUrl] = useState(JUPITER_PLUGIN_URL);
+  const [currentUrl, setCurrentUrl] = useState(swapUrl);
   const swapWebViewRef = useRef<WebView>(null);
 
   const normalizedPluginHosts = useMemo(
@@ -80,12 +107,12 @@ const SwapScreen = () => {
   const handleOpenExternal = useCallback(async () => {
     recordTelemetry("swap_open_external");
     try {
-      await Linking.openURL(JUPITER_PLUGIN_URL);
+      await Linking.openURL(currentUrl);
     } catch (error) {
       Alert.alert("Unable to open browser", "Please try again later.");
       console.warn("Open external swap failed", error);
     }
-  }, [recordTelemetry]);
+  }, [currentUrl, recordTelemetry]);
 
   const onLoadStart = useCallback(
     (event: any) => {
@@ -184,7 +211,7 @@ const SwapScreen = () => {
           <>
             <WebView
               ref={swapWebViewRef}
-              source={{ uri: JUPITER_PLUGIN_URL }}
+              source={{ uri: swapUrl }}
               style={styles.webview}
               originWhitelist={["*"]}
               onShouldStartLoadWithRequest={handleShouldLoadPlugin}

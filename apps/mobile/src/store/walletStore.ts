@@ -353,51 +353,11 @@ export const useWalletStore = create<WalletState>()(
       transferBetweenWallets: async (fromAddress, toAddress, amount) => {
         // This is a placeholder implementation
         // In a real app, you would use the wallet adapter to sign and send the transaction
-        // For now, we'll just simulate the transfer
         set({ isLoading: true, error: null });
 
         try {
-          // Simulate network delay
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-
-          // Generate a mock signature
-          const signature = `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-          // Update balances
-          const fromBalance = get().balances[fromAddress] || 0;
-          const toBalance = get().balances[toAddress] || 0;
-
-          const amountInLamports = amount * LAMPORTS_PER_SOL;
-
-          if (fromBalance < amountInLamports) {
-            throw new Error("Insufficient balance");
-          }
-
-          set((state) => ({
-            balances: {
-              ...state.balances,
-              [fromAddress]: fromBalance - amountInLamports,
-              [toAddress]: toBalance + amountInLamports,
-            },
-          }));
-
-          // Add transaction to both wallets
-          const transaction = {
-            id: signature,
-            signature,
-            source: fromAddress,
-            destination: toAddress,
-            amount,
-            status: "success",
-            timestamp: new Date().toISOString(),
-            type: "transfer",
-          };
-
-          get().addTransaction(fromAddress, transaction);
-          get().addTransaction(toAddress, transaction);
-
-          set({ isLoading: false });
-          return signature;
+          // TODO: Implement real cross-wallet transfer using wallet adapter
+          throw new Error("Cross-wallet transfer not implemented yet");
         } catch (error) {
           set({
             error: error instanceof Error ? error.message : "Transfer failed",

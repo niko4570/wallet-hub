@@ -23,6 +23,8 @@ type RawBiometricProof = {
 };
 
 const BASE64_REGEX = /^[A-Za-z0-9+/=]+$/;
+const DEFAULT_MAX_AGE_MS = 5 * 60 * 1000;
+const DEFAULT_MIN_CONFIDENCE = 0.7;
 
 @Injectable()
 export class BiometricVerificationService {
@@ -40,56 +42,72 @@ export class BiometricVerificationService {
       throw new BadRequestException('Biometric proof is too short.');
     }
 
-    let decodedPayload: string | null = null;
-    if (BASE64_REGEX.test(sanitizedProof)) {
-      try {
-        decodedPayload = Buffer.from(sanitizedProof, 'base64').toString('utf8');
-      } catch {
-        decodedPayload = null;
-      }
+    if (!BASE64_REGEX.test(sanitizedProof)) {
+      throw new BadRequestException('Biometric proof must be base64 encoded.');
     }
 
-    const fallbackResult: BiometricVerificationResult = {
-      method: 'unknown',
-      confidence: 0.5,
-      issuedAt: new Date().toISOString(),
-    };
-
-    if (!decodedPayload) {
-      // Accept opaque proofs (e.g., signed JWT) but log minimal metadata.
-      return fallbackResult;
-    }
-
+    let decodedPayload: string;
     try {
-      const parsed = JSON.parse(decodedPayload) as RawBiometricProof;
-      const method =
-        typeof parsed.method === 'string' && parsed.method.length > 0
-          ? parsed.method
-          : fallbackResult.method;
-      const deviceId =
-        typeof parsed.deviceId === 'string' && parsed.deviceId.length > 0
-          ? parsed.deviceId
-          : context.devicePublicKey;
-      const confidence =
-        typeof parsed.confidence === 'number' &&
-        parsed.confidence >= 0 &&
-        parsed.confidence <= 1
-          ? parsed.confidence
-          : 0.85;
-      const issuedAt =
-        typeof parsed.issuedAt === 'string'
-          ? parsed.issuedAt
-          : fallbackResult.issuedAt;
-
-      return {
-        method,
-        deviceId,
-        confidence,
-        issuedAt,
-        rawPayload: parsed,
-      };
+      decodedPayload = Buffer.from(sanitizedProof, 'base64').toString('utf8');
     } catch {
-      return fallbackResult;
+      throw new BadRequestException('Unable to decode biometric proof.');
     }
+
+    let parsed: RawBiometricProof;
+    try {
+      parsed = JSON.parse(decodedPayload) as RawBiometricProof;
+    } catch {
+      throw new BadRequestException('Biometric proof payload is invalid JSON.');
+    }
+
+    const method =
+      typeof parsed.method === 'string' && parsed.method.length > 0
+        ? parsed.method
+        : null;
+    const deviceId =
+      typeof parsed.deviceId === 'string' && parsed.deviceId.length > 0
+        ? parsed.deviceId
+        : context.devicePublicKey;
+    const confidence =
+      typeof parsed.confidence === 'number' &&
+      parsed.confidence >= 0 &&
+      parsed.confidence <= 1
+        ? parsed.confidence
+        : null;
+    const issuedAt =
+      typeof parsed.issuedAt === 'string' ? parsed.issuedAt : null;
+
+    if (!method || confidence === null || !issuedAt) {
+      throw new BadRequestException('Biometric proof is missing fields.');
+    }
+
+    const maxAgeMs = Number(
+      process.env.BIOMETRIC_PROOF_MAX_AGE_MS ?? DEFAULT_MAX_AGE_MS,
+    );
+    const minConfidence = Number(
+      process.env.BIOMETRIC_PROOF_MIN_CONFIDENCE ?? DEFAULT_MIN_CONFIDENCE,
+    );
+
+    const issuedAtMs = Date.parse(issuedAt);
+    if (Number.isNaN(issuedAtMs)) {
+      throw new BadRequestException('Biometric proof issuedAt is invalid.');
+    }
+
+    const ageMs = Date.now() - issuedAtMs;
+    if (ageMs < 0 || ageMs > maxAgeMs) {
+      throw new BadRequestException('Biometric proof has expired.');
+    }
+
+    if (!Number.isFinite(minConfidence) || confidence < minConfidence) {
+      throw new BadRequestException('Biometric confidence too low.');
+    }
+
+    return {
+      method,
+      deviceId,
+      confidence,
+      issuedAt,
+      rawPayload: parsed,
+    };
   }
 }

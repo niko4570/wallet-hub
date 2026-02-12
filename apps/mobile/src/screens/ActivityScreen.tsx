@@ -14,7 +14,7 @@ import { StackNavigationProp } from "@react-navigation/stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { formatAddress, formatSignature, formatAmount } from "../utils/format";
 import { useWalletStore } from "../store/walletStore";
-import { rpcService } from "../services";
+import { rpcService, heliusService } from "../services";
 import { Transaction, AuthorizationEvent as AuthEvent } from "../types";
 import { SkeletonTransaction } from "../components/common/SkeletonLoader";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
@@ -33,6 +33,218 @@ const ActivityScreen = () => {
   const [lastSignature, setLastSignature] = useState<string | undefined>();
   const [hasMore, setHasMore] = useState(true);
 
+  const parseHeliusTransaction = useCallback(
+    (
+      payload: any,
+      signature: string,
+      fallbackBlockTime: number | null,
+      fallbackStatus: string,
+      walletAddress?: string,
+    ): Transaction | null => {
+      try {
+        // 处理 Helius API 返回的数组格式数据
+        const txArray = Array.isArray(payload) ? payload : [];
+        const tx = txArray[0] ?? payload?.data ?? payload;
+        if (!tx) {
+          return null;
+        }
+
+        const blockTime =
+          typeof tx?.timestamp === "number"
+            ? tx.timestamp
+            : typeof tx?.blockTime === "number"
+              ? tx.blockTime
+              : typeof tx?.block_time === "number"
+                ? tx.block_time
+                : fallbackBlockTime;
+
+        const derivedStatus =
+          typeof tx?.status === "string"
+            ? tx.status.toLowerCase() === "success" ||
+              tx.status.toLowerCase() === "confirmed"
+              ? "success"
+              : tx.status.toLowerCase() === "failed"
+                ? "failed"
+                : "pending"
+            : typeof tx?.success === "boolean"
+              ? tx.success
+                ? "success"
+                : "failed"
+              : fallbackStatus === "confirmed"
+                ? "success"
+                : "pending";
+
+        const feeRaw =
+          typeof tx?.fee === "number"
+            ? tx.fee
+            : typeof tx?.feeLamports === "number"
+              ? tx.feeLamports
+              : undefined;
+        const fee =
+          typeof feeRaw === "number"
+            ? feeRaw > 1
+              ? feeRaw / LAMPORTS_PER_SOL
+              : feeRaw
+            : undefined;
+
+        const collectTransfers = (entries: any[] | undefined) =>
+          Array.isArray(entries) ? entries : [];
+
+        const tokenTransfers = collectTransfers(
+          tx?.tokenTransfers ?? tx?.token_transfers,
+        );
+        const solTransfers = collectTransfers(
+          tx?.nativeTransfers ?? tx?.solTransfers ?? tx?.native_transfers,
+        );
+        const allTransfers = [...solTransfers, ...tokenTransfers];
+
+        const pickTransfer = (transfers: any[]) => {
+          if (!walletAddress) {
+            return transfers[0];
+          }
+          return (
+            transfers.find(
+              (transfer) =>
+                transfer?.source === walletAddress ||
+                transfer?.destination === walletAddress ||
+                transfer?.fromUserAccount === walletAddress ||
+                transfer?.toUserAccount === walletAddress ||
+                transfer?.from === walletAddress ||
+                transfer?.to === walletAddress,
+            ) ?? transfers[0]
+          );
+        };
+
+        const selectedTransfer = pickTransfer(allTransfers);
+
+        const readString = (...values: Array<string | undefined>) =>
+          values.find(
+            (value) => typeof value === "string" && value.length > 0,
+          ) || "";
+
+        const readNumber = (value: unknown) => {
+          if (typeof value === "number") return value;
+          if (typeof value === "string" && value.length > 0) {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : undefined;
+          }
+          return undefined;
+        };
+
+        const normalizeTokenAmount = (
+          rawAmount: unknown,
+          decimals?: number,
+        ) => {
+          const numericAmount = readNumber(rawAmount);
+          if (typeof numericAmount !== "number") return 0;
+          if (typeof decimals === "number" && Number.isInteger(numericAmount)) {
+            return numericAmount / Math.pow(10, decimals);
+          }
+          return numericAmount;
+        };
+
+        let source = "";
+        let destination = "";
+        let amount = 0;
+        let amountUnit = "SOL";
+
+        if (selectedTransfer) {
+          source = readString(
+            selectedTransfer.source,
+            selectedTransfer.fromUserAccount,
+            selectedTransfer.from,
+            selectedTransfer.sender,
+          );
+          destination = readString(
+            selectedTransfer.destination,
+            selectedTransfer.toUserAccount,
+            selectedTransfer.to,
+            selectedTransfer.receiver,
+          );
+
+          const lamports = readNumber(
+            selectedTransfer.lamports ??
+              selectedTransfer.lamport ??
+              selectedTransfer.amount,
+          );
+          if (typeof lamports === "number") {
+            amount = lamports / LAMPORTS_PER_SOL;
+            amountUnit = "SOL";
+          } else {
+            const decimals = readNumber(
+              selectedTransfer.decimals ??
+                selectedTransfer.tokenDecimals ??
+                selectedTransfer?.token?.decimals ??
+                selectedTransfer?.tokenAmount?.decimals,
+            );
+            amount = normalizeTokenAmount(
+              selectedTransfer.amount ??
+                selectedTransfer.value ??
+                selectedTransfer.uiAmount ??
+                selectedTransfer?.tokenAmount?.amount ??
+                selectedTransfer?.tokenAmount,
+              typeof decimals === "number" ? decimals : undefined,
+            );
+            amountUnit =
+              readString(
+                selectedTransfer.symbol,
+                selectedTransfer.tokenSymbol,
+                selectedTransfer?.token?.symbol,
+              ) || "TOKEN";
+          }
+        }
+
+        // 尝试从多个字段获取 source 和 destination
+        if (!source || !destination) {
+          source = readString(
+            tx?.source,
+            tx?.from,
+            tx?.signer,
+            tx?.transaction?.message?.accountKeys?.[0],
+          );
+          destination = readString(
+            tx?.destination,
+            tx?.to,
+            tx?.receiver,
+            tx?.transaction?.message?.accountKeys?.[1],
+          );
+        }
+
+        // 如果仍然找不到，使用一个默认值而不是返回 null
+        if (!source) {
+          source = "Unknown";
+        }
+        if (!destination) {
+          destination = "Unknown";
+        }
+
+        const slot = typeof tx?.slot === "number" ? tx.slot : undefined;
+        const memo = typeof tx?.memo === "string" ? tx.memo : undefined;
+
+        return {
+          id: signature,
+          signature,
+          source,
+          destination,
+          amount,
+          amountUnit,
+          status: derivedStatus,
+          timestamp: new Date(
+            blockTime ? blockTime * 1000 : Date.now(),
+          ).toISOString(),
+          type: "transfer",
+          fee,
+          slot,
+          memo,
+        };
+      } catch (error) {
+        console.warn(`Failed to parse Helius transaction ${signature}:`, error);
+        return null;
+      }
+    },
+    [],
+  );
+
   // Calculate transaction amount and determine direction
   const parseTransaction = useCallback(
     (
@@ -40,12 +252,11 @@ const ActivityScreen = () => {
       signature: string,
       blockTime: number | null,
       status: string,
-      walletAddress: string,
-    ) => {
+    ): Transaction | null => {
       try {
         if (!tx?.transaction?.message) return null;
 
-        const { transaction } = tx;
+        const { transaction, meta, slot } = tx;
         const message = transaction.message;
         const instructions = message?.instructions;
 
@@ -53,105 +264,85 @@ const ActivityScreen = () => {
           return null;
         }
 
-        const accountKeys = Array.isArray(message?.accountKeys)
-          ? message.accountKeys
-          : undefined;
-
-        const resolveAccountKey = (index?: number) => {
-          if (typeof index !== "number") return undefined;
-          if (accountKeys?.[index]) return accountKeys[index];
-          if (typeof message?.getAccountKeys === "function") {
-            const keys = message.getAccountKeys();
-            if (typeof keys?.get === "function") {
-              return keys.get(index);
-            }
-
-            if (Array.isArray(keys?.staticAccountKeys)) {
-              const lookupKeys = Array.isArray(keys?.accountKeysFromLookups)
-                ? keys.accountKeysFromLookups
-                : Array.isArray(keys?.accountKeysFromLookups?.writable)
-                  ? [
-                      ...keys.accountKeysFromLookups.writable,
-                      ...keys.accountKeysFromLookups.readonly,
-                    ]
-                  : [];
-
-              return [...keys.staticAccountKeys, ...lookupKeys][index];
-            }
+        const parsedInstruction = instructions.find((instruction: any) => {
+          const parsed = instruction?.parsed;
+          if (!parsed?.info) {
+            return false;
           }
-
-          return undefined;
-        };
-
-        // Look for transfer instructions
-        for (const instruction of instructions) {
-          const programId =
-            typeof instruction?.programId?.toBase58 === "function"
-              ? instruction.programId
-              : resolveAccountKey(instruction?.programIdIndex);
-          const programIdBase58 =
-            typeof programId?.toBase58 === "function"
-              ? programId.toBase58()
-              : undefined;
-
-          if (programIdBase58 === "11111111111111111111111111111111") {
-            // System program transfer
-            const data = instruction?.data;
-            if (typeof data === "string" && data.length >= 8) {
-              const lamports = parseInt(data.slice(0, 8), 16);
-              const amount = lamports / LAMPORTS_PER_SOL;
-
-              let source: string | undefined;
-              let destination: string | undefined;
-
-              if (
-                Array.isArray(instruction?.keys) &&
-                instruction.keys.length >= 2
-              ) {
-                source =
-                  typeof instruction.keys[0]?.pubkey?.toBase58 === "function"
-                    ? instruction.keys[0].pubkey.toBase58()
-                    : undefined;
-                destination =
-                  typeof instruction.keys[1]?.pubkey?.toBase58 === "function"
-                    ? instruction.keys[1].pubkey.toBase58()
-                    : undefined;
-              } else if (Array.isArray(instruction?.accounts)) {
-                const sourceKey = resolveAccountKey(instruction.accounts[0]);
-                const destinationKey = resolveAccountKey(
-                  instruction.accounts[1],
-                );
-                source =
-                  typeof sourceKey?.toBase58 === "function"
-                    ? sourceKey.toBase58()
-                    : undefined;
-                destination =
-                  typeof destinationKey?.toBase58 === "function"
-                    ? destinationKey.toBase58()
-                    : undefined;
-              }
-
-              if (!source || !destination) {
-                continue;
-              }
-
-              return {
-                id: signature,
-                signature,
-                source,
-                destination,
-                amount,
-                status: status === "confirmed" ? "success" : "pending",
-                timestamp: new Date(
-                  blockTime ? blockTime * 1000 : Date.now(),
-                ).toISOString(),
-                type: "transfer",
-              };
-            }
+          const program = instruction?.program;
+          const type = parsed?.type;
+          if (program === "system" && type === "transfer") {
+            return true;
           }
+          if (
+            program === "spl-token" &&
+            (type === "transfer" || type === "transferChecked")
+          ) {
+            return true;
+          }
+          return false;
+        });
+
+        if (!parsedInstruction?.parsed?.info) {
+          return null;
         }
 
-        return null;
+        const info = parsedInstruction.parsed.info;
+        const program = parsedInstruction.program;
+        const source =
+          info.source || info.authority || info.owner || info.from || "";
+        const destination =
+          info.destination ||
+          info.newAccount ||
+          info.recipient ||
+          info.to ||
+          "";
+
+        if (!source || !destination) {
+          return null;
+        }
+
+        let amount = 0;
+        let amountUnit = "SOL";
+
+        if (program === "system") {
+          const lamports = Number(info.lamports ?? info.amount ?? 0);
+          amount = lamports / LAMPORTS_PER_SOL;
+        } else if (program === "spl-token") {
+          const uiAmount = info.tokenAmount?.uiAmount;
+          const uiAmountString = info.tokenAmount?.uiAmountString;
+          amount =
+            typeof uiAmount === "number"
+              ? uiAmount
+              : Number(uiAmountString ?? info.amount ?? 0);
+          amountUnit = "TOKEN";
+        }
+
+        const derivedStatus = meta?.err
+          ? "failed"
+          : status === "confirmed"
+            ? "success"
+            : "pending";
+        const fee =
+          typeof meta?.fee === "number"
+            ? meta.fee / LAMPORTS_PER_SOL
+            : undefined;
+
+        return {
+          id: signature,
+          signature,
+          source,
+          destination,
+          amount,
+          amountUnit,
+          status: derivedStatus,
+          timestamp: new Date(
+            blockTime ? blockTime * 1000 : Date.now(),
+          ).toISOString(),
+          type: "transfer",
+          fee,
+          slot: typeof slot === "number" ? slot : undefined,
+        };
       } catch (error) {
         console.warn(`Failed to parse transaction ${signature}:`, error);
         return null;
@@ -162,7 +353,7 @@ const ActivityScreen = () => {
 
   // Fetch transactions for active wallet
   const fetchTransactions = useCallback(
-    async (isLoadMore = false) => {
+    async (isLoadMore = false, currentLastSignature?: string) => {
       if (!activeWallet) {
         setTransactions([]);
         return;
@@ -173,38 +364,60 @@ const ActivityScreen = () => {
         const signatures = await rpcService.getSignaturesForAddress(
           activeWallet.address,
           limit,
-          isLoadMore ? lastSignature : undefined,
+          isLoadMore ? currentLastSignature : undefined,
         );
 
         if (signatures.length === 0) {
+          if (!isLoadMore) {
+            setTransactions([]);
+          }
           setHasMore(false);
           return;
         }
 
-        const transactionPromises = signatures.map(async (sig) => {
-          try {
-            const tx = await rpcService.getTransaction(sig.signature);
-            return parseTransaction(
-              tx,
-              sig.signature,
-              sig.blockTime,
-              sig.status,
-              activeWallet.address,
-            );
-          } catch (error) {
-            console.warn(
-              `Failed to fetch transaction ${sig.signature}:`,
-              error,
-            );
-            return null;
-          }
-        });
+        const transactionPromises: Array<Promise<Transaction | null>> =
+          signatures.map(async (sig) => {
+            try {
+              const heliusPayload = await heliusService.getTransaction(
+                sig.signature,
+              );
+              const parsed = parseHeliusTransaction(
+                heliusPayload,
+                sig.signature,
+                sig.blockTime,
+                sig.status,
+                activeWallet.address,
+              );
+              if (parsed) {
+                return parsed;
+              }
+            } catch (error) {
+              console.warn(`Helius fetch failed for ${sig.signature}:`, error);
+            }
+
+            try {
+              const tx = await rpcService.getTransaction(sig.signature);
+              return parseTransaction(
+                tx,
+                sig.signature,
+                sig.blockTime,
+                sig.status,
+              );
+            } catch (error) {
+              console.warn(
+                `Failed to fetch transaction ${sig.signature}:`,
+                error,
+              );
+              return null;
+            }
+          });
 
         const results = await Promise.all(transactionPromises);
         const validTransactions = results.filter(
           (tx): tx is Transaction => tx !== null,
         );
 
+        // 批量更新状态，减少重渲染
         if (isLoadMore) {
           setTransactions((prev) => [...prev, ...validTransactions]);
         } else {
@@ -223,13 +436,11 @@ const ActivityScreen = () => {
         }
       }
     },
-    [activeWallet, lastSignature, parseTransaction],
+    [activeWallet, parseHeliusTransaction, parseTransaction],
   );
 
   // Fetch authorizations
   const fetchAuthorizations = useCallback(async () => {
-    // For now, we'll use mock data for authorizations
-    // In a real app, you would fetch this from your backend
     setAuthorizations([]);
   }, []);
 
@@ -237,11 +448,12 @@ const ActivityScreen = () => {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      setLastSignature(undefined);
-      setHasMore(true);
       try {
         if (activeTab === "transactions") {
-          await fetchTransactions();
+          // 重置状态
+          setLastSignature(undefined);
+          setHasMore(true);
+          await fetchTransactions(false);
         } else {
           await fetchAuthorizations();
         }
@@ -251,15 +463,16 @@ const ActivityScreen = () => {
     };
 
     loadData();
-  }, [activeWallet, activeTab, fetchTransactions, fetchAuthorizations]);
+  }, [activeWallet, activeTab]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    setLastSignature(undefined);
-    setHasMore(true);
     try {
       if (activeTab === "transactions") {
-        await fetchTransactions();
+        // 重置状态
+        setLastSignature(undefined);
+        setHasMore(true);
+        await fetchTransactions(false);
       } else {
         await fetchAuthorizations();
       }
@@ -268,18 +481,18 @@ const ActivityScreen = () => {
     } finally {
       setRefreshing(false);
     }
-  }, [activeTab, fetchTransactions, fetchAuthorizations]);
+  }, [activeTab]);
 
   const loadMore = useCallback(async () => {
     if (!loadingMore && hasMore && activeTab === "transactions") {
       setLoadingMore(true);
       try {
-        await fetchTransactions(true);
+        await fetchTransactions(true, lastSignature);
       } finally {
         setLoadingMore(false);
       }
     }
-  }, [loadingMore, hasMore, activeTab, fetchTransactions]);
+  }, [loadingMore, hasMore, activeTab, lastSignature]);
 
   const handleTransactionDetail = (signature: string) => {
     navigation.navigate("TransactionDetail", { signature });
@@ -291,6 +504,7 @@ const ActivityScreen = () => {
 
   const renderTransaction = ({ item }: ListRenderItemInfo<Transaction>) => {
     const isOutbound = item.source === activeWallet?.address;
+    const amountUnit = item.amountUnit ?? "SOL";
 
     return (
       <TouchableOpacity
@@ -306,7 +520,9 @@ const ActivityScreen = () => {
               styles.transactionStatus,
               item.status === "success"
                 ? styles.transactionStatusSuccess
-                : styles.transactionStatusPending,
+                : item.status === "failed"
+                  ? styles.transactionStatusFailed
+                  : styles.transactionStatusPending,
             ]}
           >
             <Text
@@ -314,7 +530,9 @@ const ActivityScreen = () => {
                 styles.transactionStatusText,
                 item.status === "success"
                   ? styles.transactionStatusTextSuccess
-                  : styles.transactionStatusTextPending,
+                  : item.status === "failed"
+                    ? styles.transactionStatusTextFailed
+                    : styles.transactionStatusTextPending,
               ]}
             >
               {item.status}
@@ -329,15 +547,36 @@ const ActivityScreen = () => {
             ]}
           >
             {isOutbound
-              ? `- ${formatAmount(item.amount)} SOL`
-              : `+ ${formatAmount(item.amount)} SOL`}
-          </Text>
-          <Text style={styles.transactionAddress}>
-            {isOutbound
-              ? `To: ${formatAddress(item.destination)}`
-              : `From: ${formatAddress(item.source)}`}
+              ? `- ${formatAmount(item.amount)} ${amountUnit}`
+              : `+ ${formatAmount(item.amount)} ${amountUnit}`}
           </Text>
         </View>
+        <View style={styles.transactionMetaBlock}>
+          <Text style={styles.transactionMetaLabel}>From</Text>
+          <Text style={styles.transactionMetaValue}>{item.source}</Text>
+        </View>
+        <View style={styles.transactionMetaBlock}>
+          <Text style={styles.transactionMetaLabel}>To</Text>
+          <Text style={styles.transactionMetaValue}>{item.destination}</Text>
+        </View>
+        <View style={styles.transactionMetaBlock}>
+          <Text style={styles.transactionMetaLabel}>Signature</Text>
+          <Text style={styles.transactionMetaValue}>{item.signature}</Text>
+        </View>
+        {(typeof item.fee === "number" || typeof item.slot === "number") && (
+          <View style={styles.transactionMetaRow}>
+            {typeof item.fee === "number" && (
+              <Text style={styles.transactionMetaInline}>
+                Fee: {formatAmount(item.fee)} SOL
+              </Text>
+            )}
+            {typeof item.slot === "number" && (
+              <Text style={styles.transactionMetaInline}>
+                Slot: {item.slot}
+              </Text>
+            )}
+          </View>
+        )}
         <Text style={styles.transactionTimestamp}>
           {new Date(item.timestamp).toLocaleString()}
         </Text>
@@ -579,6 +818,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255, 204, 0, 0.4)",
   },
+  transactionStatusFailed: {
+    backgroundColor: "rgba(255, 77, 77, 0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 77, 77, 0.4)",
+  },
   transactionStatusText: {
     fontSize: 11,
     fontWeight: "700",
@@ -589,6 +833,9 @@ const styles = StyleSheet.create({
   },
   transactionStatusTextPending: {
     color: "#FFCC00",
+  },
+  transactionStatusTextFailed: {
+    color: "#FF4D4D",
   },
   transactionInfo: {
     marginBottom: 8,
@@ -602,7 +849,25 @@ const styles = StyleSheet.create({
   transactionAmountOutbound: {
     color: "#FF4D4D",
   },
-  transactionAddress: {
+  transactionMetaBlock: {
+    marginBottom: 8,
+  },
+  transactionMetaLabel: {
+    color: "rgba(255, 255, 255, 0.6)",
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  transactionMetaValue: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  transactionMetaRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  transactionMetaInline: {
     color: "rgba(255, 255, 255, 0.6)",
     fontSize: 12,
   },

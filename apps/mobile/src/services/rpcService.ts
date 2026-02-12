@@ -138,7 +138,7 @@ class RpcService {
 
     try {
       const transaction = await this.retry(async () => {
-        return await this.connection.getTransaction(signature, {
+        return await this.connection.getParsedTransaction(signature, {
           commitment: "confirmed",
           maxSupportedTransactionVersion: 0,
         });

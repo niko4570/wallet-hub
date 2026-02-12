@@ -1,14 +1,15 @@
 // Import existing services
-import { priceService } from './priceService';
-import { telemetryService } from './telemetryService';
-import { authorizationApi } from './authorizationService';
-import { iconService } from './iconService';
-import { walletService } from './walletService';
+import { priceService } from "./priceService";
+import { telemetryService } from "./telemetryService";
+import { authorizationApi } from "./authorizationService";
+import { iconService } from "./iconService";
+import { walletService } from "./walletService";
+import { heliusService } from "./heliusService";
 
 // Import new services
-import { walletAdapterService } from './walletAdapterService';
-import { rpcService } from './rpcService';
-import { SecureStorageService } from './secureStorageService';
+import { walletAdapterService } from "./walletAdapterService";
+import { rpcService } from "./rpcService";
+import { SecureStorageService } from "./secureStorageService";
 
 // Service registry interface
 interface ServiceRegistry {
@@ -19,6 +20,7 @@ interface ServiceRegistry {
   wallet: typeof walletService;
   walletAdapter: typeof walletAdapterService;
   rpc: typeof rpcService;
+  helius: typeof heliusService;
   secureStorage: typeof SecureStorageService;
 }
 
@@ -31,13 +33,22 @@ export const services: ServiceRegistry = {
   wallet: walletService,
   walletAdapter: walletAdapterService,
   rpc: rpcService,
+  helius: heliusService,
   secureStorage: SecureStorageService,
 };
 
 // Export services individually for convenience
-export { priceService, telemetryService, authorizationApi, iconService, walletService, walletAdapterService, rpcService, SecureStorageService };
+export {
+  priceService,
+  telemetryService,
+  authorizationApi,
+  iconService,
+  walletService,
+  walletAdapterService,
+  rpcService,
+  heliusService,
+  SecureStorageService,
+};
 
 // Export service types
-export type {
-  ServiceRegistry
-};
+export type { ServiceRegistry };

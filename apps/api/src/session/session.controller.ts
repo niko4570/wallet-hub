@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { IssueSessionKeyDto } from './dto/issue-session-key.dto';
 import { RevokeSessionKeyDto } from './dto/revoke-session-key.dto';
@@ -14,8 +15,10 @@ import { RecordSilentReauthorizationDto } from './dto/record-silent-reauthorizat
 import { SilentReauthorizationService } from './silent-reauthorization.service';
 import { RecordTransactionAuditDto } from './dto/record-transaction-audit.dto';
 import { TransactionAuditService } from './transaction-audit.service';
+import { SessionSecurityGuard } from '../security/session-security.guard';
 
 @Controller('session')
+@UseGuards(SessionSecurityGuard)
 export class SessionController {
   constructor(
     private readonly sessionService: SessionService,

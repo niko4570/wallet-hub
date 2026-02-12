@@ -1,6 +1,8 @@
+import type { LinkedWallet } from "./wallet";
+
 // Export all types from existing files
-export * from './wallet';
-export * from './icon';
+export * from "./wallet";
+export * from "./icon";
 
 // Transaction related types
 export interface Transaction {
@@ -9,10 +11,12 @@ export interface Transaction {
   source: string;
   destination: string;
   amount: number;
-  status: 'success' | 'pending' | 'failed';
+  amountUnit?: string;
+  status: "success" | "pending" | "failed";
   timestamp: string;
-  type: 'transfer' | 'swap' | 'nft' | 'program';
+  type: "transfer" | "swap" | "nft" | "program";
   fee?: number;
+  slot?: number;
   memo?: string;
 }
 
@@ -21,7 +25,7 @@ export interface AuthorizationEvent {
   walletAddress: string;
   walletName?: string;
   method: string;
-  status: 'fresh' | 'stale';
+  status: "fresh" | "stale";
   timestamp: string;
 }
 
@@ -48,6 +52,7 @@ export interface ServiceRegistry {
   wallet: any;
   walletAdapter: any;
   rpc: any;
+  helius: any;
 }
 
 // Store related types
@@ -58,7 +63,7 @@ export interface WalletStoreState {
   balances: Record<string, number>;
   isLoading: boolean;
   error: string | null;
-  
+
   // Actions
   setLinkedWallets: (wallets: LinkedWallet[]) => void;
   setActiveWallet: (wallet: LinkedWallet | null) => void;
@@ -80,7 +85,7 @@ export interface LoadingState {
 
 export interface ToastMessage {
   id: string;
-  type: 'success' | 'error' | 'info';
+  type: "success" | "error" | "info";
   message: string;
   duration?: number;
 }
