@@ -34,6 +34,8 @@ const aliasMap = {
     "hashes",
     "crypto.js",
   ),
+  // Add alias for Node.js core modules
+  url: require.resolve("whatwg-url"),
 };
 
 const previousResolveRequest = config.resolver.resolveRequest;
@@ -57,9 +59,13 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   return metroResolver.resolve(context, moduleName, platform);
 };
 
-// Force Metro to resolve modules from a single location to avoid duplicate instances.
+// Ensure Metro can watch and resolve hoisted dependencies from the workspace root.
+config.watchFolders = [workspaceRoot];
+
+// Resolve modules from both the app and workspace root.
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, "node_modules"),
+  path.resolve(workspaceRoot, "node_modules"),
 ];
 config.resolver.extraNodeModules = {
   ...config.resolver.extraNodeModules,
@@ -69,6 +75,7 @@ config.resolver.extraNodeModules = {
     "@react-native",
     "virtualized-lists",
   ),
+  url: require.resolve("whatwg-url"),
 };
 
 module.exports = config;
