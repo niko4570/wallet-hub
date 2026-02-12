@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, StyleSheet, Animated, Easing } from 'react-native';
+import React from "react";
+import { View, StyleSheet, Animated, Easing } from "react-native";
 
 interface SkeletonLoaderProps {
   width?: number | string;
@@ -9,7 +9,7 @@ interface SkeletonLoaderProps {
 }
 
 const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({
-  width = '100%',
+  width = "100%",
   height = 20,
   borderRadius = 4,
   style,
@@ -31,7 +31,7 @@ const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
-      ])
+      ]),
     );
 
     animation.start();
@@ -71,7 +71,11 @@ export const SkeletonCard: React.FC<SkeletonCardProps> = ({ style }) => (
     <View style={styles.cardContent}>
       <SkeletonLoader height={14} borderRadius={4} style={styles.line} />
       <SkeletonLoader height={14} borderRadius={4} style={styles.line} />
-      <SkeletonLoader height={14} borderRadius={4} style={[styles.line, styles.shortLine]} />
+      <SkeletonLoader
+        height={14}
+        borderRadius={4}
+        style={[styles.line, styles.shortLine]}
+      />
     </View>
   </View>
 );
@@ -80,7 +84,9 @@ interface SkeletonTransactionProps {
   style?: object;
 }
 
-export const SkeletonTransaction: React.FC<SkeletonTransactionProps> = ({ style }) => (
+export const SkeletonTransaction: React.FC<SkeletonTransactionProps> = ({
+  style,
+}) => (
   <View style={[styles.transaction, style]}>
     <View style={styles.transactionHeader}>
       <SkeletonLoader width={180} height={14} borderRadius={4} />
@@ -88,9 +94,19 @@ export const SkeletonTransaction: React.FC<SkeletonTransactionProps> = ({ style 
     </View>
     <View style={styles.transactionInfo}>
       <SkeletonLoader width={120} height={16} borderRadius={4} />
-      <SkeletonLoader width={200} height={12} borderRadius={4} style={styles.line} />
+      <SkeletonLoader
+        width={200}
+        height={12}
+        borderRadius={4}
+        style={styles.line}
+      />
     </View>
-    <SkeletonLoader width={100} height={11} borderRadius={4} style={styles.timestamp} />
+    <SkeletonLoader
+      width={100}
+      height={11}
+      borderRadius={4}
+      style={styles.timestamp}
+    />
   </View>
 );
 
@@ -105,20 +121,30 @@ export const SkeletonWallet: React.FC<SkeletonWalletProps> = ({ style }) => (
     </View>
     <View style={styles.walletInfo}>
       <SkeletonLoader width={150} height={16} borderRadius={4} />
-      <SkeletonLoader width={200} height={12} borderRadius={4} style={styles.line} />
-      <SkeletonLoader width={100} height={14} borderRadius={4} style={styles.line} />
+      <SkeletonLoader
+        width={200}
+        height={12}
+        borderRadius={4}
+        style={styles.line}
+      />
+      <SkeletonLoader
+        width={100}
+        height={14}
+        borderRadius={4}
+        style={styles.line}
+      />
     </View>
   </View>
 );
 
 const styles = StyleSheet.create({
   skeleton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
   },
   card: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 20,
     padding: 16,
     marginBottom: 12,
@@ -133,20 +159,20 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   shortLine: {
-    width: '60%',
+    width: "60%",
   },
   transaction: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 20,
     padding: 16,
     marginBottom: 12,
   },
   transactionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 8,
   },
   transactionInfo: {
@@ -156,8 +182,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   wallet: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 12,
     marginBottom: 8,
   },

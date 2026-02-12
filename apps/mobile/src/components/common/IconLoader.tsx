@@ -5,27 +5,44 @@ import { iconService } from "../../services/iconService";
 
 interface IconLoaderProps {
   walletId: string;
+  walletIcon?: string; // Wallet's own icon (from authorization result)
   size?: number;
   style?: object;
 }
 
 export const IconLoader: React.FC<IconLoaderProps> = memo(
-  ({ walletId, size = 40, style }) => {
+  ({ walletId, walletIcon, size = 40, style }) => {
     const [iconUrl, setIconUrl] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<Error | null>(null);
 
     useEffect(() => {
       loadIcon();
-    }, [walletId]);
+    }, [walletId, walletIcon]);
 
     const loadIcon = async () => {
       setIsLoading(true);
       setError(null);
 
       try {
-        const icon = await iconService.getWalletIcon(walletId);
-        setIconUrl(icon);
+        // Log icon loading process
+        console.log("IconLoader loading for walletId:", walletId);
+        console.log("Wallet icon provided:", !!walletIcon);
+        if (walletIcon) {
+          console.log("Wallet icon type:", typeof walletIcon);
+          console.log(
+            "Wallet icon starts with data:",
+            walletIcon.startsWith("data:"),
+          );
+          console.log("Wallet icon length:", walletIcon.length);
+          setIconUrl(walletIcon);
+        } else {
+          console.log("Falling back to icon service for:", walletId);
+          // Fall back to icon service
+          const icon = await iconService.getWalletIcon(walletId);
+          console.log("Icon service returned:", icon);
+          setIconUrl(icon);
+        }
       } catch (err) {
         console.warn(`Error loading icon for ${walletId}:`, err);
         setError(err as Error);
@@ -59,8 +76,13 @@ export const IconLoader: React.FC<IconLoaderProps> = memo(
       );
     }
 
-    // Check if it's an emoji (fallback) or a URL
-    if (iconUrl.length < 10 || !iconUrl.startsWith("http")) {
+    // Check if it's an emoji (fallback)
+    if (
+      iconUrl.length < 10 &&
+      !iconUrl.startsWith("http") &&
+      !iconUrl.startsWith("data:") &&
+      !iconUrl.startsWith("local:")
+    ) {
       // It's likely an emoji
       return (
         <View style={[styles.container, { width: size, height: size }, style]}>
@@ -69,7 +91,48 @@ export const IconLoader: React.FC<IconLoaderProps> = memo(
       );
     }
 
-    // It's a URL; handle SVG separately since React Native Image can't render it
+    // Check if it's a local icon
+    if (iconUrl.startsWith("local:")) {
+      const localWalletId = iconUrl.replace("local:", "");
+      try {
+        // For local SVG icons, we need to use a different approach
+        // Since we can't directly use SvgUri with local resources in React Native
+        // We'll use the Image component as a fallback
+        const localIcon = require(
+          `../../assets/icons/wallets/${localWalletId}.svg`,
+        );
+        return (
+          <View
+            style={[styles.container, { width: size, height: size }, style]}
+          >
+            <Image
+              source={localIcon}
+              style={{
+                width: "100%",
+                height: "100%",
+                resizeMode: "contain",
+              }}
+              onError={() => {
+                console.error("Failed to load local icon:", localWalletId);
+                setError(new Error("Failed to load local icon"));
+                setIconUrl(null);
+              }}
+            />
+          </View>
+        );
+      } catch (error) {
+        console.error("Error loading local icon:", error);
+        return (
+          <View
+            style={[styles.container, { width: size, height: size }, style]}
+          >
+            <Text style={{ fontSize: size * 0.6 }}>{getFallbackIcon()}</Text>
+          </View>
+        );
+      }
+    }
+
+    // It's a URL or data URI; handle SVG separately since React Native Image can't render it
     const isSvg = iconUrl.toLowerCase().endsWith(".svg");
 
     if (isSvg) {
@@ -80,6 +143,7 @@ export const IconLoader: React.FC<IconLoaderProps> = memo(
             width={size}
             height={size}
             onError={() => {
+              console.error("Failed to load SVG icon:", iconUrl);
               setError(new Error("Failed to load svg"));
               setIconUrl(null);
             }}
@@ -88,7 +152,7 @@ export const IconLoader: React.FC<IconLoaderProps> = memo(
       );
     }
 
-    // Render bitmap formats
+    // Render bitmap formats or data URIs
     return (
       <View style={[styles.container, { width: size, height: size }, style]}>
         <Image
@@ -99,6 +163,7 @@ export const IconLoader: React.FC<IconLoaderProps> = memo(
             resizeMode: "contain",
           }}
           onError={() => {
+            console.error("Failed to load image icon:", iconUrl);
             setError(new Error("Failed to load image"));
             setIconUrl(null);
           }}

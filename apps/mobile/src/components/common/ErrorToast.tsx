@@ -1,17 +1,17 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import React, { useEffect, useRef } from "react";
+import { View, Text, StyleSheet, Animated, Dimensions } from "react-native";
+import { Feather } from "@expo/vector-icons";
 
 interface ErrorToastProps {
   message: string;
-  type?: 'error' | 'success' | 'warning' | 'info';
+  type?: "error" | "success" | "warning" | "info";
   duration?: number;
   onClose?: () => void;
 }
 
 const ErrorToast: React.FC<ErrorToastProps> = ({
   message,
-  type = 'error',
+  type = "error",
   duration = 3000,
   onClose,
 }) => {
@@ -41,53 +41,53 @@ const ErrorToast: React.FC<ErrorToastProps> = ({
 
   const getIconName = () => {
     switch (type) {
-      case 'success':
-        return 'check-circle';
-      case 'warning':
-        return 'alert-triangle';
-      case 'info':
-        return 'info';
+      case "success":
+        return "check-circle";
+      case "warning":
+        return "alert-triangle";
+      case "info":
+        return "info";
       default:
-        return 'alert-circle';
+        return "alert-circle";
     }
   };
 
   const getBackgroundColor = () => {
     switch (type) {
-      case 'success':
-        return 'rgba(0, 255, 179, 0.2)';
-      case 'warning':
-        return 'rgba(255, 204, 0, 0.2)';
-      case 'info':
-        return 'rgba(127, 86, 217, 0.2)';
+      case "success":
+        return "rgba(0, 255, 179, 0.2)";
+      case "warning":
+        return "rgba(255, 204, 0, 0.2)";
+      case "info":
+        return "rgba(127, 86, 217, 0.2)";
       default:
-        return 'rgba(255, 77, 77, 0.2)';
+        return "rgba(255, 77, 77, 0.2)";
     }
   };
 
   const getBorderColor = () => {
     switch (type) {
-      case 'success':
-        return 'rgba(0, 255, 179, 0.4)';
-      case 'warning':
-        return 'rgba(255, 204, 0, 0.4)';
-      case 'info':
-        return 'rgba(127, 86, 217, 0.4)';
+      case "success":
+        return "rgba(0, 255, 179, 0.4)";
+      case "warning":
+        return "rgba(255, 204, 0, 0.4)";
+      case "info":
+        return "rgba(127, 86, 217, 0.4)";
       default:
-        return 'rgba(255, 77, 77, 0.4)';
+        return "rgba(255, 77, 77, 0.4)";
     }
   };
 
   const getTextColor = () => {
     switch (type) {
-      case 'success':
-        return '#00FFB3';
-      case 'warning':
-        return '#FFCC00';
-      case 'info':
-        return '#7F56D9';
+      case "success":
+        return "#00FFB3";
+      case "warning":
+        return "#FFCC00";
+      case "info":
+        return "#7F56D9";
       default:
-        return '#FF4D4D';
+        return "#FF4D4D";
     }
   };
 
@@ -103,9 +103,7 @@ const ErrorToast: React.FC<ErrorToastProps> = ({
       ]}
     >
       <Feather name={getIconName()} size={20} color={getTextColor()} />
-      <Text style={[styles.message, { color: getTextColor() }]}>
-        {message}
-      </Text>
+      <Text style={[styles.message, { color: getTextColor() }]}>{message}</Text>
     </Animated.View>
   );
 };
@@ -113,7 +111,7 @@ const ErrorToast: React.FC<ErrorToastProps> = ({
 // Toast manager for global usage
 interface ToastOptions {
   message: string;
-  type?: 'error' | 'success' | 'warning' | 'info';
+  type?: "error" | "success" | "warning" | "info";
   duration?: number;
 }
 
@@ -155,7 +153,7 @@ class ToastManager {
   private displayToast(options: ToastOptions) {
     // Create toast element and add to DOM
     // In a real app, you would use a global state or context to manage toasts
-    console.log('Show toast:', options);
+    console.log("Show toast:", options);
 
     // Simulate toast display duration
     setTimeout(() => {
@@ -168,12 +166,12 @@ export const toast = ToastManager.getInstance();
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
+    position: "absolute",
     top: 50,
     left: 20,
     right: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
@@ -183,7 +181,7 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     flex: 1,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });
 

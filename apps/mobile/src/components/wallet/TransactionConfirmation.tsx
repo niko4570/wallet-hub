@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   View,
   Text,
@@ -7,9 +7,9 @@ import {
   ScrollView,
   StyleSheet,
   Platform,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 
 interface TransactionConfirmationProps {
   visible: boolean;
@@ -27,16 +27,12 @@ interface TransactionConfirmationProps {
   isLoading?: boolean;
 }
 
-export const TransactionConfirmation: React.FC<TransactionConfirmationProps> = ({
-  visible,
-  onCancel,
-  onConfirm,
-  transaction,
-  isLoading = false,
-}) => {
+export const TransactionConfirmation: React.FC<
+  TransactionConfirmationProps
+> = ({ visible, onCancel, onConfirm, transaction, isLoading = false }) => {
   const handleConfirm = () => {
     // Trigger haptic feedback for confirmation
-    if (Platform.OS !== 'web') {
+    if (Platform.OS !== "web") {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
     onConfirm();
@@ -44,7 +40,7 @@ export const TransactionConfirmation: React.FC<TransactionConfirmationProps> = (
 
   const handleCancel = () => {
     // Trigger haptic feedback for cancellation
-    if (Platform.OS !== 'web') {
+    if (Platform.OS !== "web") {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     }
     onCancel();
@@ -64,7 +60,7 @@ export const TransactionConfirmation: React.FC<TransactionConfirmationProps> = (
       <View style={styles.overlay}>
         <View style={styles.container}>
           <LinearGradient
-            colors={['#1E3A8A', '#3B82F6']}
+            colors={["#1E3A8A", "#3B82F6"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.header}
@@ -72,10 +68,13 @@ export const TransactionConfirmation: React.FC<TransactionConfirmationProps> = (
             <Text style={styles.headerTitle}>Confirm Transaction</Text>
           </LinearGradient>
 
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={styles.content}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Transaction Details</Text>
-              
+
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>Type</Text>
                 <Text style={styles.detailValue}>{transaction.type}</Text>
@@ -84,24 +83,30 @@ export const TransactionConfirmation: React.FC<TransactionConfirmationProps> = (
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>Amount</Text>
                 <Text style={styles.detailValue}>
-                  {transaction.amount.toFixed(6)} {transaction.token || 'SOL'}
+                  {transaction.amount.toFixed(6)} {transaction.token || "SOL"}
                 </Text>
               </View>
 
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>From</Text>
-                <Text style={styles.detailValue}>{formatAddress(transaction.fromAddress)}</Text>
+                <Text style={styles.detailValue}>
+                  {formatAddress(transaction.fromAddress)}
+                </Text>
               </View>
 
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>To</Text>
-                <Text style={styles.detailValue}>{formatAddress(transaction.toAddress)}</Text>
+                <Text style={styles.detailValue}>
+                  {formatAddress(transaction.toAddress)}
+                </Text>
               </View>
 
               {transaction.fee && (
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Network Fee</Text>
-                  <Text style={styles.detailValue}>{transaction.fee.toFixed(6)} SOL</Text>
+                  <Text style={styles.detailValue}>
+                    {transaction.fee.toFixed(6)} SOL
+                  </Text>
                 </View>
               )}
 
@@ -115,8 +120,8 @@ export const TransactionConfirmation: React.FC<TransactionConfirmationProps> = (
 
             <View style={styles.warning}>
               <Text style={styles.warningText}>
-                Please verify all transaction details before confirming. Once submitted,
-                transactions cannot be reversed.
+                Please verify all transaction details before confirming. Once
+                submitted, transactions cannot be reversed.
               </Text>
             </View>
           </ScrollView>
@@ -136,7 +141,7 @@ export const TransactionConfirmation: React.FC<TransactionConfirmationProps> = (
               disabled={isLoading}
             >
               <Text style={styles.confirmButtonText}>
-                {isLoading ? 'Processing...' : 'Confirm'}
+                {isLoading ? "Processing..." : "Confirm"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -149,18 +154,18 @@ export const TransactionConfirmation: React.FC<TransactionConfirmationProps> = (
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   container: {
-    width: '90%',
+    width: "90%",
     maxWidth: 400,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    overflow: 'hidden',
+    overflow: "hidden",
     elevation: 5,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 2,
@@ -175,9 +180,9 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    textAlign: 'center',
+    fontWeight: "bold",
+    color: "#FFFFFF",
+    textAlign: "center",
   },
   content: {
     padding: 20,
@@ -188,68 +193,68 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#333333',
+    fontWeight: "600",
+    color: "#333333",
     marginBottom: 16,
   },
   detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#EEEEEE',
+    borderBottomColor: "#EEEEEE",
   },
   detailLabel: {
     fontSize: 14,
-    color: '#666666',
+    color: "#666666",
   },
   detailValue: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#333333',
-    textAlign: 'right',
+    fontWeight: "500",
+    color: "#333333",
+    textAlign: "right",
     flex: 1,
     marginLeft: 10,
   },
   warning: {
-    backgroundColor: '#FFF3CD',
+    backgroundColor: "#FFF3CD",
     borderWidth: 1,
-    borderColor: '#FFEEBA',
+    borderColor: "#FFEEBA",
     borderRadius: 8,
     padding: 12,
     marginTop: 10,
   },
   warningText: {
     fontSize: 12,
-    color: '#856404',
-    textAlign: 'center',
+    color: "#856404",
+    textAlign: "center",
     lineHeight: 18,
   },
   footer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     borderTopWidth: 1,
-    borderTopColor: '#EEEEEE',
+    borderTopColor: "#EEEEEE",
   },
   button: {
     flex: 1,
     padding: 16,
-    alignItems: 'center',
+    alignItems: "center",
   },
   cancelButton: {
     borderRightWidth: 1,
-    borderRightColor: '#EEEEEE',
+    borderRightColor: "#EEEEEE",
   },
   cancelButtonText: {
     fontSize: 16,
-    fontWeight: '500',
-    color: '#666666',
+    fontWeight: "500",
+    color: "#666666",
   },
   confirmButton: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: "#3B82F6",
   },
   confirmButtonText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
 });

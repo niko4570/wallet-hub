@@ -1,80 +1,30 @@
-import { getWalletIconUrl, getFallbackIcon, API_CONFIG } from "../config/api";
-import { cacheUtils } from "../utils/cache";
+import { getFallbackIcon } from "../config/api";
 import { IconSource } from "../types/icon";
 
+// Local wallet icons
+const localWalletIcons: Record<string, any> = {
+  phantom: require("../assets/icons/wallets/phantom.svg"),
+  solflare: require("../assets/icons/wallets/solflare.svg"),
+  backpack: require("../assets/icons/wallets/backpack.svg"),
+  glow: require("../assets/icons/wallets/glow.svg"),
+  tiplink: require("../assets/icons/wallets/tiplink.svg"),
+  safepal: require("../assets/icons/wallets/safepal.svg"),
+  trust: require("../assets/icons/wallets/trust.svg"),
+};
+
 class IconService {
-  private iconCache: Record<string, string> = {};
-  private loadingPromises: Record<string, Promise<string>> = {};
-
   async fetchWalletIcon(walletId: string): Promise<string> {
-    // Check memory cache first
-    if (this.iconCache[walletId]) {
-      return this.iconCache[walletId];
+    // Check if local icon exists (highest priority)
+    if (localWalletIcons[walletId]) {
+      console.log(`Using local icon for ${walletId}`);
+      // For React Native, require() returns a number (resource ID) for images
+      // We'll store it as a string prefixed with 'local:' to identify it
+      return `local:${walletId}`;
     }
 
-    // Check disk cache
-    const cachedIcon = await cacheUtils.getCachedIcon(walletId);
-    if (cachedIcon) {
-      this.iconCache[walletId] = cachedIcon;
-      return cachedIcon;
-    }
-
-    // Check if already loading
-    const existingPromise = this.loadingPromises[walletId];
-    if (existingPromise) {
-      return existingPromise;
-    }
-
-    // Create loading promise
-    const loadingPromise = this.loadIconFromApi(walletId);
-    this.loadingPromises[walletId] = loadingPromise;
-
-    try {
-      const iconUrl = await loadingPromise;
-      this.iconCache[walletId] = iconUrl;
-      return iconUrl;
-    } catch (error) {
-      console.warn(`Failed to load icon for ${walletId}:`, error);
-      // Return fallback icon
-      return getFallbackIcon(walletId);
-    } finally {
-      delete this.loadingPromises[walletId];
-    }
-  }
-
-  private async loadIconFromApi(walletId: string): Promise<string> {
-    try {
-      // Try Solana Wallet Adapter icons
-      const solanaIconUrl = getWalletIconUrl(walletId);
-
-      // Skip validation in React Native to avoid network issues
-      // Directly return the icon URL assuming it's valid
-      await cacheUtils.setCachedIcon(walletId, solanaIconUrl);
-      return solanaIconUrl;
-    } catch (error) {
-      console.warn("Error loading icon from API:", error);
-      throw error;
-    }
-  }
-
-  private async validateIconUrl(url: string): Promise<boolean> {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(
-        () => controller.abort(),
-        API_CONFIG.TIMEOUTS.ICON_LOADING,
-      );
-
-      const response = await fetch(url, {
-        method: "HEAD",
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-      return response.ok;
-    } catch (error) {
-      return false;
-    }
+    // Return fallback icon if no local icon available
+    console.log(`No local icon for ${walletId}, using fallback`);
+    return getFallbackIcon(walletId);
   }
 
   async getWalletIcon(
@@ -82,24 +32,11 @@ class IconService {
     forceRefresh: boolean = false,
   ): Promise<string> {
     try {
-      if (forceRefresh) {
-        // Clear cache for this wallet
-        delete this.iconCache[walletId];
-        await cacheUtils.removeCachedIcon(walletId);
-      }
+      // Force refresh is not needed since we're using local icons
       return await this.fetchWalletIcon(walletId);
     } catch (error) {
       console.warn("Error getting wallet icon:", error);
       return getFallbackIcon(walletId);
-    }
-  }
-
-  async clearIconCache(): Promise<void> {
-    try {
-      await cacheUtils.clearIconCache();
-      this.iconCache = {};
-    } catch (error) {
-      console.warn("Error clearing icon cache:", error);
     }
   }
 
@@ -118,12 +55,11 @@ class IconService {
   }
 
   getIconSource(walletId: string): IconSource {
-    const iconUrl = this.iconCache[walletId];
-
-    if (iconUrl) {
+    // Check if local icon exists
+    if (localWalletIcons[walletId]) {
       return {
-        url: iconUrl,
-        type: this.getIconTypeFromUrl(iconUrl),
+        url: localWalletIcons[walletId],
+        type: "svg", // All local icons are SVG
       };
     }
 
@@ -132,14 +68,6 @@ class IconService {
       url: getFallbackIcon(walletId),
       type: "png", // Emoji treated as image
     };
-  }
-
-  private getIconTypeFromUrl(url: string): "svg" | "png" | "jpg" | "webp" {
-    if (url.endsWith(".svg")) return "svg";
-    if (url.endsWith(".png")) return "png";
-    if (url.endsWith(".jpg") || url.endsWith(".jpeg")) return "jpg";
-    if (url.endsWith(".webp")) return "webp";
-    return "png"; // Default
   }
 }
 

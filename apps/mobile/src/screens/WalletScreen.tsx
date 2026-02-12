@@ -24,6 +24,7 @@ import { DetectedWalletApp, LinkedWallet } from "../types/wallet";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import * as Haptics from "expo-haptics";
 import { WalletOption } from "../components/wallet/WalletOption";
+import { IconLoader } from "../components/common/IconLoader";
 import { priceService } from "../services/priceService";
 import { toast } from "../components/common/ErrorToast";
 
@@ -181,7 +182,11 @@ const WalletScreen = () => {
       toast.show({ message: "Transaction sent successfully", type: "success" });
     } catch (err: any) {
       console.warn("Send failed", err);
-      toast.show({ message: "Failed to send transaction. Please check details and try again.", type: "error" });
+      toast.show({
+        message:
+          "Failed to send transaction. Please check details and try again.",
+        type: "error",
+      });
     } finally {
       setSending(false);
     }
@@ -396,7 +401,13 @@ const WalletScreen = () => {
             return (
               <View key={wallet.address} style={styles.walletCard}>
                 <View style={styles.walletHeader}>
-                  <View>
+                  <View style={styles.walletHeaderLeft}>
+                    <View style={styles.walletIcon}>
+                      <IconLoader
+                        walletId={wallet.walletAppId || "unknown"}
+                        size={36}
+                      />
+                    </View>
                     <Text style={styles.walletAddress}>
                       {formatAddress(wallet.address)}
                     </Text>
@@ -789,6 +800,17 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-start",
     marginBottom: 12,
+  },
+  walletHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  walletIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    overflow: "hidden",
   },
   walletAddress: {
     color: "#FFFFFF",

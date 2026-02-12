@@ -30,19 +30,19 @@ export class PriceService {
 
     try {
       const headers: HeadersInit = {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       };
 
       if (COINGECKO_API_KEY) {
-        headers['x-cg-api-key'] = COINGECKO_API_KEY;
+        headers["x-cg-api-key"] = COINGECKO_API_KEY;
       }
 
       const response = await fetch(
-        'https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd',
+        "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd",
         {
-          method: 'GET',
+          method: "GET",
           headers,
-        }
+        },
       );
 
       if (!response.ok) {
