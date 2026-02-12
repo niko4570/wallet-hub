@@ -159,19 +159,6 @@ class WalletService {
     authorization: AuthorizationResult,
     walletApp?: DetectedWalletApp,
   ): LinkedWallet[] {
-    // Log wallet icon availability
-    console.log("Wallet icon available:", !!(authorization as any).wallet_icon);
-    if ((authorization as any).wallet_icon) {
-      console.log(
-        "Wallet icon type:",
-        typeof (authorization as any).wallet_icon,
-      );
-      console.log(
-        "Wallet icon starts with data:",
-        ((authorization as any).wallet_icon as string).startsWith("data:"),
-      );
-    }
-
     return authorization.accounts.map((accountFromWallet) => ({
       address: decodeWalletAddress(accountFromWallet.address),
       label: accountFromWallet.label,

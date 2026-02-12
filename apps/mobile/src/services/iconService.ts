@@ -16,14 +16,12 @@ class IconService {
   async fetchWalletIcon(walletId: string): Promise<string> {
     // Check if local icon exists (highest priority)
     if (localWalletIcons[walletId]) {
-      console.log(`Using local icon for ${walletId}`);
       // For React Native, require() returns a number (resource ID) for images
       // We'll store it as a string prefixed with 'local:' to identify it
       return `local:${walletId}`;
     }
 
     // Return fallback icon if no local icon available
-    console.log(`No local icon for ${walletId}, using fallback`);
     return getFallbackIcon(walletId);
   }
 
