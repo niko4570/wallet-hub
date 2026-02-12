@@ -43,7 +43,7 @@ const ActivityScreen = () => {
       walletAddress?: string,
     ): Transaction | null => {
       try {
-        // 处理 Helius API 返回的数组格式数据
+        // Handle array format data returned by Helius API
         const txArray = Array.isArray(payload) ? payload : [];
         const tx = txArray[0] ?? payload?.data ?? payload;
         if (!tx) {
@@ -195,7 +195,7 @@ const ActivityScreen = () => {
           }
         }
 
-        // 尝试从多个字段获取 source 和 destination
+        // Try to get source and destination from multiple fields
         if (!source || !destination) {
           source = readString(
             tx?.source,
@@ -211,7 +211,7 @@ const ActivityScreen = () => {
           );
         }
 
-        // 如果仍然找不到，使用一个默认值而不是返回 null
+        // If still not found, use a default value instead of returning null
         if (!source) {
           source = "Unknown";
         }
@@ -418,7 +418,7 @@ const ActivityScreen = () => {
           (tx): tx is Transaction => tx !== null,
         );
 
-        // 批量更新状态，减少重渲染
+        // Batch update state to reduce re-renders
         if (isLoadMore) {
           setTransactions((prev) => [...prev, ...validTransactions]);
         } else {
@@ -451,7 +451,7 @@ const ActivityScreen = () => {
       setLoading(true);
       try {
         if (activeTab === "transactions") {
-          // 重置状态
+          // Reset state
           setLastSignature(undefined);
           setHasMore(true);
           await fetchTransactions(false);
@@ -470,7 +470,7 @@ const ActivityScreen = () => {
     setRefreshing(true);
     try {
       if (activeTab === "transactions") {
-        // 重置状态
+        // Reset state
         setLastSignature(undefined);
         setHasMore(true);
         await fetchTransactions(false);
