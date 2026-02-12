@@ -19,6 +19,7 @@ import type {
 import { walletService } from "../services/walletService";
 import { authorizationApi } from "../services/authorizationService";
 import { iconService } from "../services/iconService";
+import { rpcService } from "../services/rpcService";
 import { HELIUS_RPC_URL, SOLANA_CLUSTER } from "../config/env";
 import { requireBiometricApproval } from "../security/biometrics";
 import { decodeWalletAddress } from "../utils/solanaAddress";
@@ -172,11 +173,12 @@ export function useSolana(): UseSolanaResult {
       if (!targetAddress) {
         return null;
       }
-      let publicKey: PublicKey;
       try {
-        publicKey = new PublicKey(targetAddress);
+        const balance = await rpcService.getBalance(targetAddress);
+        setBalances((prev) => ({ ...prev, [targetAddress]: balance }));
+        return balance;
       } catch (error) {
-        console.warn("Invalid account address when refreshing balance", error);
+        console.warn("Error refreshing balance", error);
         setBalances((prev) => {
           const next = { ...prev };
           delete next[targetAddress];
@@ -184,11 +186,8 @@ export function useSolana(): UseSolanaResult {
         });
         throw error;
       }
-      const balance = await connection.getBalance(publicKey);
-      setBalances((prev) => ({ ...prev, [targetAddress]: balance }));
-      return balance;
     },
-    [activeWallet?.address, connection],
+    [activeWallet?.address],
   );
 
   const normalizeAuthorization = useCallback(

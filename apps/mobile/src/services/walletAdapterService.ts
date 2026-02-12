@@ -3,9 +3,10 @@ import type {
   MobileWallet,
   AuthorizationResult,
 } from "@solana-mobile/mobile-wallet-adapter-protocol";
-import { Transaction, PublicKey } from "@solana/web3.js";
+import { Transaction, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { useWalletStore } from "../store/walletStore";
 import { walletService } from "./walletService";
+import { priceService } from "./priceService";
 import { DetectedWalletApp, LinkedWallet } from "../types/wallet";
 
 class WalletAdapterService {
@@ -140,11 +141,20 @@ class WalletAdapterService {
     const walletStore = useWalletStore.getState();
 
     try {
+      const price = await priceService.getSolPriceInUsd();
+      const timestamp = new Date().toISOString();
       await Promise.all(
         addresses.map(async (address) => {
           try {
             const balance = await walletService.getWalletBalance(address);
             walletStore.updateBalance(address, balance);
+            const solBalance = balance / LAMPORTS_PER_SOL;
+            walletStore.updateDetailedBalance({
+              address,
+              balance: solBalance,
+              usdValue: solBalance * price,
+              lastUpdated: timestamp,
+            });
           } catch (error) {
             console.warn(`Failed to refresh balance for ${address}:`, error);
           }
@@ -164,8 +174,17 @@ class WalletAdapterService {
     const walletStore = useWalletStore.getState();
 
     try {
+      const price = await priceService.getSolPriceInUsd();
+      const timestamp = new Date().toISOString();
       const balance = await walletService.getWalletBalance(address);
       walletStore.updateBalance(address, balance);
+      const solBalance = balance / LAMPORTS_PER_SOL;
+      walletStore.updateDetailedBalance({
+        address,
+        balance: solBalance,
+        usdValue: solBalance * price,
+        lastUpdated: timestamp,
+      });
       return balance;
     } catch (error) {
       console.error(`Failed to refresh balance for ${address}:`, error);

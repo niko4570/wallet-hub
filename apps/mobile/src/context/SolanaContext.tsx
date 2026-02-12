@@ -1,7 +1,9 @@
 import React, { createContext, useContext, ReactNode, useMemo } from "react";
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { useSolana as useSolanaHook } from "../hooks/useSolana";
 import type { UseSolanaResult } from "../hooks/useSolana";
 import { useWalletStore } from "../store/walletStore";
+import { priceService } from "../services/priceService";
 
 interface SolanaContextType {
   solana: UseSolanaResult;
@@ -22,6 +24,7 @@ export const SolanaProvider: React.FC<{ children: ReactNode }> = ({
     setActiveWallet,
     setActiveWalletAddress,
     updateBalance,
+    updateDetailedBalance,
   } = useWalletStore();
 
   // Sync state from useSolanaHook to walletStore
@@ -39,9 +42,28 @@ export const SolanaProvider: React.FC<{ children: ReactNode }> = ({
 
     // Sync balances
     if (solana.balances) {
-      Object.entries(solana.balances).forEach(([address, balance]) => {
+      const entries = Object.entries(solana.balances);
+      entries.forEach(([address, balance]) => {
         updateBalance(address, balance);
       });
+
+      if (entries.length > 0) {
+        (async () => {
+          const price = await priceService.getSolPriceInUsd();
+          const timestamp = new Date().toISOString();
+          entries.forEach(([address, balance]) => {
+            const solBalance = balance / LAMPORTS_PER_SOL;
+            updateDetailedBalance({
+              address,
+              balance: solBalance,
+              usdValue: solBalance * price,
+              lastUpdated: timestamp,
+            });
+          });
+        })().catch((error) => {
+          console.warn("Failed to update detailed balances", error);
+        });
+      }
     }
   }, [
     solana.linkedWallets,
@@ -50,6 +72,7 @@ export const SolanaProvider: React.FC<{ children: ReactNode }> = ({
     setLinkedWallets,
     setActiveWallet,
     updateBalance,
+    updateDetailedBalance,
   ]);
 
   // Create a merged solana object that uses walletStore for state
