@@ -76,16 +76,17 @@ const WalletScreen = () => {
     }
   }, []);
 
-  // Fetch SOL price on component mount
+  // Fetch SOL price on component mount only if there are linked wallets
   useEffect(() => {
-    fetchSolPrice();
-  }, [fetchSolPrice]);
+    if (linkedWallets.length > 0) {
+      fetchSolPrice();
+    }
+  }, [fetchSolPrice, linkedWallets.length]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([
-        fetchSolPrice(),
+      const refreshPromises: Array<Promise<any>> = [
         refreshWalletDetection().catch((err: any) =>
           console.warn("Wallet detection refresh failed", err),
         ),
@@ -94,7 +95,14 @@ const WalletScreen = () => {
             console.warn(`Balance refresh failed for ${wallet.address}`, err);
           }),
         ),
-      ]);
+      ];
+
+      // Only fetch SOL price if there are linked wallets
+      if (linkedWallets.length > 0) {
+        refreshPromises.push(fetchSolPrice());
+      }
+
+      await Promise.all(refreshPromises);
     } catch (err: any) {
       console.warn("Refresh failed", err);
     } finally {
