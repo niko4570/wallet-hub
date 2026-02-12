@@ -495,7 +495,10 @@ const ActivityScreen = () => {
   }, [loadingMore, hasMore, activeTab, lastSignature]);
 
   const handleTransactionDetail = (signature: string) => {
-    navigation.navigate("TransactionDetail", { signature });
+    // Open Solscan.io for transaction details
+    const solscanUrl = `https://solscan.io/tx/${signature}`;
+    // Use Linking API to open the URL in a browser
+    Linking.openURL(solscanUrl);
   };
 
   const handleAuthorizationDetail = (authorizationId: string) => {
@@ -551,6 +554,22 @@ const ActivityScreen = () => {
               : `+ ${formatAmount(item.amount)} ${amountUnit}`}
           </Text>
         </View>
+
+        {/* Data field */}
+        {item.memo && (
+          <View style={styles.transactionMetaBlock}>
+            <Text style={styles.transactionMetaLabel}>Data</Text>
+            <Text style={styles.transactionMetaValue}>{item.memo}</Text>
+          </View>
+        )}
+
+        {/* To Network field */}
+        <View style={styles.transactionMetaBlock}>
+          <Text style={styles.transactionMetaLabel}>To Network</Text>
+          <Text style={styles.transactionMetaValue}>Solana</Text>
+        </View>
+
+        {/* From and To fields */}
         <View style={styles.transactionMetaBlock}>
           <Text style={styles.transactionMetaLabel}>From</Text>
           <Text style={styles.transactionMetaValue}>{item.source}</Text>
@@ -559,24 +578,25 @@ const ActivityScreen = () => {
           <Text style={styles.transactionMetaLabel}>To</Text>
           <Text style={styles.transactionMetaValue}>{item.destination}</Text>
         </View>
-        <View style={styles.transactionMetaBlock}>
-          <Text style={styles.transactionMetaLabel}>Signature</Text>
-          <Text style={styles.transactionMetaValue}>{item.signature}</Text>
-        </View>
-        {(typeof item.fee === "number" || typeof item.slot === "number") && (
-          <View style={styles.transactionMetaRow}>
-            {typeof item.fee === "number" && (
-              <Text style={styles.transactionMetaInline}>
-                Fee: {formatAmount(item.fee)} SOL
-              </Text>
-            )}
-            {typeof item.slot === "number" && (
-              <Text style={styles.transactionMetaInline}>
-                Slot: {item.slot}
-              </Text>
-            )}
+
+        {/* Network Fee field */}
+        {typeof item.fee === "number" && (
+          <View style={styles.transactionMetaBlock}>
+            <Text style={styles.transactionMetaLabel}>Network Fee</Text>
+            <Text style={styles.transactionMetaValue}>
+              {formatAmount(item.fee)} SOL
+            </Text>
           </View>
         )}
+
+        {/* Slot field */}
+        {typeof item.slot === "number" && (
+          <View style={styles.transactionMetaBlock}>
+            <Text style={styles.transactionMetaLabel}>Slot</Text>
+            <Text style={styles.transactionMetaValue}>{item.slot}</Text>
+          </View>
+        )}
+
         <Text style={styles.transactionTimestamp}>
           {new Date(item.timestamp).toLocaleString()}
         </Text>
