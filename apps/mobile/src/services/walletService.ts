@@ -1,4 +1,4 @@
-import { Linking } from "react-native";
+import { Linking, Platform } from "react-native";
 import {
   transact,
   type Web3MobileWallet,
@@ -6,7 +6,7 @@ import {
 import type { AuthorizationResult } from "@solana-mobile/mobile-wallet-adapter-protocol";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { WALLET_DIRECTORY } from "../config/wallets";
-import { API_CONFIG } from "../config/api";
+import { HELIUS_RPC_URL } from "../config/env";
 import { requireBiometricApproval } from "../security/biometrics";
 import { decodeWalletAddress } from "../utils/solanaAddress";
 import {
@@ -19,10 +19,7 @@ class WalletService {
   private connection: Connection;
 
   constructor() {
-    this.connection = new Connection(
-      API_CONFIG.WALLET_DIRECTORY.SOLANA_WALLET_ADAPTER,
-      "confirmed",
-    );
+    this.connection = new Connection(HELIUS_RPC_URL, "confirmed");
   }
 
   async detectWallets(): Promise<DetectedWalletApp[]> {
@@ -86,23 +83,48 @@ class WalletService {
           ? { baseUri: wallet.baseUri }
           : undefined;
 
-      const authorization = await transact(
-        async (walletApi: Web3MobileWallet) => {
-          return walletApi.authorize({
-            identity: {
-              name: "WalletHub",
-              uri: "https://wallethub.app",
-            },
-            chain: "solana:mainnet",
-          });
-        },
-        transactOptions,
-      );
+      const result = await transact(async (walletApi: Web3MobileWallet) => {
+        // Get wallet capabilities first (optional but recommended)
+        let capabilities: WalletCapabilities | null = null;
+        try {
+          capabilities = await walletApi.getCapabilities();
+          console.log("Wallet capabilities:", capabilities);
+        } catch (error) {
+          console.warn("Failed to get wallet capabilities:", error);
+          // Continue even if capabilities check fails
+        }
 
-      const normalized = this.normalizeAuthorization(authorization, wallet);
+        // Request authorization
+        const authorization = await walletApi.authorize({
+          identity: {
+            name: "WalletHub",
+            uri: "https://wallethub.app",
+          },
+          chain: "solana:mainnet",
+        });
+
+        return { authorization, capabilities };
+      }, transactOptions);
+
+      const normalized = this.normalizeAuthorization(
+        result.authorization,
+        wallet,
+      );
       return { walletApp: wallet, accounts: normalized };
-    } catch (error) {
-      console.error("Wallet authorization failed", error);
+    } catch (error: any) {
+      console.error("Wallet authorization failed:", error);
+
+      // Handle specific error types
+      if (error.code === "ERR_WALLET_NOT_FOUND") {
+        throw new Error(
+          "No compatible wallet found. Please install a Solana wallet app.",
+        );
+      } else if (error.code === "ERR_USER_CANCELLED") {
+        throw new Error("Authorization cancelled by user");
+      } else if (error.message?.includes("authorization")) {
+        throw new Error("Failed to authorize wallet. Please try again.");
+      }
+
       throw error;
     }
   }

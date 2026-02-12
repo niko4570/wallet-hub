@@ -60,8 +60,7 @@ export class SilentReauthorizationService {
     const now = new Date().toISOString();
     const authTokenHint = payload.authToken?.slice(-4);
     const status = this.computeStatus(payload.expiresAt, payload.error);
-    const sanitizedCapabilities =
-      payload.capabilities ?? DEFAULT_CAPABILITIES;
+    const sanitizedCapabilities = payload.capabilities ?? DEFAULT_CAPABILITIES;
 
     const nextRecord: SilentReauthorizationRecord = {
       id: randomUUID(),

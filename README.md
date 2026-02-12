@@ -23,8 +23,16 @@ packages/
    `postinstall` builds the shared contracts package so the Expo bundler can import it.
 
 2. **Environment variables**
-   - Backend: optional `PORT` (defaults to `3000`).
-   - Mobile: set `EXPO_PUBLIC_API_URL` to point at the running backend (e.g. `http://localhost:3000` or your LAN IP).
+   - Backend:
+     - `PORT` (defaults to `3000`).
+     - `DATABASE_URL` (defaults to `postgresql://postgres:postgres@localhost:5432/wallethub`; point this at Neon/Supabase for managed Postgres).
+     - `SOLANA_RPC_URL` (optional override; falls back to `https://mainnet.helius-rpc.com/?api-key=HELIUS_API_KEY` or `https://api.mainnet-beta.solana.com`).
+     - `SOLANA_PRIORITY_RPC_URL` (optional, defaults to the main RPC endpoint).
+     - `HELIUS_API_KEY` (optional, used to derive the managed Helius RPC URL when no explicit RPC is provided).
+   - Mobile:
+     - `EXPO_PUBLIC_API_URL` to point at the running backend (e.g. `http://localhost:3000` or your LAN IP).
+     - `EXPO_PUBLIC_HELIUS_API_KEY` for on-device Solana RPC access.
+     - Optional WebView integrations: `EXPO_PUBLIC_JUPITER_PLUGIN_URL`, `EXPO_PUBLIC_JUPITER_PLUGIN_ALLOWLIST`, `EXPO_PUBLIC_TELEMETRY_URL`.
 
 3. **Run services**
 
@@ -44,6 +52,23 @@ packages/
    - Solana RPC: set `EXPO_PUBLIC_HELIUS_API_KEY` or override `EXPO_PUBLIC_RPC_URL` via `apps/mobile/src/config/env.ts` to point at your node.
    - Sensitive wallet actions (connect, send, session management) now require biometric approval via Expo Local Authentication.
    - Security posture, threat model, and assumptions live in [`docs/threat-model.md`](./docs/threat-model.md).
+
+## Dockerized API
+
+Run the NestJS backend inside a container using the multi-stage image defined at `apps/api/Dockerfile`.
+
+```bash
+# Build the API image
+docker build -t wallethub-api -f apps/api/Dockerfile .
+
+# Run against managed Neon/Supabase + Helius RPC endpoints
+docker run --rm -p 3000:3000 \
+  -e DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/wallethub \
+  -e SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY} \
+  wallethub-api
+```
+
+The container only needs database/RPC credentials via environment variables; health checks expose a sanitized view of the configured infrastructure so you can confirm which managed services are in use.
 
 ## API Surface
 

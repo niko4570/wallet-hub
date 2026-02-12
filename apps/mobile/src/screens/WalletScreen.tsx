@@ -18,21 +18,19 @@ import { Feather } from "@expo/vector-icons";
 import QRCode from "react-native-qrcode-svg";
 import * as Clipboard from "expo-clipboard";
 import { useSolana } from "../context/SolanaContext";
+import { useWalletStore } from "../store/walletStore";
 import { formatUsd, formatAddress } from "../utils/format";
 import { DetectedWalletApp, LinkedWallet } from "../types/wallet";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import * as Haptics from "expo-haptics";
 import { WalletOption } from "../components/wallet/WalletOption";
 import { priceService } from "../services/priceService";
+import { toast } from "../components/common/ErrorToast";
 
 const WalletScreen = () => {
   const {
-    linkedWallets,
-    activeWallet,
     refreshBalance,
     refreshWalletDetection,
-    balances,
-    selectActiveWallet,
     disconnect,
     startAuthorization,
     finalizeAuthorization,
@@ -40,6 +38,16 @@ const WalletScreen = () => {
     detectingWallets,
     sendSol,
   } = useSolana();
+
+  // Use wallet store for state management
+  const {
+    linkedWallets,
+    activeWallet,
+    totalBalance,
+    totalUsdValue,
+    detailedBalances,
+    setActiveWallet,
+  } = useWalletStore();
 
   const [refreshing, setRefreshing] = useState(false);
   const [connectModalVisible, setConnectModalVisible] = useState(false);
@@ -50,19 +58,9 @@ const WalletScreen = () => {
   const [sending, setSending] = useState(false);
   const [solPriceUsd, setSolPriceUsd] = useState(100); // Default value while loading
 
-  const totalBalanceLamports = linkedWallets.reduce(
-    (sum: number, wallet: LinkedWallet) =>
-      sum + (balances[wallet.address] ?? 0),
-    0,
-  );
-
-  const totalBalanceSol = totalBalanceLamports / LAMPORTS_PER_SOL;
-  const totalBalanceUsd = totalBalanceSol * solPriceUsd;
-
-  const activeWalletBalanceLamports = activeWallet
-    ? (balances[activeWallet.address] ?? 0)
+  const activeWalletBalanceSol = activeWallet
+    ? detailedBalances[activeWallet.address]?.balance || 0
     : 0;
-  const activeWalletBalanceSol = activeWalletBalanceLamports / LAMPORTS_PER_SOL;
 
   const activeWalletLabel =
     activeWallet?.label ||
@@ -104,11 +102,11 @@ const WalletScreen = () => {
   }, [linkedWallets, refreshBalance, refreshWalletDetection, fetchSolPrice]);
 
   const handleSelectWallet = useCallback(
-    (address: string) => {
-      selectActiveWallet(address);
+    (wallet: LinkedWallet) => {
+      setActiveWallet(wallet);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
-    [selectActiveWallet],
+    [setActiveWallet],
   );
 
   const handleDisconnect = useCallback(
@@ -127,6 +125,7 @@ const WalletScreen = () => {
 
   const handleConnectPress = useCallback(() => {
     setConnectModalVisible(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
 
   const handleStartConnect = useCallback(
@@ -179,10 +178,10 @@ const WalletScreen = () => {
       setSendModalVisible(false);
       setSendRecipient("");
       setSendAmount("");
-      Alert.alert("Sent", `Transaction signature:\n${signature}`);
+      toast.show({ message: "Transaction sent successfully", type: "success" });
     } catch (err: any) {
       console.warn("Send failed", err);
-      Alert.alert("Send failed", "Please check details and try again.");
+      toast.show({ message: "Failed to send transaction. Please check details and try again.", type: "error" });
     } finally {
       setSending(false);
     }
@@ -201,6 +200,7 @@ const WalletScreen = () => {
       return;
     }
     setReceiveModalVisible(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, [activeWallet]);
 
   const handleCopyAddress = useCallback(async () => {
@@ -210,10 +210,16 @@ const WalletScreen = () => {
     try {
       await Clipboard.setStringAsync(activeWallet.address);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Copied", "Wallet address copied to clipboard.");
+      toast.show({
+        message: "Wallet address copied to clipboard",
+        type: "success",
+      });
     } catch (err) {
       console.warn("Copy failed", err);
-      Alert.alert("Copy failed", "Try again in a moment.");
+      toast.show({
+        message: "Failed to copy address. Try again.",
+        type: "error",
+      });
     }
   }, [activeWallet]);
 
@@ -235,6 +241,7 @@ const WalletScreen = () => {
       return;
     }
     setSendAmount(activeWalletBalanceSol.toFixed(4));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, [activeWallet, activeWalletBalanceSol]);
 
   const handleStub = useCallback((label: string) => {
@@ -292,12 +299,8 @@ const WalletScreen = () => {
 
           <View style={styles.heroBalanceBlock}>
             <Text style={styles.balanceLabel}>Portfolio</Text>
-            <Text style={styles.balanceValue}>
-              {formatUsd(totalBalanceUsd)}
-            </Text>
-            <Text style={styles.balanceSol}>
-              {totalBalanceSol.toFixed(4)} SOL
-            </Text>
+            <Text style={styles.balanceValue}>{formatUsd(totalUsdValue)}</Text>
+            <Text style={styles.balanceSol}>{totalBalance.toFixed(4)} SOL</Text>
           </View>
 
           <View style={styles.heroWalletRow}>
@@ -386,9 +389,9 @@ const WalletScreen = () => {
         ) : (
           linkedWallets.map((wallet: LinkedWallet) => {
             const isActiveWallet = activeWallet?.address === wallet.address;
-            const walletBalanceLamports = balances[wallet.address] ?? 0;
-            const walletBalanceSol = walletBalanceLamports / LAMPORTS_PER_SOL;
-            const walletBalanceUsd = walletBalanceSol * solPriceUsd;
+            const walletBalance = detailedBalances[wallet.address];
+            const walletBalanceSol = walletBalance?.balance || 0;
+            const walletBalanceUsd = walletBalance?.usdValue || 0;
 
             return (
               <View key={wallet.address} style={styles.walletCard}>
@@ -419,7 +422,7 @@ const WalletScreen = () => {
                   {!isActiveWallet && (
                     <TouchableOpacity
                       style={styles.walletAction}
-                      onPress={() => handleSelectWallet(wallet.address)}
+                      onPress={() => handleSelectWallet(wallet)}
                     >
                       <Text style={styles.walletActionText}>Set Active</Text>
                     </TouchableOpacity>

@@ -24,6 +24,15 @@ export interface LinkedWallet extends AccountMeta {
   walletAppId?: string;
   walletName?: string;
   icon?: string;
+  groupId?: string;
+  groupName?: string;
+}
+
+export interface WalletGroup {
+  id: string;
+  name: string;
+  walletAddresses: string[];
+  createdAt: string;
 }
 
 export interface AuthorizationPreview {

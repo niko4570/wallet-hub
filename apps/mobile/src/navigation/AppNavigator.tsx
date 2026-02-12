@@ -2,8 +2,9 @@ import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
-import { Text, View } from "react-native";
+import { Text, View, Animated } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import { customCardStyleInterpolator } from "./CustomTransition";
 
 // Import screens
 import WalletScreen from "../screens/WalletScreen";
@@ -121,6 +122,9 @@ function AppNavigator() {
             fontWeight: "700",
             fontSize: 18,
           },
+          cardStyleInterpolator: customCardStyleInterpolator,
+          gestureEnabled: true,
+          gestureDirection: "horizontal",
         }}
       >
         <Stack.Screen
