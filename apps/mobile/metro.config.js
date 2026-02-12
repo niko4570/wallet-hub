@@ -57,15 +57,14 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   return metroResolver.resolve(context, moduleName, platform);
 };
 
-// Force Metro to resolve Tamagui from a single location to avoid duplicate instances.
+// Force Metro to resolve modules from a single location to avoid duplicate instances.
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, "node_modules"),
-  path.resolve(workspaceRoot, "node_modules"),
 ];
 config.resolver.extraNodeModules = {
   ...config.resolver.extraNodeModules,
   "@react-native/virtualized-lists": path.resolve(
-    workspaceRoot,
+    projectRoot,
     "node_modules",
     "@react-native",
     "virtualized-lists",
