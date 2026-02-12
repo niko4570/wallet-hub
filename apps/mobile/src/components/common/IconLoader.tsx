@@ -3,6 +3,17 @@ import { View, Image, Text, ActivityIndicator, StyleSheet } from "react-native";
 import { SvgUri } from "react-native-svg";
 import { iconService } from "../../services/iconService";
 
+// Static mapping for local wallet icons (required for React Native bundling)
+const localWalletIcons = {
+  phantom: require("../../assets/icons/wallets/phantom.svg"),
+  solflare: require("../../assets/icons/wallets/solflare.svg"),
+  backpack: require("../../assets/icons/wallets/backpack.svg"),
+  glow: require("../../assets/icons/wallets/glow.svg"),
+  tiplink: require("../../assets/icons/wallets/tiplink.svg"),
+  safepal: require("../../assets/icons/wallets/safepal.svg"),
+  trust: require("../../assets/icons/wallets/trust.svg"),
+};
+
 interface IconLoaderProps {
   walletId: string;
   walletIcon?: string; // Wallet's own icon (from authorization result)
@@ -95,31 +106,32 @@ export const IconLoader: React.FC<IconLoaderProps> = memo(
     if (iconUrl.startsWith("local:")) {
       const localWalletId = iconUrl.replace("local:", "");
       try {
-        // For local SVG icons, we need to use a different approach
-        // Since we can't directly use SvgUri with local resources in React Native
-        // We'll use the Image component as a fallback
-        const localIcon = require(
-          `../../assets/icons/wallets/${localWalletId}.svg`,
-        );
-        return (
-          <View
-            style={[styles.container, { width: size, height: size }, style]}
-          >
-            <Image
-              source={localIcon}
-              style={{
-                width: "100%",
-                height: "100%",
-                resizeMode: "contain",
-              }}
-              onError={() => {
-                console.error("Failed to load local icon:", localWalletId);
-                setError(new Error("Failed to load local icon"));
-                setIconUrl(null);
-              }}
-            />
-          </View>
-        );
+        // Use static mapping for local wallet icons (required for React Native bundling)
+        const localIcon =
+          localWalletIcons[localWalletId as keyof typeof localWalletIcons];
+        if (localIcon) {
+          return (
+            <View
+              style={[styles.container, { width: size, height: size }, style]}
+            >
+              <Image
+                source={localIcon}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  resizeMode: "contain",
+                }}
+                onError={() => {
+                  console.error("Failed to load local icon:", localWalletId);
+                  setError(new Error("Failed to load local icon"));
+                  setIconUrl(null);
+                }}
+              />
+            </View>
+          );
+        } else {
+          throw new Error(`No local icon found for ${localWalletId}`);
+        }
       } catch (error) {
         console.error("Error loading local icon:", error);
         return (
