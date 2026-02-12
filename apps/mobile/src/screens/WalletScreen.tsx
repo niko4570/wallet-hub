@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -23,6 +23,7 @@ import { DetectedWalletApp, LinkedWallet } from "../types/wallet";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import * as Haptics from "expo-haptics";
 import { WalletOption } from "../components/wallet/WalletOption";
+import { priceService } from "../services/priceService";
 
 const WalletScreen = () => {
   const {
@@ -47,14 +48,16 @@ const WalletScreen = () => {
   const [sendRecipient, setSendRecipient] = useState("");
   const [sendAmount, setSendAmount] = useState("");
   const [sending, setSending] = useState(false);
+  const [solPriceUsd, setSolPriceUsd] = useState(100); // Default value while loading
 
   const totalBalanceLamports = linkedWallets.reduce(
-    (sum: number, wallet: LinkedWallet) => sum + (balances[wallet.address] ?? 0),
+    (sum: number, wallet: LinkedWallet) =>
+      sum + (balances[wallet.address] ?? 0),
     0,
   );
 
   const totalBalanceSol = totalBalanceLamports / LAMPORTS_PER_SOL;
-  const totalBalanceUsd = totalBalanceSol * 100; // Mock USD value
+  const totalBalanceUsd = totalBalanceSol * solPriceUsd;
 
   const activeWalletBalanceLamports = activeWallet
     ? (balances[activeWallet.address] ?? 0)
@@ -65,10 +68,25 @@ const WalletScreen = () => {
     activeWallet?.label ||
     (activeWallet ? formatAddress(activeWallet.address) : "Select a wallet");
 
+  const fetchSolPrice = useCallback(async () => {
+    try {
+      const price = await priceService.getSolPriceInUsd();
+      setSolPriceUsd(price);
+    } catch (error) {
+      console.warn("Failed to fetch SOL price:", error);
+    }
+  }, []);
+
+  // Fetch SOL price on component mount
+  useEffect(() => {
+    fetchSolPrice();
+  }, [fetchSolPrice]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       await Promise.all([
+        fetchSolPrice(),
         refreshWalletDetection().catch((err: any) =>
           console.warn("Wallet detection refresh failed", err),
         ),
@@ -83,7 +101,7 @@ const WalletScreen = () => {
     } finally {
       setRefreshing(false);
     }
-  }, [linkedWallets, refreshBalance, refreshWalletDetection]);
+  }, [linkedWallets, refreshBalance, refreshWalletDetection, fetchSolPrice]);
 
   const handleSelectWallet = useCallback(
     (address: string) => {
@@ -370,7 +388,7 @@ const WalletScreen = () => {
             const isActiveWallet = activeWallet?.address === wallet.address;
             const walletBalanceLamports = balances[wallet.address] ?? 0;
             const walletBalanceSol = walletBalanceLamports / LAMPORTS_PER_SOL;
-            const walletBalanceUsd = walletBalanceSol * 100; // Mock USD value
+            const walletBalanceUsd = walletBalanceSol * solPriceUsd;
 
             return (
               <View key={wallet.address} style={styles.walletCard}>
