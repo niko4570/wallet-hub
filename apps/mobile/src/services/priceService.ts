@@ -1,23 +1,27 @@
-import { COINGECKO_API_KEY } from "../config/env";
 import { cacheUtils } from "../utils/cache";
 
-interface PriceResponse {
-  solana: {
-    usd: number;
-  };
-}
+declare const process: { env?: Record<string, string | undefined> };
 
-interface CoinGeckoTokenPriceResponse {
-  [mint: string]: {
-    usd?: number;
-  };
-}
+const JUPITER_API_KEY = process.env?.EXPO_PUBLIC_JUPITER_API_KEY || "";
+const WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112";
+const PRICE_ENDPOINT = "https://api.jup.ag/price/v3";
+const PRICE_CHUNK_SIZE = 50;
+const DEFAULT_SOL_FALLBACK = 100;
+
+type JupiterPriceEntry = {
+  price?: number | string;
+};
+
+type JupiterPriceEnvelope = {
+  data?: Record<string, JupiterPriceEntry>;
+};
 
 export class PriceService {
   private static instance: PriceService;
   private cache: Map<string, { price: number; timestamp: number }> = new Map();
   private cacheDuration = 5 * 60 * 1000; // 5 minutes cache
   private inFlightSol?: Promise<number>;
+  private hasWarnedAboutKey = false;
 
   private constructor() {}
 
@@ -28,10 +32,76 @@ export class PriceService {
     return PriceService.instance;
   }
 
+  private buildHeaders(): HeadersInit {
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+    if (JUPITER_API_KEY) {
+      headers["x-api-key"] = JUPITER_API_KEY;
+    } else if (!this.hasWarnedAboutKey) {
+      this.hasWarnedAboutKey = true;
+      console.warn(
+        "[priceService] EXPO_PUBLIC_JUPITER_API_KEY not set; falling back to cached prices.",
+      );
+    }
+    return headers;
+  }
+
+  private parsePrice(value?: number | string): number | null {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return null;
+  }
+
+  private async fetchPrices(mints: string[]): Promise<Record<string, number>> {
+    if (mints.length === 0) {
+      return {};
+    }
+
+    const headers = this.buildHeaders();
+    if (!JUPITER_API_KEY) {
+      throw new Error(
+        "Jupiter API key missing. Set EXPO_PUBLIC_JUPITER_API_KEY to fetch live prices.",
+      );
+    }
+
+    const params = new URLSearchParams({
+      ids: mints.join(","),
+    });
+    const response = await fetch(`${PRICE_ENDPOINT}?${params.toString()}`, {
+      headers,
+    });
+    if (!response.ok) {
+      const message =
+        response.status === 401
+          ? "Unauthorized response from Jupiter price API. Check EXPO_PUBLIC_JUPITER_API_KEY."
+          : `Jupiter price API error: ${response.status}`;
+      throw new Error(message);
+    }
+
+    const data = await response.json();
+    const normalized: Record<string, number> = {};
+
+    mints.forEach((mint) => {
+      const price = data[mint]?.usdPrice;
+      if (typeof price === "number" && Number.isFinite(price)) {
+        normalized[mint] = price;
+      }
+    });
+
+    return normalized;
+  }
+
   async getSolPriceInUsd(): Promise<number> {
     const cacheKey = "solana:usd";
     const cached = this.cache.get(cacheKey);
-
     if (cached && Date.now() - cached.timestamp < this.cacheDuration) {
       return cached.price;
     }
@@ -50,35 +120,16 @@ export class PriceService {
     }
 
     this.inFlightSol = (async () => {
-      const headers: HeadersInit = {
-        "Content-Type": "application/json",
-      };
-
-      if (COINGECKO_API_KEY) {
-        headers["x-cg-api-key"] = COINGECKO_API_KEY;
+      const prices = await this.fetchPrices([WRAPPED_SOL_MINT]);
+      const price = prices[WRAPPED_SOL_MINT];
+      if (typeof price !== "number") {
+        throw new Error("Wrapped SOL price missing from Jupiter response");
       }
-
-      const response = await fetch(
-        "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd",
-        {
-          method: "GET",
-          headers,
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error(`CoinGecko API error: ${response.status}`);
-      }
-
-      const data: PriceResponse = await response.json();
-      const price = data.solana?.usd || 0;
-
       this.cache.set(cacheKey, {
         price,
         timestamp: Date.now(),
       });
       await cacheUtils.setCachedPrice(cacheKey, price);
-
       return price;
     })();
 
@@ -86,15 +137,13 @@ export class PriceService {
       return await this.inFlightSol;
     } catch (error) {
       console.error("Error fetching SOL price:", error);
-      return cached?.price || cachedPersisted || 100;
+      return cached?.price || cachedPersisted || DEFAULT_SOL_FALLBACK;
     } finally {
       this.inFlightSol = undefined;
     }
   }
 
-  async getTokenPricesInUsd(
-    mints: string[],
-  ): Promise<Record<string, number>> {
+  async getTokenPricesInUsd(mints: string[]): Promise<Record<string, number>> {
     const uniqueMints = Array.from(
       new Set(mints.map((mint) => mint.trim()).filter(Boolean)),
     );
@@ -130,33 +179,17 @@ export class PriceService {
       return result;
     }
 
-    const chunkSize = 100;
     const chunks: string[][] = [];
-    for (let i = 0; i < uncached.length; i += chunkSize) {
-      chunks.push(uncached.slice(i, i + chunkSize));
+    for (let i = 0; i < uncached.length; i += PRICE_CHUNK_SIZE) {
+      chunks.push(uncached.slice(i, i + PRICE_CHUNK_SIZE));
     }
 
-    try {
-      for (const chunk of chunks) {
-        const ids = encodeURIComponent(chunk.join(","));
-        const response = await fetch(
-          `https://api.coingecko.com/api/v3/simple/token_price/solana?contract_addresses=${ids}&vs_currencies=usd`,
-          {
-            method: "GET",
-            headers: COINGECKO_API_KEY
-              ? { "x-cg-api-key": COINGECKO_API_KEY }
-              : undefined,
-          },
-        );
-
-        if (!response.ok) {
-          throw new Error(`CoinGecko token price error: ${response.status}`);
-        }
-
-        const data: CoinGeckoTokenPriceResponse = await response.json();
-        Object.entries(data ?? {}).forEach(([mint, entry]) => {
-          const price = entry?.usd;
-          if (typeof price === "number" && Number.isFinite(price)) {
+    for (const chunk of chunks) {
+      try {
+        const chunkPrices = await this.fetchPrices(chunk);
+        chunk.forEach((mint) => {
+          const price = chunkPrices[mint];
+          if (typeof price === "number") {
             result[mint] = price;
             this.cache.set(`mint:${mint}`, {
               price,
@@ -165,9 +198,9 @@ export class PriceService {
             cacheUtils.setCachedPrice(`mint:${mint}`, price).catch(() => {});
           }
         });
+      } catch (error) {
+        console.warn("Error fetching chunked token prices:", error);
       }
-    } catch (error) {
-      console.warn("Error fetching token prices:", error);
     }
 
     return result;

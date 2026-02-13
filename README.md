@@ -29,10 +29,11 @@ packages/
      - `SOLANA_RPC_URL` (optional override; falls back to `https://mainnet.helius-rpc.com/?api-key=HELIUS_API_KEY` or `https://api.mainnet-beta.solana.com`).
      - `SOLANA_PRIORITY_RPC_URL` (optional, defaults to the main RPC endpoint).
      - `HELIUS_API_KEY` (optional, used to derive the managed Helius RPC URL when no explicit RPC is provided).
-   - Mobile:
-     - `EXPO_PUBLIC_API_URL` to point at the running backend (e.g. `http://localhost:3000` or your LAN IP).
-     - `EXPO_PUBLIC_HELIUS_API_KEY` for on-device Solana RPC access.
-     - Optional WebView integrations: `EXPO_PUBLIC_JUPITER_PLUGIN_URL`, `EXPO_PUBLIC_JUPITER_PLUGIN_ALLOWLIST`, `EXPO_PUBLIC_TELEMETRY_URL`.
+    - Mobile:
+      - `EXPO_PUBLIC_API_URL` to point at the running backend (e.g. `http://localhost:3000` or your LAN IP).
+      - `EXPO_PUBLIC_HELIUS_API_KEY` for on-device Solana RPC access.
+      - `EXPO_PUBLIC_JUPITER_API_KEY` is **required** for Jupiter price + token metadata APIs (`/price/v3/price`, `/tokens/v2`). Request a key from [Jupiter’s developer portal](https://dev.jup.ag/) and keep it scoped per environment.
+      - Optional WebView integrations: `EXPO_PUBLIC_JUPITER_PLUGIN_URL`, `EXPO_PUBLIC_JUPITER_PLUGIN_ALLOWLIST`, `EXPO_PUBLIC_TELEMETRY_URL`.
 
 3. **Run services**
 

@@ -6,6 +6,7 @@ const CACHE_KEYS = {
   PRICE_CACHE: '@WalletHub:priceCache',
   WALLET_REGISTRY: '@WalletHub:walletRegistry',
   TOKEN_METADATA: '@WalletHub:tokenMetadata',
+  WALLET_BALANCES: '@WalletHub:walletBalances',
 };
 
 export const cacheUtils = {
@@ -213,6 +214,53 @@ export const cacheUtils = {
       console.warn('Error clearing token metadata cache:', error);
     }
   },
+
+  // Wallet balances caching
+  async getCachedWalletBalances(): Promise<any | null> {
+    try {
+      const cacheData = await AsyncStorage.getItem(CACHE_KEYS.WALLET_BALANCES);
+      if (!cacheData) return null;
+
+      const balancesCache = JSON.parse(cacheData);
+
+      if (Date.now() > balancesCache.expiry) {
+        await this.clearWalletBalancesCache();
+        return null;
+      }
+
+      return balancesCache.data;
+    } catch (error) {
+      console.warn('Error getting cached wallet balances:', error);
+      return null;
+    }
+  },
+
+  async setCachedWalletBalances(
+    balances: any,
+    ttl: number = 30 * 1000
+  ): Promise<void> {
+    try {
+      const cacheData = {
+        data: balances,
+        expiry: Date.now() + ttl,
+      };
+
+      await AsyncStorage.setItem(
+        CACHE_KEYS.WALLET_BALANCES,
+        JSON.stringify(cacheData)
+      );
+    } catch (error) {
+      console.warn('Error setting cached wallet balances:', error);
+    }
+  },
+
+  async clearWalletBalancesCache(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(CACHE_KEYS.WALLET_BALANCES);
+    } catch (error) {
+      console.warn('Error clearing wallet balances cache:', error);
+    }
+  },
   
   // Clear all cache
   async clearAllCache(): Promise<void> {
@@ -222,6 +270,7 @@ export const cacheUtils = {
         AsyncStorage.removeItem(CACHE_KEYS.PRICE_CACHE),
         this.clearWalletRegistryCache(),
         this.clearTokenMetadataCache(),
+        this.clearWalletBalancesCache(),
       ]);
     } catch (error) {
       console.warn('Error clearing all cache:', error);

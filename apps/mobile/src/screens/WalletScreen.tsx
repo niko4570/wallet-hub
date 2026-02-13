@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState, useEffect } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -11,7 +11,6 @@ import {
   TextInput,
   Alert,
   Share,
-  Linking,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
@@ -23,8 +22,6 @@ import { formatUsd, formatAddress } from "../utils/format";
 import { DetectedWalletApp, LinkedWallet } from "../types/wallet";
 import * as Haptics from "expo-haptics";
 import { WalletOption } from "../components/wallet/WalletOption";
-import { IconLoader } from "../components/common/IconLoader";
-import { priceService } from "../services/priceService";
 import { toast } from "../components/common/ErrorToast";
 
 const HEADER_HEIGHT = 78;
@@ -33,7 +30,6 @@ const WalletScreen = () => {
   const {
     refreshBalance,
     refreshWalletDetection,
-    disconnect,
     startAuthorization,
     finalizeAuthorization,
     availableWallets,
@@ -48,7 +44,6 @@ const WalletScreen = () => {
     totalBalance,
     totalUsdValue,
     detailedBalances,
-    setActiveWallet,
   } = useWalletStore();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -58,10 +53,6 @@ const WalletScreen = () => {
   const [sendRecipient, setSendRecipient] = useState("");
   const [sendAmount, setSendAmount] = useState("");
   const [sending, setSending] = useState(false);
-  const [solPriceUsd, setSolPriceUsd] = useState(100); // Default value while loading
-  const [collapsedGroups, setCollapsedGroups] = useState<
-    Record<string, boolean>
-  >({});
 
   const activeWalletBalanceSol = activeWallet
     ? detailedBalances[activeWallet.address]?.balance || 0
@@ -70,22 +61,6 @@ const WalletScreen = () => {
   const activeWalletLabel =
     activeWallet?.label ||
     (activeWallet ? formatAddress(activeWallet.address) : "Select a wallet");
-
-  const fetchSolPrice = useCallback(async () => {
-    try {
-      const price = await priceService.getSolPriceInUsd();
-      setSolPriceUsd(price);
-    } catch (error) {
-      console.warn("Failed to fetch SOL price:", error);
-    }
-  }, []);
-
-  // Fetch SOL price on component mount only if there are linked wallets
-  useEffect(() => {
-    if (linkedWallets.length > 0) {
-      fetchSolPrice();
-    }
-  }, [fetchSolPrice, linkedWallets.length]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -101,40 +76,13 @@ const WalletScreen = () => {
         ),
       ];
 
-      // Only fetch SOL price if there are linked wallets
-      if (linkedWallets.length > 0) {
-        refreshPromises.push(fetchSolPrice());
-      }
-
       await Promise.all(refreshPromises);
     } catch (err: any) {
       console.warn("Refresh failed", err);
     } finally {
       setRefreshing(false);
     }
-  }, [linkedWallets, refreshBalance, refreshWalletDetection, fetchSolPrice]);
-
-  const handleSelectWallet = useCallback(
-    (wallet: LinkedWallet) => {
-      setActiveWallet(wallet);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    },
-    [setActiveWallet],
-  );
-
-  const handleDisconnect = useCallback(
-    (address: string) => {
-      disconnect(address)
-        .then(() =>
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success),
-        )
-        .catch((err: any) => {
-          console.warn("Disconnect failed", err);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        });
-    },
-    [disconnect],
-  );
+  }, [linkedWallets, refreshBalance, refreshWalletDetection]);
 
   const handleConnectPress = useCallback(() => {
     setConnectModalVisible(true);
@@ -265,34 +213,42 @@ const WalletScreen = () => {
     Alert.alert(label, "Coming soon");
   }, []);
 
-  const walletGroups = useMemo(() => {
-    const groups = new Map<
+  const aggregatedTokens = useMemo(() => {
+    const tokenMap = new Map<
       string,
-      { name: string; wallets: LinkedWallet[] }
-    >();
-    linkedWallets.forEach((wallet) => {
-      const groupKey = wallet.groupId || wallet.groupName || "ungrouped";
-      const groupName = wallet.groupName || "Other wallets";
-      const existing = groups.get(groupKey);
-      if (existing) {
-        existing.wallets.push(wallet);
-      } else {
-        groups.set(groupKey, { name: groupName, wallets: [wallet] });
+      {
+        mint: string;
+        symbol?: string;
+        name?: string;
+        balance: number;
+        usdValue: number;
+        decimals: number;
       }
-    });
-    return Array.from(groups.entries()).map(([id, group]) => ({
-      id,
-      name: group.name,
-      wallets: group.wallets,
-    }));
-  }, [linkedWallets]);
+    >();
 
-  const toggleGroup = useCallback((groupId: string) => {
-    setCollapsedGroups((prev) => ({
-      ...prev,
-      [groupId]: !prev[groupId],
-    }));
-  }, []);
+    linkedWallets.forEach((wallet) => {
+      const walletTokens = detailedBalances[wallet.address]?.tokens || [];
+      walletTokens.forEach((token) => {
+        const existing = tokenMap.get(token.mint);
+        if (existing) {
+          existing.balance += token.balance;
+          existing.usdValue += token.usdValue;
+          if (!existing.symbol && token.symbol) {
+            existing.symbol = token.symbol;
+          }
+          if (!existing.name && token.name) {
+            existing.name = token.name;
+          }
+        } else {
+          tokenMap.set(token.mint, { ...token });
+        }
+      });
+    });
+
+    return Array.from(tokenMap.values()).sort(
+      (a, b) => b.usdValue - a.usdValue,
+    );
+  }, [detailedBalances, linkedWallets]);
 
   const renderAvailableWallets = useMemo(() => {
     if (detectingWallets) {
@@ -332,7 +288,9 @@ const WalletScreen = () => {
         </View>
         <View style={styles.headerRight}>
           <Text style={styles.headerTotalLabel}>Total</Text>
-          <Text style={styles.headerTotalValue}>{formatUsd(totalUsdValue)}</Text>
+          <Text style={styles.headerTotalValue}>
+            {formatUsd(totalUsdValue)}
+          </Text>
         </View>
       </View>
 
@@ -374,7 +332,9 @@ const WalletScreen = () => {
               <Text style={styles.balanceValue}>
                 {formatUsd(totalUsdValue)}
               </Text>
-              <Text style={styles.balanceSol}>{totalBalance.toFixed(4)} SOL</Text>
+              <Text style={styles.balanceSol}>
+                {totalBalance.toFixed(4)} SOL
+              </Text>
             </View>
 
             <View style={styles.heroWalletRow}>
@@ -450,204 +410,65 @@ const WalletScreen = () => {
         {linkedWallets.length > 0 && (
           <View style={styles.summaryCard}>
             <View style={styles.summaryHeader}>
-              <Text style={styles.summaryTitle}>All Wallet Balances</Text>
+              <Text style={styles.summaryTitle}>Total Portfolio</Text>
               <Text style={styles.summarySubtitle}>
-                {linkedWallets.length} linked
+                {linkedWallets.length} wallets connected
               </Text>
             </View>
-            {linkedWallets.map((wallet: LinkedWallet, index: number) => {
-              const walletBalance = detailedBalances[wallet.address];
-              const walletBalanceSol = walletBalance?.balance || 0;
-              const walletBalanceUsd = walletBalance?.usdValue || 0;
-              const walletName =
-                wallet.walletName || wallet.label || "Wallet";
-
-              return (
-                <View
-                  key={wallet.address}
-                  style={[
-                    styles.summaryRow,
-                    index === 0 && styles.summaryRowFirst,
-                  ]}
-                >
-                  <View style={styles.summaryRowLeft}>
-                    <View style={styles.summaryIcon}>
-                      <IconLoader
-                        walletId={wallet.walletAppId || "unknown"}
-                        size={28}
-                      />
+            <View style={styles.summaryTotalsRow}>
+              <View style={styles.summaryTotalsBlock}>
+                <Text style={styles.summaryTotalsLabel}>Total Value</Text>
+                <Text style={styles.summaryTotalsValue}>
+                  {formatUsd(totalUsdValue)}
+                </Text>
+              </View>
+              <View style={styles.summaryTotalsDivider} />
+              <View style={styles.summaryTotalsBlock}>
+                <Text style={styles.summaryTotalsLabel}>Total SOL</Text>
+                <Text style={styles.summaryTotalsValue}>
+                  {totalBalance.toFixed(4)} SOL
+                </Text>
+              </View>
+            </View>
+            <View style={styles.summaryTokenHeader}>
+              <Text style={styles.summaryTokenHeaderText}>Tokens</Text>
+              <Text style={styles.summaryTokenCount}>
+                {aggregatedTokens.length} types
+              </Text>
+            </View>
+            <View style={styles.tokenList}>
+              {aggregatedTokens.length > 0 ? (
+                aggregatedTokens.map((token) => {
+                  const label = token.symbol || token.name || token.mint;
+                  const secondary =
+                    token.symbol && token.name && token.symbol !== token.name
+                      ? token.name
+                      : token.mint;
+                  return (
+                    <View key={token.mint} style={styles.tokenRow}>
+                      <View style={styles.tokenMeta}>
+                        <Text style={styles.tokenSymbol}>{label}</Text>
+                        <Text style={styles.tokenName}>{secondary}</Text>
+                      </View>
+                      <View style={styles.tokenValues}>
+                        <Text style={styles.tokenAmount}>
+                          {token.balance.toFixed(4)}
+                        </Text>
+                        <Text style={styles.tokenUsd}>
+                          {formatUsd(token.usdValue)}
+                        </Text>
+                      </View>
                     </View>
-                    <View>
-                      <Text style={styles.summaryWalletName}>{walletName}</Text>
-                      <Text style={styles.summaryWalletAddress}>
-                        {formatAddress(wallet.address)}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.summaryRowRight}>
-                    <Text style={styles.summarySol}>
-                      {walletBalanceSol.toFixed(4)} SOL
-                    </Text>
-                    <Text style={styles.summaryUsd}>
-                      {formatUsd(walletBalanceUsd)}
-                    </Text>
-                  </View>
-                </View>
-              );
-            })}
+                  );
+                })
+              ) : (
+                <Text style={styles.tokenEmpty}>
+                  No tokens detected across connected wallets.
+                </Text>
+              )}
+            </View>
           </View>
         )}
-
-        {/* Linked Wallets */}
-        <View style={styles.walletsSection}>
-          <Text style={styles.sectionTitle}>Linked Wallets</Text>
-          {linkedWallets.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateText}>No wallets connected</Text>
-              <TouchableOpacity
-                style={styles.connectButton}
-                onPress={handleConnectPress}
-              >
-                <Text style={styles.connectButtonText}>Connect Wallet</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            walletGroups.map((group) => {
-              const isCollapsed = collapsedGroups[group.id];
-              return (
-                <View key={group.id} style={styles.groupCard}>
-                  <TouchableOpacity
-                    style={styles.groupHeader}
-                    onPress={() => toggleGroup(group.id)}
-                    activeOpacity={0.85}
-                  >
-                    <View>
-                      <Text style={styles.groupTitle}>{group.name}</Text>
-                      <Text style={styles.groupSubtitle}>
-                        {group.wallets.length} wallets
-                      </Text>
-                    </View>
-                    <View style={styles.groupHeaderRight}>
-                      <Text style={styles.groupToggleText}>
-                        {isCollapsed ? "Show" : "Hide"}
-                      </Text>
-                      <Feather
-                        name={isCollapsed ? "chevron-down" : "chevron-up"}
-                        size={18}
-                        color="#C7B5FF"
-                      />
-                    </View>
-                  </TouchableOpacity>
-                  {!isCollapsed &&
-                    group.wallets.map((wallet) => {
-                      const isActiveWallet =
-                        activeWallet?.address === wallet.address;
-                      const walletBalance = detailedBalances[wallet.address];
-                      const walletBalanceSol = walletBalance?.balance || 0;
-                      const walletBalanceUsd = walletBalance?.usdValue || 0;
-                      const walletTokens = walletBalance?.tokens || [];
-                      const walletName =
-                        wallet.walletName || wallet.label || "Wallet";
-
-                      return (
-                        <View key={wallet.address} style={styles.walletCard}>
-                          <View style={styles.walletHeader}>
-                            <View style={styles.walletHeaderLeft}>
-                              <View style={styles.walletIcon}>
-                                <IconLoader
-                                  walletId={wallet.walletAppId || "unknown"}
-                                  size={36}
-                                />
-                              </View>
-                              <View style={styles.walletIdentity}>
-                                <Text style={styles.walletName}>
-                                  {walletName}
-                                </Text>
-                                <Text style={styles.walletAddress}>
-                                  {formatAddress(wallet.address)}
-                                </Text>
-                                {wallet.label && (
-                                  <Text style={styles.walletLabel}>
-                                    {wallet.label}
-                                  </Text>
-                                )}
-                              </View>
-                            </View>
-                            {isActiveWallet && (
-                              <View style={styles.activeBadge}>
-                                <Text style={styles.activeBadgeText}>
-                                  Active
-                                </Text>
-                              </View>
-                            )}
-                          </View>
-                          <View style={styles.walletBalance}>
-                            <Text style={styles.walletBalanceSol}>
-                              {walletBalanceSol.toFixed(4)} SOL
-                            </Text>
-                            <Text style={styles.walletBalanceUsd}>
-                              {formatUsd(walletBalanceUsd)}
-                            </Text>
-                          </View>
-                          <View style={styles.tokenList}>
-                            <View style={styles.tokenHeaderRow}>
-                              <Text style={styles.tokenHeaderText}>Tokens</Text>
-                              <Text style={styles.tokenHeaderCount}>
-                                {walletTokens.length} assets
-                              </Text>
-                            </View>
-                            {walletTokens.length > 0 ? (
-                              walletTokens.map((token) => {
-                                const label =
-                                  token.symbol || token.name || token.mint;
-                                return (
-                                  <View key={token.mint} style={styles.tokenRow}>
-                                    <View style={styles.tokenMeta}>
-                                      <Text style={styles.tokenSymbol}>
-                                        {label}
-                                      </Text>
-                                      <Text style={styles.tokenAmount}>
-                                        {token.balance.toFixed(4)}
-                                      </Text>
-                                    </View>
-                                    <Text style={styles.tokenUsd}>
-                                      {formatUsd(token.usdValue)}
-                                    </Text>
-                                  </View>
-                                );
-                              })
-                            ) : (
-                              <Text style={styles.tokenEmpty}>
-                                No tokens detected for this wallet.
-                              </Text>
-                            )}
-                          </View>
-                          <View style={styles.walletActions}>
-                            {!isActiveWallet && (
-                              <TouchableOpacity
-                                style={styles.walletAction}
-                                onPress={() => handleSelectWallet(wallet)}
-                              >
-                                <Text style={styles.walletActionText}>
-                                  Set Active
-                                </Text>
-                              </TouchableOpacity>
-                            )}
-                            <TouchableOpacity
-                              style={styles.walletAction}
-                              onPress={() => handleDisconnect(wallet.address)}
-                            >
-                              <Text style={styles.walletActionText}>Remove</Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      );
-                    })}
-                </View>
-              );
-            })
-          )}
-        </View>
 
         {/* Connect Wallet Modal */}
         <Modal
@@ -1026,38 +847,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 12,
   },
-  walletsSection: {
-    marginBottom: 24,
-    marginTop: 8,
-  },
-  sectionTitle: {
-    color: "rgba(255, 255, 255, 0.8)",
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 16,
-  },
-  emptyState: {
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    borderRadius: 24,
-    padding: 32,
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  emptyStateText: {
-    color: "rgba(255, 255, 255, 0.6)",
-    fontSize: 16,
-    marginBottom: 16,
-  },
-  connectButton: {
-    backgroundColor: "#9B8CFF",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 16,
-  },
-  connectButtonText: {
-    color: "#0B1221",
-    fontWeight: "700",
-  },
   summaryCard: {
     backgroundColor: "rgba(255, 255, 255, 0.05)",
     borderRadius: 22,
@@ -1080,48 +869,33 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.6)",
     fontSize: 12,
   },
-  summaryRow: {
+  summaryTotalsRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
   },
-  summaryRowFirst: {
-    borderTopWidth: 0,
+  summaryTotalsBlock: {
+    flex: 1,
   },
-  summaryRowLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  summaryIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 10,
-    overflow: "hidden",
-  },
-  summaryWalletName: {
-    color: "#F8F5FF",
-    fontWeight: "700",
-    fontSize: 13,
-  },
-  summaryWalletAddress: {
+  summaryTotalsLabel: {
     color: "rgba(255,255,255,0.6)",
-    fontSize: 11,
-  },
-  summaryRowRight: {
-    alignItems: "flex-end",
-  },
-  summarySol: {
-    color: "#FFFFFF",
-    fontWeight: "700",
     fontSize: 12,
+    marginBottom: 4,
   },
-  summaryUsd: {
-    color: "rgba(255,255,255,0.6)",
-    fontSize: 11,
+  summaryTotalsValue: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+    fontSize: 14,
+  },
+  summaryTotalsDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    marginHorizontal: 12,
   },
   walletCard: {
     backgroundColor: "rgba(255, 255, 255, 0.04)",
@@ -1203,30 +977,31 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     gap: 8,
   },
-  tokenHeaderRow: {
+  summaryTokenHeader: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 4,
+    alignItems: "center",
+    marginBottom: 10,
   },
-  tokenHeaderText: {
-    color: "#F2EEFF",
+  summaryTokenHeaderText: {
+    color: "#FFFFFF",
     fontWeight: "700",
-    fontSize: 12,
+    fontSize: 14,
   },
-  tokenHeaderCount: {
+  summaryTokenCount: {
     color: "rgba(255,255,255,0.6)",
-    fontSize: 11,
+    fontSize: 12,
   },
   tokenRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.06)",
   },
   tokenMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+    flex: 1,
   },
   tokenSymbol: {
     color: "#F2EEFF",
@@ -1234,9 +1009,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textTransform: "uppercase",
   },
+  tokenName: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 11,
+    marginTop: 2,
+  },
   tokenAmount: {
     color: "rgba(255,255,255,0.72)",
     fontSize: 12,
+  },
+  tokenValues: {
+    alignItems: "flex-end",
   },
   tokenUsd: {
     color: "rgba(255,255,255,0.6)",
@@ -1259,41 +1042,6 @@ const styles = StyleSheet.create({
     color: "#C7B5FF",
     fontWeight: "600",
     fontSize: 14,
-  },
-  groupCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
-    borderRadius: 20,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-    marginBottom: 12,
-  },
-  groupHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-  },
-  groupTitle: {
-    color: "#F8F5FF",
-    fontWeight: "700",
-    fontSize: 14,
-  },
-  groupSubtitle: {
-    color: "rgba(255,255,255,0.5)",
-    fontSize: 11,
-    marginTop: 2,
-  },
-  groupHeaderRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  groupToggleText: {
-    color: "#C7B5FF",
-    fontWeight: "600",
-    fontSize: 12,
   },
   modalBackdrop: {
     flex: 1,

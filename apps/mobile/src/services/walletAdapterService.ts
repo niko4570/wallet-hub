@@ -154,6 +154,7 @@ class WalletAdapterService {
               balance: solBalance,
               usdValue: solBalance * price,
               lastUpdated: timestamp,
+              tokens: [],
             });
           } catch (error) {
             console.warn(`Failed to refresh balance for ${address}:`, error);
@@ -184,6 +185,7 @@ class WalletAdapterService {
         balance: solBalance,
         usdValue: solBalance * price,
         lastUpdated: timestamp,
+        tokens: [],
       });
       return balance;
     } catch (error) {

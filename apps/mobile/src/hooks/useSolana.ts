@@ -241,7 +241,7 @@ export function useSolana(): UseSolanaResult {
             (token) => token.uiAmount > 0,
           );
 
-          let heliusBalances: Array<{
+          let tokenBalances: Array<{
             mint: string;
             balance: number;
             decimals: number;
@@ -249,10 +249,11 @@ export function useSolana(): UseSolanaResult {
             name?: string;
             pricePerToken?: number;
             usdValue?: number;
+            logoURI?: string;
           }> = [];
 
           if (tokensWithBalance.length === 0) {
-            heliusBalances =
+            tokenBalances =
               await tokenMetadataService.getTokenBalancesForWallet(
                 targetAddress,
               );
@@ -266,14 +267,14 @@ export function useSolana(): UseSolanaResult {
             );
           };
 
-          const filteredHeliusBalances = heliusBalances.filter(
+          const filteredTokenBalances = tokenBalances.filter(
             (token) => !isNativeSol(token.mint, token.symbol),
           );
 
           const mints =
             tokensWithBalance.length > 0
               ? tokensWithBalance.map((token) => token.mint)
-              : filteredHeliusBalances.map((token) => token.mint);
+              : filteredTokenBalances.map((token) => token.mint);
 
           const [mintPrices, metadataMap] = await Promise.all([
             priceService.getTokenPricesInUsd(mints),
@@ -307,7 +308,7 @@ export function useSolana(): UseSolanaResult {
                     decimals: token.decimals,
                   };
                 })
-              : filteredHeliusBalances.map((token) => {
+              : filteredTokenBalances.map((token) => {
                   const price =
                     mintPrices[token.mint] ?? token.pricePerToken ?? 0;
                   if (!price) {
