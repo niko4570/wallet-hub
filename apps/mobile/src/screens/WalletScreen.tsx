@@ -44,6 +44,8 @@ const WalletScreen = () => {
     totalBalance,
     totalUsdValue,
     detailedBalances,
+    setActiveWallet,
+    removeWallet,
   } = useWalletStore();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -53,6 +55,9 @@ const WalletScreen = () => {
   const [sendRecipient, setSendRecipient] = useState("");
   const [sendAmount, setSendAmount] = useState("");
   const [sending, setSending] = useState(false);
+  const [accountModalMode, setAccountModalMode] = useState<
+    "manage" | "connect"
+  >("connect");
 
   const activeWalletBalanceSol = activeWallet
     ? detailedBalances[activeWallet.address]?.balance || 0
@@ -61,6 +66,13 @@ const WalletScreen = () => {
   const activeWalletLabel =
     activeWallet?.label ||
     (activeWallet ? formatAddress(activeWallet.address) : "Select a wallet");
+
+  const accountMetaText =
+    linkedWallets.length > 0
+      ? `${linkedWallets.length} connected${
+          activeWallet ? ` • ${activeWalletBalanceSol.toFixed(4)} SOL` : ""
+        }`
+      : "Link Phantom, Backpack, or any MWA wallet";
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -84,10 +96,44 @@ const WalletScreen = () => {
     }
   }, [linkedWallets, refreshBalance, refreshWalletDetection]);
 
+  const openAccountModal = useCallback(
+    (overrideMode?: "manage" | "connect") => {
+      const nextMode =
+        overrideMode ??
+        (linkedWallets.length > 0 ? "manage" : ("connect" as const));
+      setAccountModalMode(nextMode);
+      setConnectModalVisible(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    },
+    [linkedWallets.length],
+  );
+
   const handleConnectPress = useCallback(() => {
-    setConnectModalVisible(true);
+    openAccountModal();
+  }, [openAccountModal]);
+
+  const handleCycleWallet = useCallback(() => {
+    if (linkedWallets.length === 0) {
+      openAccountModal("connect");
+      return;
+    }
+
+    if (!activeWallet) {
+      setActiveWallet(linkedWallets[0]);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      return;
+    }
+
+    const currentIndex = linkedWallets.findIndex(
+      (wallet) => wallet.address === activeWallet.address,
+    );
+    const nextWallet =
+      linkedWallets[
+        (currentIndex + 1 + linkedWallets.length) % linkedWallets.length
+      ];
+    setActiveWallet(nextWallet);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, []);
+  }, [activeWallet, linkedWallets, openAccountModal, setActiveWallet]);
 
   const handleStartConnect = useCallback(
     async (walletChoice?: DetectedWalletApp) => {
@@ -109,6 +155,38 @@ const WalletScreen = () => {
       }
     },
     [finalizeAuthorization, refreshBalance, startAuthorization],
+  );
+
+  const handleSelectLinkedWallet = useCallback(
+    (wallet: LinkedWallet) => {
+      setActiveWallet(wallet);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setConnectModalVisible(false);
+    },
+    [setActiveWallet],
+  );
+
+  const handleRemoveLinkedWallet = useCallback(
+    (wallet: LinkedWallet) => {
+      Alert.alert(
+        "Remove wallet",
+        `Are you sure you want to remove ${wallet.label || wallet.address}?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Remove",
+            style: "destructive",
+            onPress: () => {
+              removeWallet(wallet.address);
+              Haptics.notificationAsync(
+                Haptics.NotificationFeedbackType.Warning,
+              );
+            },
+          },
+        ],
+      );
+    },
+    [removeWallet],
   );
 
   const handleSend = useCallback(async () => {
@@ -259,6 +337,16 @@ const WalletScreen = () => {
         </View>
       );
     }
+    if (availableWallets.length === 0) {
+      return (
+        <View style={styles.emptyWalletDetection}>
+          <Text style={styles.emptyWalletDetectionText}>
+            No compatible wallets detected nearby. Launch Phantom, Backpack, or
+            another MWA-compatible wallet, then try again.
+          </Text>
+        </View>
+      );
+    }
     return availableWallets.map((wallet: DetectedWalletApp) => (
       <WalletOption
         key={wallet.id}
@@ -268,16 +356,40 @@ const WalletScreen = () => {
     ));
   }, [availableWallets, detectingWallets, handleStartConnect]);
 
+  const showManageAccounts =
+    accountModalMode === "manage" && linkedWallets.length > 0;
+
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
         <TouchableOpacity
-          style={styles.headerButton}
+          style={styles.accountCard}
           onPress={handleConnectPress}
           activeOpacity={0.9}
         >
-          <Feather name="plus" size={16} color="#0B1221" />
-          <Text style={styles.headerButtonText}>Connect</Text>
+          <View style={styles.accountAvatar}>
+            {activeWallet ? (
+              <View style={styles.userAvatar}>
+                <Text style={styles.avatarText}>
+                  {activeWalletLabel.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.connectAvatar}>
+                <Feather name="plus" size={16} color="#FFFFFF" />
+              </View>
+            )}
+          </View>
+          <View style={styles.accountDetails}>
+            <Text style={styles.accountName} numberOfLines={1}>
+              {activeWallet ? activeWalletLabel : "Connect Wallet"}
+            </Text>
+            <Feather
+              name="chevron-down"
+              size={14}
+              color="rgba(255,255,255,0.7)"
+            />
+          </View>
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Solana Wallets</Text>
@@ -479,8 +591,48 @@ const WalletScreen = () => {
         >
           <View style={styles.modalBackdrop}>
             <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Choose a wallet</Text>
-              <ScrollView>{renderAvailableWallets}</ScrollView>
+              <Text style={styles.modalTitle}>
+                {showManageAccounts ? "Wallet accounts" : "Connect a wallet"}
+              </Text>
+              {showManageAccounts ? (
+                <>
+                  <ScrollView>
+                    {linkedWallets.map((wallet) => (
+                      <WalletOption
+                        key={wallet.address}
+                        wallet={wallet}
+                        isActive={wallet.address === activeWallet?.address}
+                        onSelect={handleSelectLinkedWallet}
+                        onRemove={() => handleRemoveLinkedWallet(wallet)}
+                      />
+                    ))}
+                  </ScrollView>
+                  <TouchableOpacity
+                    style={styles.modalHelperButton}
+                    onPress={() => setAccountModalMode("connect")}
+                  >
+                    <Feather name="plus" size={14} color="#C7B5FF" />
+                    <Text style={styles.modalHelperButtonText}>
+                      Link a new wallet
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <ScrollView>{renderAvailableWallets}</ScrollView>
+                  {linkedWallets.length > 0 && (
+                    <TouchableOpacity
+                      style={styles.modalHelperButton}
+                      onPress={() => setAccountModalMode("manage")}
+                    >
+                      <Feather name="credit-card" size={14} color="#C7B5FF" />
+                      <Text style={styles.modalHelperButtonText}>
+                        Manage linked wallets
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              )}
               <TouchableOpacity
                 style={styles.modalClose}
                 onPress={() => setConnectModalVisible(false)}
@@ -653,23 +805,54 @@ const styles = StyleSheet.create({
     zIndex: 10,
     elevation: 8,
   },
-  headerButton: {
+  accountCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    backgroundColor: "#9CFFDA",
-    paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 999,
+    paddingHorizontal: 12,
+    marginRight: 12,
   },
-  headerButtonText: {
-    color: "#0B1221",
-    fontWeight: "800",
-    fontSize: 12,
-    letterSpacing: 0.2,
+  accountAvatar: {
+    marginRight: 8,
+  },
+  userAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(127, 86, 217, 0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
+  },
+  connectAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(127, 86, 217, 0.7)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+  },
+  avatarText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  accountDetails: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  accountName: {
+    color: "#FFFFFF",
+    fontWeight: "600",
+    fontSize: 14,
+    marginRight: 6,
   },
   headerCenter: {
     alignItems: "center",
+    paddingHorizontal: 6,
   },
   headerTitle: {
     color: "#F8F5FF",
@@ -1071,6 +1254,22 @@ const styles = StyleSheet.create({
     color: "#C7B5FF",
     fontWeight: "700",
   },
+  modalHelperButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 12,
+  },
+  modalHelperButtonText: {
+    color: "#C7B5FF",
+    fontSize: 14,
+    fontWeight: "600",
+  },
   modalLoading: {
     paddingVertical: 16,
     alignItems: "center",
@@ -1173,6 +1372,17 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 13,
     textAlign: "center",
+  },
+  emptyWalletDetection: {
+    paddingVertical: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyWalletDetectionText: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
   },
 });
 
