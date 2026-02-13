@@ -8,15 +8,19 @@ endif
 
 EXPO_PUBLIC_API_URL ?= http://localhost:3000
 ADB_PORT ?= 3000
-ENV_EXPORT := EXPO_PUBLIC_API_URL=$(EXPO_PUBLIC_API_URL)
+ENV_EXPORT := EXPO_PUBLIC_API_URL=$(EXPO_PUBLIC_API_URL) \
+	EXPO_PUBLIC_HELIUS_API_KEY=$(EXPO_PUBLIC_HELIUS_API_KEY) \
+	EXPO_PUBLIC_COINGECKO_API_KEY=$(EXPO_PUBLIC_COINGECKO_API_KEY) \
+	EXPO_PUBLIC_HELIUS_API_BASE=$(EXPO_PUBLIC_HELIUS_API_BASE)
 
-.PHONY: help install dev-api dev-mobile dev-all build build-api build-contracts lint test-api android adb-reverse web clean-mobile ios
+.PHONY: help install dev-api dev-mobile dev-app dev-all build build-api build-contracts lint test-api android adb-reverse web clean-mobile clean-app ios check-env-mobile print-env-mobile
 
 help:
 	@echo "WalletHub shortcuts:"
 	@echo "  make install        # npm install (root workspaces)"
-	@echo "  make dev-api        # start Nest API (watch mode)"
-	@echo "  make dev-mobile     # start Expo dev server (uses EXPO_PUBLIC_API_URL)"
+	@echo "  make dev-api        # start Nest API (watch mode, optional)"
+	@echo "  make dev-mobile     # start Expo dev server"
+	@echo "  make dev-app        # alias for dev-mobile"
 	@echo "  make android        # build & install debug apk via USB"
 	@echo "  make ios            # build & run on iOS simulator"
 	@echo "  make build          # compile shared contracts + API"
@@ -27,6 +31,9 @@ help:
 	@echo "  make dev-all        # concurrently run API + Expo"
 	@echo "  make web            # run Expo web preview"
 	@echo "  make clean-mobile   # clean mobile build cache"
+	@echo "  make clean-app      # alias for clean-mobile"
+	@echo "  make check-env-mobile # warn if mobile env vars are missing"
+	@echo "  make print-env-mobile # print mobile env vars"
 
 install:
 	npm install
@@ -36,8 +43,10 @@ dev-api:
 	npm run dev:api
 
 # Start mobile development server
-dev-mobile:
+dev-mobile: check-env-mobile
 	$(ENV_EXPORT) npm run dev:mobile
+
+dev-app: dev-mobile
 
 # Build and install Android debug APK
 android: adb-reverse
@@ -54,6 +63,8 @@ web:
 # Clean mobile build cache
 clean-mobile:
 	cd apps/mobile && rm -rf .expo node_modules/.expo android/build ios/build
+
+clean-app: clean-mobile
 
 # Reverse adb port for device debugging
 adb-reverse:
@@ -85,3 +96,17 @@ lint:
 # Run backend tests
 test-api:
 	npm run test --workspace apps/api -- --runInBand
+
+check-env-mobile:
+	@if [ -z "$(EXPO_PUBLIC_HELIUS_API_KEY)" ]; then \
+		echo "Warning: EXPO_PUBLIC_HELIUS_API_KEY is not set (RPC will use demo/limited access)."; \
+	fi
+	@if [ -z "$(EXPO_PUBLIC_COINGECKO_API_KEY)" ]; then \
+		echo "Warning: EXPO_PUBLIC_COINGECKO_API_KEY is not set (price lookups may be rate-limited)."; \
+	fi
+
+print-env-mobile:
+	@echo "EXPO_PUBLIC_API_URL=$(EXPO_PUBLIC_API_URL)"
+	@echo "EXPO_PUBLIC_HELIUS_API_KEY=$(EXPO_PUBLIC_HELIUS_API_KEY)"
+	@echo "EXPO_PUBLIC_COINGECKO_API_KEY=$(EXPO_PUBLIC_COINGECKO_API_KEY)"
+	@echo "EXPO_PUBLIC_HELIUS_API_BASE=$(EXPO_PUBLIC_HELIUS_API_BASE)"
