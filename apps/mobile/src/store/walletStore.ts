@@ -403,6 +403,7 @@ export const useWalletStore = create<WalletState>()(
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         linkedWallets: state.linkedWallets,
+        activeWallet: state.activeWallet,
         activeWalletAddress: state.activeWalletAddress,
         walletGroups: state.walletGroups
       }),

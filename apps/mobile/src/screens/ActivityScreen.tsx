@@ -144,29 +144,39 @@ const ActivityScreen = () => {
   const fetchTransactions = useCallback(
     async (isLoadMore = false, currentLastSignature?: string) => {
       if (!activeWallet) {
-        console.log("No active wallet, setting transactions to empty");
+        if (__DEV__) {
+          console.log("No active wallet, setting transactions to empty");
+        }
         setTransactions([]);
         return;
       }
 
       try {
-        console.log(
-          `Fetching transactions for wallet: ${activeWallet.address}`,
-        );
+        if (__DEV__) {
+          console.log(
+            `Fetching transactions for wallet: ${activeWallet.address}`,
+          );
+        }
         const limit = 20;
-        console.log(
-          `Getting signatures with limit: ${limit}, last signature: ${currentLastSignature}`,
-        );
+        if (__DEV__) {
+          console.log(
+            `Getting signatures with limit: ${limit}, last signature: ${currentLastSignature}`,
+          );
+        }
         const signatures = await rpcService.getSignaturesForAddress(
           activeWallet.address,
           limit,
           isLoadMore ? currentLastSignature : undefined,
         );
 
-        console.log(`Got ${signatures.length} signatures`);
+        if (__DEV__) {
+          console.log(`Got ${signatures.length} signatures`);
+        }
 
         if (signatures.length === 0) {
-          console.log("No signatures found");
+          if (__DEV__) {
+            console.log("No signatures found");
+          }
           if (!isLoadMore) {
             setTransactions([]);
           }
@@ -174,13 +184,17 @@ const ActivityScreen = () => {
           return;
         }
 
-        console.log(`Processing ${signatures.length} signatures`);
+        if (__DEV__) {
+          console.log(`Processing ${signatures.length} signatures`);
+        }
         const transactionPromises: Array<Promise<Transaction | null>> =
           signatures.map(async (sig) => {
             try {
-              console.log(
-                `Fetching transaction for signature: ${sig.signature}`,
-              );
+              if (__DEV__) {
+                console.log(
+                  `Fetching transaction for signature: ${sig.signature}`,
+                );
+              }
               const tx = await rpcService.getTransaction(sig.signature);
               const parsed = parseTransaction(
                 tx,
@@ -188,9 +202,11 @@ const ActivityScreen = () => {
                 sig.blockTime,
                 sig.status,
               );
-              console.log(
-                `Parsed transaction: ${parsed ? "success" : "failed"}`,
-              );
+              if (__DEV__) {
+                console.log(
+                  `Parsed transaction: ${parsed ? "success" : "failed"}`,
+                );
+              }
               return parsed;
             } catch (error) {
               console.warn(
@@ -206,12 +222,31 @@ const ActivityScreen = () => {
           (tx): tx is Transaction => tx !== null,
         );
 
-        console.log(`Got ${validTransactions.length} valid transactions`);
+        if (__DEV__) {
+          console.log(`Got ${validTransactions.length} valid transactions`);
+        }
+        if (__DEV__) {
+          console.log("Valid transactions count:", validTransactions.length);
+        }
 
         // Batch update state to reduce re-renders
         if (isLoadMore) {
-          setTransactions((prev) => [...prev, ...validTransactions]);
+          if (__DEV__) {
+            console.log(`Appending ${validTransactions.length} transactions`);
+          }
+          setTransactions((prev) => {
+            const newTransactions = [...prev, ...validTransactions];
+            if (__DEV__) {
+              console.log(
+                `Total transactions after append: ${newTransactions.length}`,
+              );
+            }
+            return newTransactions;
+          });
         } else {
+          if (__DEV__) {
+            console.log(`Setting ${validTransactions.length} transactions`);
+          }
           setTransactions(validTransactions);
         }
 
@@ -220,6 +255,9 @@ const ActivityScreen = () => {
         }
 
         setHasMore(signatures.length === limit);
+        if (__DEV__) {
+          console.log(`Has more: ${signatures.length === limit}`);
+        }
       } catch (error) {
         console.error("Failed to fetch transactions:", error);
         if (!isLoadMore) {
@@ -237,23 +275,46 @@ const ActivityScreen = () => {
 
   // Load data when active wallet changes or tab changes
   useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      try {
-        if (activeTab === "transactions") {
-          // Reset state
-          setLastSignature(undefined);
-          setHasMore(true);
-          await fetchTransactions(false);
-        } else {
-          await fetchAuthorizations();
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
+    if (__DEV__) {
+      console.log(
+        `useEffect triggered - activeWallet: ${activeWallet?.address}, activeTab: ${activeTab}`,
+      );
+    }
 
-    loadData();
+    // Only load data if we have an active wallet
+    if (activeWallet) {
+      const loadData = async () => {
+        setLoading(true);
+        try {
+          if (activeTab === "transactions") {
+            // Reset state
+            setLastSignature(undefined);
+            setHasMore(true);
+            if (__DEV__) {
+              console.log(
+                `Calling fetchTransactions with activeWallet: ${activeWallet.address}`,
+              );
+            }
+            await fetchTransactions(false);
+          } else {
+            await fetchAuthorizations();
+          }
+        } finally {
+          setLoading(false);
+          if (__DEV__) {
+            console.log(`Loading completed`);
+          }
+        }
+      };
+
+      loadData();
+    } else {
+      if (__DEV__) {
+        console.log(`No active wallet, setting transactions to empty`);
+      }
+      setTransactions([]);
+      setLoading(false);
+    }
   }, [activeWallet, activeTab, fetchTransactions, fetchAuthorizations]);
 
   const onRefresh = useCallback(async () => {
@@ -471,9 +532,17 @@ const ActivityScreen = () => {
           ListFooterComponent={renderFooter}
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Text style={styles.emptyStateText}>No transactions found</Text>
+              <Text style={styles.emptyStateText}>
+                {transactions.length === 0
+                  ? "No transactions found"
+                  : "Loading transactions..."}
+              </Text>
+              <Text style={styles.emptyStateSubtext}>
+                Found {transactions.length} transactions
+              </Text>
             </View>
           }
+          extraData={transactions.length}
         />
       ) : (
         <View style={styles.content}>
@@ -592,6 +661,11 @@ const styles = StyleSheet.create({
   emptyStateText: {
     color: "rgba(255, 255, 255, 0.6)",
     fontSize: 16,
+  },
+  emptyStateSubtext: {
+    color: "rgba(255, 255, 255, 0.4)",
+    fontSize: 14,
+    marginTop: 8,
   },
   transactionCard: {
     backgroundColor: "rgba(255, 255, 255, 0.05)",
