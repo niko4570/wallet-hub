@@ -6,6 +6,12 @@ interface PriceResponse {
   };
 }
 
+interface CoinGeckoTokenPriceResponse {
+  [mint: string]: {
+    usd?: number;
+  };
+}
+
 export class PriceService {
   private static instance: PriceService;
   private cache: Map<string, { price: number; timestamp: number }> = new Map();
@@ -63,6 +69,81 @@ export class PriceService {
       // Return cached price if available, otherwise return a default value
       return cached?.price || 100;
     }
+  }
+
+  async getTokenPricesInUsd(
+    mints: string[],
+  ): Promise<Record<string, number>> {
+    const uniqueMints = Array.from(
+      new Set(mints.map((mint) => mint.trim()).filter(Boolean)),
+    );
+    if (uniqueMints.length === 0) {
+      return {};
+    }
+
+    const result: Record<string, number> = {};
+    const uncached: string[] = [];
+
+    uniqueMints.forEach((mint) => {
+      const cacheKey = `mint:${mint}`;
+      const cached = this.cache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < this.cacheDuration) {
+        result[mint] = cached.price;
+      } else {
+        uncached.push(mint);
+      }
+    });
+
+    if (uncached.length === 0) {
+      return result;
+    }
+
+    const chunkSize = 100;
+    const chunks: string[][] = [];
+    for (let i = 0; i < uncached.length; i += chunkSize) {
+      chunks.push(uncached.slice(i, i + chunkSize));
+    }
+
+    try {
+      const responses = await Promise.all(
+        chunks.map(async (chunk) => {
+          const ids = encodeURIComponent(chunk.join(","));
+          const response = await fetch(
+            `https://api.coingecko.com/api/v3/simple/token_price/solana?contract_addresses=${ids}&vs_currencies=usd`,
+            {
+              method: "GET",
+              headers: COINGECKO_API_KEY
+                ? { "x-cg-api-key": COINGECKO_API_KEY }
+                : undefined,
+            },
+          );
+
+          if (!response.ok) {
+            throw new Error(`CoinGecko token price error: ${response.status}`);
+          }
+
+          const data: CoinGeckoTokenPriceResponse = await response.json();
+          return data;
+        }),
+      );
+
+      responses.forEach((payload) => {
+        Object.entries(payload ?? {}).forEach(([mint, entry]) => {
+          const price = entry?.usd;
+          if (typeof price === "number" && Number.isFinite(price)) {
+            result[mint] = price;
+            this.cache.set(`mint:${mint}`, {
+              price,
+              timestamp: Date.now(),
+            });
+          }
+        });
+      });
+    } catch (error) {
+      console.warn("Error fetching token prices:", error);
+    }
+
+    return result;
   }
 }
 

@@ -5,6 +5,17 @@ import {
 } from "@solana/web3.js";
 import { HELIUS_RPC_URL } from "../config/env";
 
+const TOKEN_PROGRAM_ID = new PublicKey(
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+);
+
+export interface ParsedTokenAccountBalance {
+  mint: string;
+  decimals: number;
+  amount: string;
+  uiAmount: number;
+}
+
 class RpcService {
   private static instance: RpcService;
   private connection: Connection;
@@ -231,6 +242,55 @@ class RpcService {
       return Array.from(result.value);
     } catch (error) {
       console.error("Error fetching token accounts:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get parsed token accounts for an owner
+   * @param owner Owner public key
+   * @returns Array of token balances
+   */
+  async getParsedTokenAccountsByOwner(
+    owner: PublicKey,
+  ): Promise<ParsedTokenAccountBalance[]> {
+    try {
+      const result = await this.retry(async () => {
+        return await this.connection.getParsedTokenAccountsByOwner(owner, {
+          programId: TOKEN_PROGRAM_ID,
+        });
+      });
+
+      return result.value
+        .map((entry) => {
+          const info = entry.account.data.parsed?.info;
+          const tokenAmount = info?.tokenAmount;
+          const mint = info?.mint;
+          if (!tokenAmount || !mint) {
+            return null;
+          }
+
+          const decimals =
+            typeof tokenAmount.decimals === "number" ? tokenAmount.decimals : 0;
+          const amount =
+            typeof tokenAmount.amount === "string" ? tokenAmount.amount : "0";
+          const uiAmount =
+            typeof tokenAmount.uiAmount === "number"
+              ? tokenAmount.uiAmount
+              : Number(tokenAmount.uiAmountString ?? "0");
+
+          return {
+            mint,
+            decimals,
+            amount,
+            uiAmount,
+          };
+        })
+        .filter(
+          (entry): entry is ParsedTokenAccountBalance => entry !== null,
+        );
+    } catch (error) {
+      console.error("Error fetching parsed token accounts:", error);
       throw error;
     }
   }

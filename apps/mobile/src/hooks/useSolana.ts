@@ -20,6 +20,7 @@ import { walletService } from "../services/walletService";
 import { authorizationApi } from "../services/authorizationService";
 import { iconService } from "../services/iconService";
 import { rpcService } from "../services/rpcService";
+import { priceService } from "../services/priceService";
 import { HELIUS_RPC_URL, SOLANA_CLUSTER } from "../config/env";
 import { requireBiometricApproval } from "../security/biometrics";
 import { decodeWalletAddress } from "../utils/solanaAddress";
@@ -96,6 +97,10 @@ export interface UseSolanaResult {
   connection: Connection;
   isAuthenticated: boolean;
   balances: Record<string, number>;
+  detailedBalances: Record<
+    string,
+    { balance: number; usdValue: number; lastUpdated: string }
+  >;
   refreshBalance: (address?: string) => Promise<number | null>;
   availableWallets: DetectedWalletApp[];
   detectingWallets: boolean;
@@ -122,6 +127,9 @@ export function useSolana(): UseSolanaResult {
     null,
   );
   const [balances, setBalances] = useState<Record<string, number>>({});
+  const [detailedBalances, setDetailedBalances] = useState<
+    Record<string, { balance: number; usdValue: number; lastUpdated: string }>
+  >({});
   const [availableWallets, setAvailableWallets] = useState<DetectedWalletApp[]>(
     [],
   );
@@ -176,10 +184,55 @@ export function useSolana(): UseSolanaResult {
       try {
         const balance = await rpcService.getBalance(targetAddress);
         setBalances((prev) => ({ ...prev, [targetAddress]: balance }));
+
+        const now = new Date().toISOString();
+        const solBalance = balance / LAMPORTS_PER_SOL;
+        let totalUsdValue = 0;
+
+        try {
+          const [solPrice, tokenAccounts] = await Promise.all([
+            priceService.getSolPriceInUsd(),
+            rpcService.getParsedTokenAccountsByOwner(
+              new PublicKey(targetAddress),
+            ),
+          ]);
+
+          const tokensWithBalance = tokenAccounts.filter(
+            (token) => token.uiAmount > 0,
+          );
+          const mintPrices = await priceService.getTokenPricesInUsd(
+            tokensWithBalance.map((token) => token.mint),
+          );
+
+          const tokenUsdValue = tokensWithBalance.reduce((sum, token) => {
+            const price = mintPrices[token.mint] ?? 0;
+            return sum + token.uiAmount * price;
+          }, 0);
+
+          totalUsdValue = solBalance * solPrice + tokenUsdValue;
+        } catch (pricingError) {
+          console.warn("Failed to aggregate token prices", pricingError);
+          const solPrice = await priceService.getSolPriceInUsd().catch(() => 0);
+          totalUsdValue = solBalance * solPrice;
+        }
+
+        setDetailedBalances((prev) => ({
+          ...prev,
+          [targetAddress]: {
+            balance: solBalance,
+            usdValue: Number(totalUsdValue.toFixed(2)),
+            lastUpdated: now,
+          },
+        }));
         return balance;
       } catch (error) {
         console.warn("Error refreshing balance", error);
         setBalances((prev) => {
+          const next = { ...prev };
+          delete next[targetAddress];
+          return next;
+        });
+        setDetailedBalances((prev) => {
           const next = { ...prev };
           delete next[targetAddress];
           return next;
@@ -679,6 +732,7 @@ export function useSolana(): UseSolanaResult {
     connection,
     isAuthenticated: linkedWallets.length > 0,
     balances,
+    detailedBalances,
     refreshBalance,
     availableWallets,
     detectingWallets,
