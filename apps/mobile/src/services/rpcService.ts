@@ -8,6 +8,9 @@ import { HELIUS_RPC_URL } from "../config/env";
 const TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
 );
+const TOKEN_2022_PROGRAM_ID = new PublicKey(
+  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+);
 
 export interface ParsedTokenAccountBalance {
   mint: string;
@@ -255,13 +258,22 @@ class RpcService {
     owner: PublicKey,
   ): Promise<ParsedTokenAccountBalance[]> {
     try {
-      const result = await this.retry(async () => {
-        return await this.connection.getParsedTokenAccountsByOwner(owner, {
-          programId: TOKEN_PROGRAM_ID,
-        });
-      });
+      const [legacyResult, token2022Result] = await Promise.all([
+        this.retry(async () => {
+          return await this.connection.getParsedTokenAccountsByOwner(owner, {
+            programId: TOKEN_PROGRAM_ID,
+          });
+        }),
+        this.retry(async () => {
+          return await this.connection.getParsedTokenAccountsByOwner(owner, {
+            programId: TOKEN_2022_PROGRAM_ID,
+          });
+        }),
+      ]);
 
-      return result.value
+      const combined = [...legacyResult.value, ...token2022Result.value];
+
+      return combined
         .map((entry) => {
           const info = entry.account.data.parsed?.info;
           const tokenAmount = info?.tokenAmount;

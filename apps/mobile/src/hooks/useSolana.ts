@@ -208,16 +208,14 @@ export function useSolana(): UseSolanaResult {
           const mints = tokensWithBalance.map((token) => token.mint);
           const [mintPrices, metadataMap] = await Promise.all([
             priceService.getTokenPricesInUsd(mints),
-            tokenMetadataService.getMetadataMap(mints),
+            tokenMetadataService.getMetadataMapForWallet(targetAddress, mints),
           ]);
 
           const missingPrices: string[] = [];
           const tokenUsdValue = tokensWithBalance.reduce((sum, token) => {
             const price = mintPrices[token.mint];
             if (price === undefined) {
-              missingPrices.push(
-                metadataMap[token.mint]?.symbol ?? token.mint,
-              );
+              missingPrices.push(metadataMap[token.mint]?.symbol ?? token.mint);
               return sum;
             }
             return sum + token.uiAmount * price;
