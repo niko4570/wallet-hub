@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   FlatList,
   ListRenderItemInfo,
   Linking,
+  SafeAreaView,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
@@ -19,6 +20,7 @@ import { rpcService } from "../services";
 import { Transaction, AuthorizationEvent as AuthEvent } from "../types";
 import { SkeletonTransaction } from "../components/common/SkeletonLoader";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { ArrowUpRight, ArrowDownLeft, Info, Search, X } from "lucide-react-native";
 
 const ActivityScreen = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
@@ -33,6 +35,37 @@ const ActivityScreen = () => {
   const [authorizations, setAuthorizations] = useState<AuthEvent[]>([]);
   const [lastSignature, setLastSignature] = useState<string | undefined>();
   const [hasMore, setHasMore] = useState(true);
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [showTransactionDetail, setShowTransactionDetail] = useState(false);
+
+  // Group transactions by date
+  const groupedTransactions = useMemo(() => {
+    const groups: { [key: string]: Transaction[] } = {};
+    
+    transactions.forEach((transaction) => {
+      const date = new Date(transaction.timestamp);
+      const dateKey = date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+      
+      if (!groups[dateKey]) {
+        groups[dateKey] = [];
+      }
+      
+      groups[dateKey].push(transaction);
+    });
+    
+    // Convert to array of { date, transactions } objects
+    return Object.entries(groups).map(([date, transactions]) => ({
+      date,
+      transactions
+    })).sort((a, b) => {
+      // Sort by date descending
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
+  }, [transactions]);
 
   // Calculate transaction amount and determine direction
   const parseTransaction = useCallback(
@@ -346,55 +379,42 @@ const ActivityScreen = () => {
     }
   }, [loadingMore, hasMore, activeTab, lastSignature]);
 
-  const handleTransactionDetail = (signature: string) => {
-    // Open Solscan.io for transaction details
-    const solscanUrl = `https://solscan.io/tx/${signature}`;
-    // Use Linking API to open the URL in a browser
-    Linking.openURL(solscanUrl);
+  const handleTransactionDetail = (transaction: Transaction) => {
+    setSelectedTransaction(transaction);
+    setShowTransactionDetail(true);
   };
 
   const handleAuthorizationDetail = (authorizationId: string) => {
     navigation.navigate("AuthorizationDetail", { authorizationId });
   };
 
-  const renderTransaction = ({ item }: ListRenderItemInfo<Transaction>) => {
+  const renderTransactionItem = ({ item }: ListRenderItemInfo<Transaction>) => {
     const isOutbound = item.source === activeWallet?.address;
     const amountUnit = item.amountUnit ?? "SOL";
+    const counterpartyAddress = isOutbound ? item.destination : item.source;
+    const formattedCounterparty = formatAddress(counterpartyAddress);
 
     return (
       <TouchableOpacity
-        style={styles.transactionCard}
-        onPress={() => handleTransactionDetail(item.signature)}
+        style={styles.transactionItem}
+        onPress={() => handleTransactionDetail(item)}
       >
-        <View style={styles.transactionHeader}>
-          <Text style={styles.transactionSignature}>
-            {formatSignature(item.signature)}
-          </Text>
-          <View
-            style={[
-              styles.transactionStatus,
-              item.status === "success"
-                ? styles.transactionStatusSuccess
-                : item.status === "failed"
-                  ? styles.transactionStatusFailed
-                  : styles.transactionStatusPending,
-            ]}
-          >
-            <Text
-              style={[
-                styles.transactionStatusText,
-                item.status === "success"
-                  ? styles.transactionStatusTextSuccess
-                  : item.status === "failed"
-                    ? styles.transactionStatusTextFailed
-                    : styles.transactionStatusTextPending,
-              ]}
-            >
-              {item.status}
-            </Text>
-          </View>
+        <View style={styles.transactionIcon}>
+          {isOutbound ? (
+            <ArrowUpRight size={20} color="#FF4D4D" />
+          ) : (
+            <ArrowDownLeft size={20} color="#00FFB3" />
+          )}
         </View>
-        <View style={styles.transactionInfo}>
+        <View style={styles.transactionContent}>
+          <Text style={styles.transactionTitle}>
+            {isOutbound ? "Sent" : "Received"}
+          </Text>
+          <Text style={styles.transactionAddress}>
+            {isOutbound ? `To ${formattedCounterparty}` : `From ${formattedCounterparty}`}
+          </Text>
+        </View>
+        <View style={styles.transactionAmountContainer}>
           <Text
             style={[
               styles.transactionAmount,
@@ -406,53 +426,20 @@ const ActivityScreen = () => {
               : `+ ${formatAmount(item.amount)} ${amountUnit}`}
           </Text>
         </View>
-
-        {/* Data field */}
-        {item.memo && (
-          <View style={styles.transactionMetaBlock}>
-            <Text style={styles.transactionMetaLabel}>Data</Text>
-            <Text style={styles.transactionMetaValue}>{item.memo}</Text>
-          </View>
-        )}
-
-        {/* To Network field */}
-        <View style={styles.transactionMetaBlock}>
-          <Text style={styles.transactionMetaLabel}>To Network</Text>
-          <Text style={styles.transactionMetaValue}>Solana</Text>
-        </View>
-
-        {/* From and To fields */}
-        <View style={styles.transactionMetaBlock}>
-          <Text style={styles.transactionMetaLabel}>From</Text>
-          <Text style={styles.transactionMetaValue}>{item.source}</Text>
-        </View>
-        <View style={styles.transactionMetaBlock}>
-          <Text style={styles.transactionMetaLabel}>To</Text>
-          <Text style={styles.transactionMetaValue}>{item.destination}</Text>
-        </View>
-
-        {/* Network Fee field */}
-        {typeof item.fee === "number" && (
-          <View style={styles.transactionMetaBlock}>
-            <Text style={styles.transactionMetaLabel}>Network Fee</Text>
-            <Text style={styles.transactionMetaValue}>
-              {formatAmount(item.fee)} SOL
-            </Text>
-          </View>
-        )}
-
-        {/* Slot field */}
-        {typeof item.slot === "number" && (
-          <View style={styles.transactionMetaBlock}>
-            <Text style={styles.transactionMetaLabel}>Slot</Text>
-            <Text style={styles.transactionMetaValue}>{item.slot}</Text>
-          </View>
-        )}
-
-        <Text style={styles.transactionTimestamp}>
-          {new Date(item.timestamp).toLocaleString()}
-        </Text>
       </TouchableOpacity>
+    );
+  };
+
+  const renderTransactionGroup = ({ item }: ListRenderItemInfo<{ date: string; transactions: Transaction[] }>) => {
+    return (
+      <View style={styles.transactionGroup}>
+        <Text style={styles.transactionGroupDate}>{item.date}</Text>
+        {item.transactions.map((transaction) => (
+          <View key={transaction.id}>
+            {renderTransactionItem({ item: transaction } as ListRenderItemInfo<Transaction>)}
+          </View>
+        ))}
+      </View>
     );
   };
 
@@ -477,47 +464,122 @@ const ActivityScreen = () => {
     );
   }
 
+  const renderTransactionDetail = () => {
+    if (!selectedTransaction) return null;
+
+    const isOutbound = selectedTransaction.source === activeWallet?.address;
+    const amountUnit = selectedTransaction.amountUnit ?? "SOL";
+    const formattedDate = new Date(selectedTransaction.timestamp).toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+
+    return (
+      <View style={styles.transactionDetailContainer}>
+        <View style={styles.transactionDetailHeader}>
+          <TouchableOpacity onPress={() => setShowTransactionDetail(false)}>
+            <X size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+          <Text style={styles.transactionDetailTitle}>
+            {isOutbound ? "Sent" : "Received"}
+          </Text>
+          <View style={{ width: 24 }} />
+        </View>
+        
+        <View style={styles.transactionDetailContent}>
+          <View style={styles.transactionDetailIcon}>
+            {isOutbound ? (
+              <ArrowUpRight size={40} color="#FF4D4D" />
+            ) : (
+              <ArrowDownLeft size={40} color="#00FFB3" />
+            )}
+          </View>
+          
+          <Text style={styles.transactionDetailAmount}>
+            {isOutbound
+              ? `- ${formatAmount(selectedTransaction.amount)} ${amountUnit}`
+              : `+ ${formatAmount(selectedTransaction.amount)} ${amountUnit}`}
+          </Text>
+          
+          <View style={styles.transactionDetailInfo}>
+            <View style={styles.transactionDetailRow}>
+              <Text style={styles.transactionDetailLabel}>Date</Text>
+              <Text style={styles.transactionDetailValue}>{formattedDate}</Text>
+            </View>
+            
+            <View style={styles.transactionDetailRow}>
+              <Text style={styles.transactionDetailLabel}>Status</Text>
+              <Text style={[
+                styles.transactionDetailValue,
+                selectedTransaction.status === "success" ? styles.statusSuccess : styles.statusFailed
+              ]}>
+                {selectedTransaction.status === "success" ? "Succeeded" : "Failed"}
+              </Text>
+            </View>
+            
+            <View style={styles.transactionDetailRow}>
+              <Text style={styles.transactionDetailLabel}>
+                {isOutbound ? "To" : "From"}
+              </Text>
+              <Text style={styles.transactionDetailValue}>
+                {formatAddress(isOutbound ? selectedTransaction.destination : selectedTransaction.source)}
+              </Text>
+            </View>
+            
+            <View style={styles.transactionDetailRow}>
+              <Text style={styles.transactionDetailLabel}>Network</Text>
+              <Text style={styles.transactionDetailValue}>Solana</Text>
+            </View>
+            
+            {typeof selectedTransaction.fee === "number" && (
+              <View style={styles.transactionDetailRow}>
+                <Text style={styles.transactionDetailLabel}>Network Fee</Text>
+                <Text style={styles.transactionDetailValue}>
+                  {formatAmount(selectedTransaction.fee)} SOL
+                </Text>
+              </View>
+            )}
+          </View>
+          
+          <TouchableOpacity
+            style={styles.viewOnSolscanButton}
+            onPress={() => {
+              const solscanUrl = `https://solscan.io/tx/${selectedTransaction.signature}`;
+              Linking.openURL(solscanUrl);
+            }}
+          >
+            <Text style={styles.viewOnSolscanButtonText}>View on Solscan</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   return (
-    <View style={styles.container}>
-      {/* Tab Bar */}
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === "transactions" && styles.activeTab]}
-          onPress={() => setActiveTab("transactions")}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === "transactions" && styles.activeTabText,
-            ]}
-          >
-            Transactions
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.tab,
-            activeTab === "authorizations" && styles.activeTab,
-          ]}
-          onPress={() => setActiveTab("authorizations")}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === "authorizations" && styles.activeTabText,
-            ]}
-          >
-            Authorizations
-          </Text>
-        </TouchableOpacity>
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Recent Activity</Text>
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.headerAction}>
+            <Search size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerAction}>
+            <Info size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Content */}
       {activeTab === "transactions" ? (
         <FlatList
-          data={transactions}
-          renderItem={renderTransaction}
-          keyExtractor={(item) => item.id}
+          data={groupedTransactions}
+          renderItem={renderTransactionGroup}
+          keyExtractor={(item) => item.date}
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl
@@ -602,24 +664,48 @@ const ActivityScreen = () => {
           </View>
         </View>
       )}
-    </View>
+
+      {/* Transaction Detail Modal */}
+      {showTransactionDetail && renderTransactionDetail()}
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0B1221",
+    backgroundColor: "#000000",
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#0B1221",
+    backgroundColor: "#000000",
   },
   loadingFooter: {
     paddingVertical: 20,
     alignItems: "center",
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255, 255, 255, 0.1)",
+  },
+  headerTitle: {
+    color: "#FFFFFF",
+    fontSize: 20,
+    fontWeight: "600",
+  },
+  headerActions: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  headerAction: {
+    padding: 8,
   },
   tabBar: {
     flexDirection: "row",
@@ -646,14 +732,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    padding: 24,
+    paddingVertical: 12,
   },
   section: {
     padding: 24,
   },
   emptyState: {
     backgroundColor: "rgba(255, 255, 255, 0.05)",
-    borderRadius: 24,
+    borderRadius: 16,
     padding: 32,
     alignItems: "center",
     marginTop: 24,
@@ -667,104 +753,143 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 8,
   },
-  transactionCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
-    borderRadius: 20,
-    padding: 16,
+  transactionGroup: {
+    marginBottom: 24,
+  },
+  transactionGroupDate: {
+    color: "rgba(255, 255, 255, 0.6)",
+    fontSize: 14,
+    fontWeight: "600",
+    marginHorizontal: 20,
     marginBottom: 12,
   },
-  transactionHeader: {
+  transactionItem: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255, 255, 255, 0.05)",
   },
-  transactionSignature: {
-    color: "#FFFFFF",
-    fontWeight: "600",
-    fontSize: 14,
+  transactionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 16,
+  },
+  transactionContent: {
     flex: 1,
   },
-  transactionStatus: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginLeft: 12,
+  transactionTitle: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "500",
+    marginBottom: 4,
   },
-  transactionStatusSuccess: {
-    backgroundColor: "rgba(0, 255, 179, 0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(0, 255, 179, 0.4)",
+  transactionAddress: {
+    color: "rgba(255, 255, 255, 0.6)",
+    fontSize: 14,
   },
-  transactionStatusPending: {
-    backgroundColor: "rgba(255, 204, 0, 0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 204, 0, 0.4)",
-  },
-  transactionStatusFailed: {
-    backgroundColor: "rgba(255, 77, 77, 0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 77, 77, 0.4)",
-  },
-  transactionStatusText: {
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  transactionStatusTextSuccess: {
-    color: "#00FFB3",
-  },
-  transactionStatusTextPending: {
-    color: "#FFCC00",
-  },
-  transactionStatusTextFailed: {
-    color: "#FF4D4D",
-  },
-  transactionInfo: {
-    marginBottom: 8,
+  transactionAmountContainer: {
+    alignItems: "flex-end",
   },
   transactionAmount: {
     color: "#00FFB3",
-    fontWeight: "700",
+    fontWeight: "600",
     fontSize: 16,
-    marginBottom: 4,
   },
   transactionAmountOutbound: {
     color: "#FF4D4D",
   },
-  transactionMetaBlock: {
-    marginBottom: 8,
+  transactionDetailContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "#000000",
+    zIndex: 1000,
   },
-  transactionMetaLabel: {
-    color: "rgba(255, 255, 255, 0.6)",
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  transactionMetaValue: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  transactionMetaRow: {
+  transactionDetailHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 6,
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255, 255, 255, 0.1)",
   },
-  transactionMetaInline: {
+  transactionDetailTitle: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  transactionDetailContent: {
+    flex: 1,
+    padding: 24,
+    alignItems: "center",
+  },
+  transactionDetailIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  transactionDetailAmount: {
+    color: "#FFFFFF",
+    fontSize: 28,
+    fontWeight: "700",
+    marginBottom: 32,
+  },
+  transactionDetailInfo: {
+    width: "100%",
+    marginBottom: 32,
+  },
+  transactionDetailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255, 255, 255, 0.05)",
+  },
+  transactionDetailLabel: {
     color: "rgba(255, 255, 255, 0.6)",
-    fontSize: 12,
+    fontSize: 14,
   },
-  transactionTimestamp: {
-    color: "rgba(255, 255, 255, 0.4)",
-    fontSize: 11,
+  transactionDetailValue: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  statusSuccess: {
+    color: "#00FFB3",
+  },
+  statusFailed: {
+    color: "#FF4D4D",
+  },
+  viewOnSolscanButton: {
+    width: "100%",
+    backgroundColor: "#7F56D9",
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: "center",
+  },
+  viewOnSolscanButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
   },
   authorizationCard: {
     backgroundColor: "rgba(255, 255, 255, 0.05)",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.12)",
-    borderRadius: 20,
+    borderRadius: 16,
     padding: 16,
     marginBottom: 12,
   },
