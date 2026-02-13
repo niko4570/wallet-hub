@@ -24,11 +24,36 @@ export const SolanaProvider: React.FC<{ children: ReactNode }> = ({
     updateBalance,
     updateDetailedBalance,
   } = useWalletStore();
+  const [hasHydrated, setHasHydrated] = React.useState(
+    useWalletStore.persist?.hasHydrated?.() ?? true,
+  );
+
+  React.useEffect(() => {
+    const unsubscribe = useWalletStore.persist?.onFinishHydration?.(() => {
+      setHasHydrated(true);
+    });
+
+    if (useWalletStore.persist?.hasHydrated?.()) {
+      setHasHydrated(true);
+    }
+
+    return () => {
+      if (typeof unsubscribe === "function") {
+        unsubscribe();
+      }
+    };
+  }, []);
 
   // Sync state from useSolanaHook to walletStore
   React.useEffect(() => {
+    if (!hasHydrated) {
+      return;
+    }
+
     // Always sync linked wallets, even if empty
-    setLinkedWallets(solana.linkedWallets);
+    if (solana.linkedWallets.length > 0 || linkedWallets.length === 0) {
+      setLinkedWallets(solana.linkedWallets);
+    }
 
     // Sync active wallet
     if (solana.activeWallet) {
@@ -57,10 +82,12 @@ export const SolanaProvider: React.FC<{ children: ReactNode }> = ({
       });
     }
   }, [
+    hasHydrated,
     solana.linkedWallets,
     solana.activeWallet,
     solana.balances,
     solana.detailedBalances,
+    linkedWallets.length,
     setLinkedWallets,
     setActiveWallet,
     updateBalance,
