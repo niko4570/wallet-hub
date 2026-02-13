@@ -45,6 +45,16 @@ export interface WalletBalance {
   balance: number;
   usdValue: number;
   lastUpdated: string;
+  tokens: TokenBalance[];
+}
+
+export interface TokenBalance {
+  mint: string;
+  symbol?: string;
+  name?: string;
+  balance: number;
+  usdValue: number;
+  decimals: number;
 }
 
 export interface WalletState {

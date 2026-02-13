@@ -1,7 +1,12 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { LinkedWallet, WalletBalance, WalletGroup } from "../types/wallet";
+import {
+  LinkedWallet,
+  TokenBalance,
+  WalletBalance,
+  WalletGroup,
+} from "../types/wallet";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 
 interface WalletState {
@@ -150,10 +155,23 @@ export const useWalletStore = create<WalletState>()(
       },
 
       updateDetailedBalance: (balance) => {
+        const tokens = Array.isArray(balance.tokens) ? balance.tokens : [];
+        const normalizedTokens: TokenBalance[] = tokens.map((token) => ({
+          mint: token.mint,
+          symbol: token.symbol,
+          name: token.name,
+          balance: token.balance,
+          usdValue: token.usdValue,
+          decimals: token.decimals,
+        }));
+
         set((state) => ({
           detailedBalances: {
             ...state.detailedBalances,
-            [balance.address]: balance,
+            [balance.address]: {
+              ...balance,
+              tokens: normalizedTokens,
+            },
           },
         }));
         // Update total balance after updating detailed balance

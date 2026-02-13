@@ -61,6 +61,22 @@ export interface WalletStoreState {
   activeWallet: LinkedWallet | null;
   activeWalletAddress: string | null;
   balances: Record<string, number>;
+  detailedBalances?: Record<
+    string,
+    {
+      balance: number;
+      usdValue: number;
+      lastUpdated: string;
+      tokens?: Array<{
+        mint: string;
+        symbol?: string;
+        name?: string;
+        balance: number;
+        usdValue: number;
+        decimals: number;
+      }>;
+    }
+  >;
   missingTokenPrices?: Record<string, string[]>;
   isLoading: boolean;
   error: string | null;

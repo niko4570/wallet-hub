@@ -101,7 +101,19 @@ export interface UseSolanaResult {
   balances: Record<string, number>;
   detailedBalances: Record<
     string,
-    { balance: number; usdValue: number; lastUpdated: string }
+    {
+      balance: number;
+      usdValue: number;
+      lastUpdated: string;
+      tokens: Array<{
+        mint: string;
+        symbol?: string;
+        name?: string;
+        balance: number;
+        usdValue: number;
+        decimals: number;
+      }>;
+    }
   >;
   refreshBalance: (address?: string) => Promise<number | null>;
   availableWallets: DetectedWalletApp[];
@@ -130,7 +142,22 @@ export function useSolana(): UseSolanaResult {
   );
   const [balances, setBalances] = useState<Record<string, number>>({});
   const [detailedBalances, setDetailedBalances] = useState<
-    Record<string, { balance: number; usdValue: number; lastUpdated: string }>
+    Record<
+      string,
+      {
+        balance: number;
+        usdValue: number;
+        lastUpdated: string;
+        tokens: Array<{
+          mint: string;
+          symbol?: string;
+          name?: string;
+          balance: number;
+          usdValue: number;
+          decimals: number;
+        }>;
+      }
+    >
   >({});
   const [availableWallets, setAvailableWallets] = useState<DetectedWalletApp[]>(
     [],
@@ -193,6 +220,14 @@ export function useSolana(): UseSolanaResult {
         const now = new Date().toISOString();
         const solBalance = balance / LAMPORTS_PER_SOL;
         let totalUsdValue = 0;
+        let tokenDetails: Array<{
+          mint: string;
+          symbol?: string;
+          name?: string;
+          balance: number;
+          usdValue: number;
+          decimals: number;
+        }> = [];
 
         try {
           const [solPrice, tokenAccounts] = await Promise.all([
@@ -212,14 +247,30 @@ export function useSolana(): UseSolanaResult {
           ]);
 
           const missingPrices: string[] = [];
-          const tokenUsdValue = tokensWithBalance.reduce((sum, token) => {
+          tokenDetails = tokensWithBalance.map((token) => {
             const price = mintPrices[token.mint];
             if (price === undefined) {
               missingPrices.push(metadataMap[token.mint]?.symbol ?? token.mint);
-              return sum;
             }
-            return sum + token.uiAmount * price;
-          }, 0);
+
+            const balance = token.uiAmount;
+            const usdValue =
+              typeof price === "number" ? balance * price : 0;
+
+            return {
+              mint: token.mint,
+              symbol: metadataMap[token.mint]?.symbol,
+              name: metadataMap[token.mint]?.name,
+              balance,
+              usdValue,
+              decimals: token.decimals,
+            };
+          });
+
+          const tokenUsdValue = tokenDetails.reduce(
+            (sum, token) => sum + token.usdValue,
+            0,
+          );
 
           totalUsdValue = solBalance * solPrice + tokenUsdValue;
           setMissingTokenPrices(targetAddress, missingPrices);
@@ -235,6 +286,7 @@ export function useSolana(): UseSolanaResult {
             balance: solBalance,
             usdValue: Number(totalUsdValue.toFixed(2)),
             lastUpdated: now,
+            tokens: tokenDetails,
           },
         }));
         return balance;
