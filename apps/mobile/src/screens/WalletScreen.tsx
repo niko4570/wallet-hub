@@ -27,6 +27,8 @@ import { IconLoader } from "../components/common/IconLoader";
 import { priceService } from "../services/priceService";
 import { toast } from "../components/common/ErrorToast";
 
+const HEADER_HEIGHT = 78;
+
 const WalletScreen = () => {
   const {
     refreshBalance,
@@ -57,6 +59,9 @@ const WalletScreen = () => {
   const [sendAmount, setSendAmount] = useState("");
   const [sending, setSending] = useState(false);
   const [solPriceUsd, setSolPriceUsd] = useState(100); // Default value while loading
+  const [collapsedGroups, setCollapsedGroups] = useState<
+    Record<string, boolean>
+  >({});
 
   const activeWalletBalanceSol = activeWallet
     ? detailedBalances[activeWallet.address]?.balance || 0
@@ -260,6 +265,35 @@ const WalletScreen = () => {
     Alert.alert(label, "Coming soon");
   }, []);
 
+  const walletGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      { name: string; wallets: LinkedWallet[] }
+    >();
+    linkedWallets.forEach((wallet) => {
+      const groupKey = wallet.groupId || wallet.groupName || "ungrouped";
+      const groupName = wallet.groupName || "Other wallets";
+      const existing = groups.get(groupKey);
+      if (existing) {
+        existing.wallets.push(wallet);
+      } else {
+        groups.set(groupKey, { name: groupName, wallets: [wallet] });
+      }
+    });
+    return Array.from(groups.entries()).map(([id, group]) => ({
+      id,
+      name: group.name,
+      wallets: group.wallets,
+    }));
+  }, [linkedWallets]);
+
+  const toggleGroup = useCallback((groupId: string) => {
+    setCollapsedGroups((prev) => ({
+      ...prev,
+      [groupId]: !prev[groupId],
+    }));
+  }, []);
+
   const renderAvailableWallets = useMemo(() => {
     if (detectingWallets) {
       return (
@@ -279,364 +313,499 @@ const WalletScreen = () => {
   }, [availableWallets, detectingWallets, handleStartConnect]);
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor="#7F56D9"
-          colors={["#7F56D9"]}
-        />
-      }
-    >
-      <View style={styles.heroCard}>
-        <LinearGradient
-          colors={["#A855F7", "#6366F1", "#7C3AED"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.heroGradient}
+    <View style={styles.screen}>
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.headerButton}
+          onPress={handleConnectPress}
+          activeOpacity={0.9}
         >
-          <View style={styles.heroTopRow}>
-            <View style={styles.pill}>
-              <Feather name="server" size={14} color="#E9D8FD" />
-              <Text style={styles.pillText}>Solana Mainnet</Text>
-            </View>
-            <View style={styles.pillMuted}>
-              <Feather name="shield" size={14} color="#DAD5FF" />
-              <Text style={styles.pillMutedText}>Secure session</Text>
-            </View>
+          <Feather name="plus" size={16} color="#0B1221" />
+          <Text style={styles.headerButtonText}>Connect</Text>
+        </TouchableOpacity>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>Solana Wallets</Text>
+          <View style={styles.headerPill}>
+            <View style={styles.headerPillDot} />
+            <Text style={styles.headerPillText}>Mainnet</Text>
           </View>
-
-          <View style={styles.heroBalanceBlock}>
-            <Text style={styles.balanceLabel}>Portfolio</Text>
-            <Text style={styles.balanceValue}>{formatUsd(totalUsdValue)}</Text>
-            <Text style={styles.balanceSol}>{totalBalance.toFixed(4)} SOL</Text>
-          </View>
-
-          <View style={styles.heroWalletRow}>
-            <View style={styles.avatar}>
-              <Feather name="key" size={18} color="#0B1221" />
-            </View>
-            <View style={styles.walletMeta}>
-              <Text style={styles.walletMetaLabel}>Active wallet</Text>
-              <Text style={styles.walletMetaValue}>{activeWalletLabel}</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.switchButton}
-              onPress={handleConnectPress}
-              activeOpacity={0.9}
-            >
-              <Text style={styles.switchButtonText}>
-                {activeWallet ? "Switch" : "Connect"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.heroActions}>
-            <TouchableOpacity
-              style={styles.heroActionButton}
-              onPress={() => setSendModalVisible(true)}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={["rgba(255,255,255,0.24)", "rgba(255,255,255,0.08)"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.heroActionCircle}
-              >
-                <Feather name="arrow-up-right" size={18} color="#0B1221" />
-              </LinearGradient>
-              <Text style={styles.heroActionText}>Send</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.heroActionButton}
-              onPress={handleReceive}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={["rgba(255,255,255,0.22)", "rgba(255,255,255,0.08)"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.heroActionCircle}
-              >
-                <Feather name="arrow-down-left" size={18} color="#0B1221" />
-              </LinearGradient>
-              <Text style={styles.heroActionText}>Receive</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.heroActionButton}
-              onPress={() => handleStub("Stake")}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={["rgba(255,255,255,0.2)", "rgba(255,255,255,0.08)"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.heroActionCircle}
-              >
-                <Feather name="trending-up" size={18} color="#0B1221" />
-              </LinearGradient>
-              <Text style={styles.heroActionText}>Stake</Text>
-            </TouchableOpacity>
-          </View>
-        </LinearGradient>
+        </View>
+        <View style={styles.headerRight}>
+          <Text style={styles.headerTotalLabel}>Total</Text>
+          <Text style={styles.headerTotalValue}>{formatUsd(totalUsdValue)}</Text>
+        </View>
       </View>
 
-      {/* Linked Wallets */}
-      <View style={styles.walletsSection}>
-        <Text style={styles.sectionTitle}>Linked Wallets</Text>
-        {linkedWallets.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>No wallets connected</Text>
-            <TouchableOpacity
-              style={styles.connectButton}
-              onPress={handleConnectPress}
-            >
-              <Text style={styles.connectButtonText}>Connect Wallet</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          linkedWallets.map((wallet: LinkedWallet) => {
-            const isActiveWallet = activeWallet?.address === wallet.address;
-            const walletBalance = detailedBalances[wallet.address];
-            const walletBalanceSol = walletBalance?.balance || 0;
-            const walletBalanceUsd = walletBalance?.usdValue || 0;
-            const walletTokens = walletBalance?.tokens || [];
-            console.log(
-              "TOKENS_DEBUG",
-              wallet.address,
-              walletTokens.length,
-              walletTokens,
-            );
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[
+          styles.contentContainer,
+          { paddingTop: HEADER_HEIGHT + 12 },
+        ]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#7F56D9"
+            colors={["#7F56D9"]}
+          />
+        }
+      >
+        <View style={styles.heroCard}>
+          <LinearGradient
+            colors={["#A855F7", "#6366F1", "#7C3AED"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.heroGradient}
+          >
+            <View style={styles.heroTopRow}>
+              <View style={styles.pill}>
+                <Feather name="server" size={14} color="#E9D8FD" />
+                <Text style={styles.pillText}>Solana Mainnet</Text>
+              </View>
+              <View style={styles.pillMuted}>
+                <Feather name="shield" size={14} color="#DAD5FF" />
+                <Text style={styles.pillMutedText}>Secure session</Text>
+              </View>
+            </View>
 
-            return (
-              <View key={wallet.address} style={styles.walletCard}>
-                <View style={styles.walletHeader}>
-                  <View style={styles.walletHeaderLeft}>
-                    <View style={styles.walletIcon}>
+            <View style={styles.heroBalanceBlock}>
+              <Text style={styles.balanceLabel}>Portfolio</Text>
+              <Text style={styles.balanceValue}>
+                {formatUsd(totalUsdValue)}
+              </Text>
+              <Text style={styles.balanceSol}>{totalBalance.toFixed(4)} SOL</Text>
+            </View>
+
+            <View style={styles.heroWalletRow}>
+              <View style={styles.avatar}>
+                <Feather name="key" size={18} color="#0B1221" />
+              </View>
+              <View style={styles.walletMeta}>
+                <Text style={styles.walletMetaLabel}>Active wallet</Text>
+                <Text style={styles.walletMetaValue}>{activeWalletLabel}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.switchButton}
+                onPress={handleConnectPress}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.switchButtonText}>
+                  {activeWallet ? "Manage" : "Select"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.heroActions}>
+              <TouchableOpacity
+                style={styles.heroActionButton}
+                onPress={() => setSendModalVisible(true)}
+                activeOpacity={0.85}
+              >
+                <LinearGradient
+                  colors={["rgba(255,255,255,0.24)", "rgba(255,255,255,0.08)"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.heroActionCircle}
+                >
+                  <Feather name="arrow-up-right" size={18} color="#0B1221" />
+                </LinearGradient>
+                <Text style={styles.heroActionText}>Send</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.heroActionButton}
+                onPress={handleReceive}
+                activeOpacity={0.85}
+              >
+                <LinearGradient
+                  colors={["rgba(255,255,255,0.22)", "rgba(255,255,255,0.08)"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.heroActionCircle}
+                >
+                  <Feather name="arrow-down-left" size={18} color="#0B1221" />
+                </LinearGradient>
+                <Text style={styles.heroActionText}>Receive</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.heroActionButton}
+                onPress={() => handleStub("Stake")}
+                activeOpacity={0.85}
+              >
+                <LinearGradient
+                  colors={["rgba(255,255,255,0.2)", "rgba(255,255,255,0.08)"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.heroActionCircle}
+                >
+                  <Feather name="trending-up" size={18} color="#0B1221" />
+                </LinearGradient>
+                <Text style={styles.heroActionText}>Stake</Text>
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
+        </View>
+
+        {linkedWallets.length > 0 && (
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryHeader}>
+              <Text style={styles.summaryTitle}>All Wallet Balances</Text>
+              <Text style={styles.summarySubtitle}>
+                {linkedWallets.length} linked
+              </Text>
+            </View>
+            {linkedWallets.map((wallet: LinkedWallet, index: number) => {
+              const walletBalance = detailedBalances[wallet.address];
+              const walletBalanceSol = walletBalance?.balance || 0;
+              const walletBalanceUsd = walletBalance?.usdValue || 0;
+              const walletName =
+                wallet.walletName || wallet.label || "Wallet";
+
+              return (
+                <View
+                  key={wallet.address}
+                  style={[
+                    styles.summaryRow,
+                    index === 0 && styles.summaryRowFirst,
+                  ]}
+                >
+                  <View style={styles.summaryRowLeft}>
+                    <View style={styles.summaryIcon}>
                       <IconLoader
                         walletId={wallet.walletAppId || "unknown"}
-                        size={36}
+                        size={28}
                       />
                     </View>
-                    <Text style={styles.walletAddress}>
-                      {formatAddress(wallet.address)}
-                    </Text>
-                    {wallet.label && (
-                      <Text style={styles.walletLabel}>{wallet.label}</Text>
-                    )}
-                  </View>
-                  {isActiveWallet && (
-                    <View style={styles.activeBadge}>
-                      <Text style={styles.activeBadgeText}>Active</Text>
+                    <View>
+                      <Text style={styles.summaryWalletName}>{walletName}</Text>
+                      <Text style={styles.summaryWalletAddress}>
+                        {formatAddress(wallet.address)}
+                      </Text>
                     </View>
-                  )}
+                  </View>
+                  <View style={styles.summaryRowRight}>
+                    <Text style={styles.summarySol}>
+                      {walletBalanceSol.toFixed(4)} SOL
+                    </Text>
+                    <Text style={styles.summaryUsd}>
+                      {formatUsd(walletBalanceUsd)}
+                    </Text>
+                  </View>
                 </View>
-                <View style={styles.walletBalance}>
-                  <Text style={styles.walletBalanceSol}>
-                    {walletBalanceSol.toFixed(4)} SOL
-                  </Text>
-                  <Text style={styles.walletBalanceUsd}>
-                    {formatUsd(walletBalanceUsd)}
-                  </Text>
-                </View>
-                {walletTokens.length > 0 && (
-                  <View style={styles.tokenList}>
-                    {walletTokens.map((token) => {
-                      const label = token.symbol || token.name || token.mint;
+              );
+            })}
+          </View>
+        )}
+
+        {/* Linked Wallets */}
+        <View style={styles.walletsSection}>
+          <Text style={styles.sectionTitle}>Linked Wallets</Text>
+          {linkedWallets.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>No wallets connected</Text>
+              <TouchableOpacity
+                style={styles.connectButton}
+                onPress={handleConnectPress}
+              >
+                <Text style={styles.connectButtonText}>Connect Wallet</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            walletGroups.map((group) => {
+              const isCollapsed = collapsedGroups[group.id];
+              return (
+                <View key={group.id} style={styles.groupCard}>
+                  <TouchableOpacity
+                    style={styles.groupHeader}
+                    onPress={() => toggleGroup(group.id)}
+                    activeOpacity={0.85}
+                  >
+                    <View>
+                      <Text style={styles.groupTitle}>{group.name}</Text>
+                      <Text style={styles.groupSubtitle}>
+                        {group.wallets.length} wallets
+                      </Text>
+                    </View>
+                    <View style={styles.groupHeaderRight}>
+                      <Text style={styles.groupToggleText}>
+                        {isCollapsed ? "Show" : "Hide"}
+                      </Text>
+                      <Feather
+                        name={isCollapsed ? "chevron-down" : "chevron-up"}
+                        size={18}
+                        color="#C7B5FF"
+                      />
+                    </View>
+                  </TouchableOpacity>
+                  {!isCollapsed &&
+                    group.wallets.map((wallet) => {
+                      const isActiveWallet =
+                        activeWallet?.address === wallet.address;
+                      const walletBalance = detailedBalances[wallet.address];
+                      const walletBalanceSol = walletBalance?.balance || 0;
+                      const walletBalanceUsd = walletBalance?.usdValue || 0;
+                      const walletTokens = walletBalance?.tokens || [];
+                      const walletName =
+                        wallet.walletName || wallet.label || "Wallet";
+
                       return (
-                        <View key={token.mint} style={styles.tokenRow}>
-                          <View style={styles.tokenMeta}>
-                            <Text style={styles.tokenSymbol}>{label}</Text>
-                            <Text style={styles.tokenAmount}>
-                              {token.balance.toFixed(4)}
+                        <View key={wallet.address} style={styles.walletCard}>
+                          <View style={styles.walletHeader}>
+                            <View style={styles.walletHeaderLeft}>
+                              <View style={styles.walletIcon}>
+                                <IconLoader
+                                  walletId={wallet.walletAppId || "unknown"}
+                                  size={36}
+                                />
+                              </View>
+                              <View style={styles.walletIdentity}>
+                                <Text style={styles.walletName}>
+                                  {walletName}
+                                </Text>
+                                <Text style={styles.walletAddress}>
+                                  {formatAddress(wallet.address)}
+                                </Text>
+                                {wallet.label && (
+                                  <Text style={styles.walletLabel}>
+                                    {wallet.label}
+                                  </Text>
+                                )}
+                              </View>
+                            </View>
+                            {isActiveWallet && (
+                              <View style={styles.activeBadge}>
+                                <Text style={styles.activeBadgeText}>
+                                  Active
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                          <View style={styles.walletBalance}>
+                            <Text style={styles.walletBalanceSol}>
+                              {walletBalanceSol.toFixed(4)} SOL
+                            </Text>
+                            <Text style={styles.walletBalanceUsd}>
+                              {formatUsd(walletBalanceUsd)}
                             </Text>
                           </View>
-                          <Text style={styles.tokenUsd}>
-                            {formatUsd(token.usdValue)}
-                          </Text>
+                          <View style={styles.tokenList}>
+                            <View style={styles.tokenHeaderRow}>
+                              <Text style={styles.tokenHeaderText}>Tokens</Text>
+                              <Text style={styles.tokenHeaderCount}>
+                                {walletTokens.length} assets
+                              </Text>
+                            </View>
+                            {walletTokens.length > 0 ? (
+                              walletTokens.map((token) => {
+                                const label =
+                                  token.symbol || token.name || token.mint;
+                                return (
+                                  <View key={token.mint} style={styles.tokenRow}>
+                                    <View style={styles.tokenMeta}>
+                                      <Text style={styles.tokenSymbol}>
+                                        {label}
+                                      </Text>
+                                      <Text style={styles.tokenAmount}>
+                                        {token.balance.toFixed(4)}
+                                      </Text>
+                                    </View>
+                                    <Text style={styles.tokenUsd}>
+                                      {formatUsd(token.usdValue)}
+                                    </Text>
+                                  </View>
+                                );
+                              })
+                            ) : (
+                              <Text style={styles.tokenEmpty}>
+                                No tokens detected for this wallet.
+                              </Text>
+                            )}
+                          </View>
+                          <View style={styles.walletActions}>
+                            {!isActiveWallet && (
+                              <TouchableOpacity
+                                style={styles.walletAction}
+                                onPress={() => handleSelectWallet(wallet)}
+                              >
+                                <Text style={styles.walletActionText}>
+                                  Set Active
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+                            <TouchableOpacity
+                              style={styles.walletAction}
+                              onPress={() => handleDisconnect(wallet.address)}
+                            >
+                              <Text style={styles.walletActionText}>Remove</Text>
+                            </TouchableOpacity>
+                          </View>
                         </View>
                       );
                     })}
-                  </View>
-                )}
-                <View style={styles.walletActions}>
-                  {!isActiveWallet && (
-                    <TouchableOpacity
-                      style={styles.walletAction}
-                      onPress={() => handleSelectWallet(wallet)}
-                    >
-                      <Text style={styles.walletActionText}>Set Active</Text>
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity
-                    style={styles.walletAction}
-                    onPress={() => handleDisconnect(wallet.address)}
-                  >
-                    <Text style={styles.walletActionText}>Remove</Text>
-                  </TouchableOpacity>
                 </View>
-              </View>
-            );
-          })
-        )}
-      </View>
-
-      {/* Connect Wallet Modal */}
-      <Modal
-        animationType="slide"
-        transparent
-        visible={connectModalVisible}
-        onRequestClose={() => setConnectModalVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Choose a wallet</Text>
-            <ScrollView>{renderAvailableWallets}</ScrollView>
-            <TouchableOpacity
-              style={styles.modalClose}
-              onPress={() => setConnectModalVisible(false)}
-            >
-              <Text style={styles.modalCloseText}>Close</Text>
-            </TouchableOpacity>
-          </View>
+              );
+            })
+          )}
         </View>
-      </Modal>
 
-      {/* Send Modal */}
-      <Modal
-        animationType="slide"
-        transparent
-        visible={sendModalVisible}
-        onRequestClose={() => setSendModalVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Send SOL</Text>
-            <TextInput
-              placeholder="Recipient address"
-              placeholderTextColor="rgba(255,255,255,0.5)"
-              style={styles.input}
-              value={sendRecipient}
-              onChangeText={setSendRecipient}
-              autoCapitalize="none"
-            />
-            <TextInput
-              placeholder="Amount (SOL)"
-              placeholderTextColor="rgba(255,255,255,0.5)"
-              style={styles.input}
-              value={sendAmount}
-              onChangeText={setSendAmount}
-              keyboardType="decimal-pad"
-            />
-            {activeWallet && (
-              <View style={styles.availableRow}>
-                <Text style={styles.availableLabel}>Available</Text>
-                <TouchableOpacity
-                  onPress={handleUseMaxAmount}
-                  style={styles.inlineActionButton}
-                >
-                  <Text style={styles.inlineActionText}>
-                    Use max ({activeWalletBalanceSol.toFixed(4)} SOL)
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-            <View style={styles.modalActions}>
+        {/* Connect Wallet Modal */}
+        <Modal
+          animationType="slide"
+          transparent
+          visible={connectModalVisible}
+          onRequestClose={() => setConnectModalVisible(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Choose a wallet</Text>
+              <ScrollView>{renderAvailableWallets}</ScrollView>
               <TouchableOpacity
                 style={styles.modalClose}
-                onPress={() => setSendModalVisible(false)}
-                disabled={sending}
+                onPress={() => setConnectModalVisible(false)}
               >
-                <Text style={styles.modalCloseText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalPrimary, sending && styles.disabled]}
-                onPress={handleSend}
-                disabled={sending}
-              >
-                {sending ? (
-                  <ActivityIndicator color="#0B1221" />
-                ) : (
-                  <Text style={styles.modalPrimaryText}>Send</Text>
-                )}
+                <Text style={styles.modalCloseText}>Close</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
 
-      {/* Receive Modal */}
-      <Modal
-        animationType="slide"
-        transparent
-        visible={receiveModalVisible}
-        onRequestClose={() => setReceiveModalVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Receive SOL</Text>
-            {activeWallet ? (
-              <>
-                <Text style={styles.receiveHint}>
-                  Share this QR or address to receive funds.
-                </Text>
-                <View style={styles.qrWrapper}>
-                  <QRCode
-                    value={activeWallet.address}
-                    size={180}
-                    color="#FFFFFF"
-                    backgroundColor="transparent"
-                  />
-                </View>
-                <TouchableOpacity
-                  style={styles.addressPill}
-                  onLongPress={handleCopyAddress}
-                  onPress={handleCopyAddress}
-                >
-                  <Text style={styles.addressPillText}>
-                    {activeWallet.address}
-                  </Text>
-                </TouchableOpacity>
-                <View style={styles.receiveActions}>
+        {/* Send Modal */}
+        <Modal
+          animationType="slide"
+          transparent
+          visible={sendModalVisible}
+          onRequestClose={() => setSendModalVisible(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Send SOL</Text>
+              <TextInput
+                placeholder="Recipient address"
+                placeholderTextColor="rgba(255,255,255,0.5)"
+                style={styles.input}
+                value={sendRecipient}
+                onChangeText={setSendRecipient}
+                autoCapitalize="none"
+              />
+              <TextInput
+                placeholder="Amount (SOL)"
+                placeholderTextColor="rgba(255,255,255,0.5)"
+                style={styles.input}
+                value={sendAmount}
+                onChangeText={setSendAmount}
+                keyboardType="decimal-pad"
+              />
+              {activeWallet && (
+                <View style={styles.availableRow}>
+                  <Text style={styles.availableLabel}>Available</Text>
                   <TouchableOpacity
-                    style={styles.receiveActionButton}
+                    onPress={handleUseMaxAmount}
+                    style={styles.inlineActionButton}
+                  >
+                    <Text style={styles.inlineActionText}>
+                      Use max ({activeWalletBalanceSol.toFixed(4)} SOL)
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.modalClose}
+                  onPress={() => setSendModalVisible(false)}
+                  disabled={sending}
+                >
+                  <Text style={styles.modalCloseText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalPrimary, sending && styles.disabled]}
+                  onPress={handleSend}
+                  disabled={sending}
+                >
+                  {sending ? (
+                    <ActivityIndicator color="#0B1221" />
+                  ) : (
+                    <Text style={styles.modalPrimaryText}>Send</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Receive Modal */}
+        <Modal
+          animationType="slide"
+          transparent
+          visible={receiveModalVisible}
+          onRequestClose={() => setReceiveModalVisible(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Receive SOL</Text>
+              {activeWallet ? (
+                <>
+                  <Text style={styles.receiveHint}>
+                    Share this QR or address to receive funds.
+                  </Text>
+                  <View style={styles.qrWrapper}>
+                    <QRCode
+                      value={activeWallet.address}
+                      size={180}
+                      color="#FFFFFF"
+                      backgroundColor="transparent"
+                    />
+                  </View>
+                  <TouchableOpacity
+                    style={styles.addressPill}
+                    onLongPress={handleCopyAddress}
                     onPress={handleCopyAddress}
                   >
-                    <Feather name="copy" size={16} color="#0B1221" />
-                    <Text style={styles.receiveActionText}>Copy</Text>
+                    <Text style={styles.addressPillText}>
+                      {activeWallet.address}
+                    </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.receiveActionButton}
-                    onPress={handleShareAddress}
-                  >
-                    <Feather name="share-2" size={16} color="#0B1221" />
-                    <Text style={styles.receiveActionText}>Share</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            ) : (
-              <Text style={styles.receiveHint}>
-                Connect a wallet to view your receive address.
-              </Text>
-            )}
-            <TouchableOpacity
-              style={styles.modalClose}
-              onPress={() => setReceiveModalVisible(false)}
-            >
-              <Text style={styles.modalCloseText}>Close</Text>
-            </TouchableOpacity>
+                  <View style={styles.receiveActions}>
+                    <TouchableOpacity
+                      style={styles.receiveActionButton}
+                      onPress={handleCopyAddress}
+                    >
+                      <Feather name="copy" size={16} color="#0B1221" />
+                      <Text style={styles.receiveActionText}>Copy</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.receiveActionButton}
+                      onPress={handleShareAddress}
+                    >
+                      <Feather name="share-2" size={16} color="#0B1221" />
+                      <Text style={styles.receiveActionText}>Share</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <Text style={styles.receiveHint}>
+                  Connect a wallet to view your receive address.
+                </Text>
+              )}
+              <TouchableOpacity
+                style={styles.modalClose}
+                onPress={() => setReceiveModalVisible(false)}
+              >
+                <Text style={styles.modalCloseText}>Close</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </Modal>
-    </ScrollView>
+        </Modal>
+      </ScrollView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#050814",
+  },
   container: {
     flex: 1,
     backgroundColor: "#050814",
@@ -645,6 +814,79 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingBottom: 48,
     gap: 16,
+  },
+  header: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: HEADER_HEIGHT,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(6, 10, 24, 0.98)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.06)",
+    zIndex: 10,
+    elevation: 8,
+  },
+  headerButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#9CFFDA",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  headerButtonText: {
+    color: "#0B1221",
+    fontWeight: "800",
+    fontSize: 12,
+    letterSpacing: 0.2,
+  },
+  headerCenter: {
+    alignItems: "center",
+  },
+  headerTitle: {
+    color: "#F8F5FF",
+    fontWeight: "800",
+    fontSize: 16,
+  },
+  headerPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    marginTop: 4,
+  },
+  headerPillDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: "#66F2C3",
+  },
+  headerPillText: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  headerRight: {
+    alignItems: "flex-end",
+  },
+  headerTotalLabel: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 11,
+  },
+  headerTotalValue: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+    fontSize: 13,
   },
   balanceLabel: {
     color: "rgba(255, 255, 255, 0.76)",
@@ -816,6 +1058,71 @@ const styles = StyleSheet.create({
     color: "#0B1221",
     fontWeight: "700",
   },
+  summaryCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderRadius: 22,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  summaryHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  summaryTitle: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 16,
+  },
+  summarySubtitle: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 12,
+  },
+  summaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.08)",
+  },
+  summaryRowFirst: {
+    borderTopWidth: 0,
+  },
+  summaryRowLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  summaryIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  summaryWalletName: {
+    color: "#F8F5FF",
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  summaryWalletAddress: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 11,
+  },
+  summaryRowRight: {
+    alignItems: "flex-end",
+  },
+  summarySol: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  summaryUsd: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 11,
+  },
   walletCard: {
     backgroundColor: "rgba(255, 255, 255, 0.04)",
     borderRadius: 22,
@@ -846,11 +1153,18 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: "hidden",
   },
-  walletAddress: {
+  walletIdentity: {
+    gap: 2,
+  },
+  walletName: {
     color: "#FFFFFF",
     fontWeight: "700",
-    fontSize: 16,
-    marginBottom: 4,
+    fontSize: 15,
+  },
+  walletAddress: {
+    color: "#FFFFFF",
+    fontWeight: "600",
+    fontSize: 13,
   },
   walletLabel: {
     color: "rgba(255, 255, 255, 0.6)",
@@ -889,6 +1203,21 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     gap: 8,
   },
+  tokenHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  tokenHeaderText: {
+    color: "#F2EEFF",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  tokenHeaderCount: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 11,
+  },
   tokenRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -913,6 +1242,10 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.6)",
     fontSize: 12,
   },
+  tokenEmpty: {
+    color: "rgba(255,255,255,0.55)",
+    fontSize: 12,
+  },
   walletActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
@@ -926,6 +1259,41 @@ const styles = StyleSheet.create({
     color: "#C7B5FF",
     fontWeight: "600",
     fontSize: 14,
+  },
+  groupCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    borderRadius: 20,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    marginBottom: 12,
+  },
+  groupHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
+  groupTitle: {
+    color: "#F8F5FF",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  groupSubtitle: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 11,
+    marginTop: 2,
+  },
+  groupHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  groupToggleText: {
+    color: "#C7B5FF",
+    fontWeight: "600",
+    fontSize: 12,
   },
   modalBackdrop: {
     flex: 1,
