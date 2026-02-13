@@ -51,6 +51,7 @@ export interface WalletState {
   linkedWallets: LinkedWallet[];
   activeWallet: LinkedWallet | null;
   balances: Record<string, number>;
+  missingTokenPrices?: Record<string, string[]>;
   isLoading: boolean;
   error: string | null;
 }

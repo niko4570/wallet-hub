@@ -12,6 +12,7 @@ interface WalletState {
   walletGroups: WalletGroup[];
   balances: Record<string, number>;
   detailedBalances: Record<string, WalletBalance>;
+  missingTokenPrices: Record<string, string[]>;
   totalBalance: number;
   totalUsdValue: number;
   transactions: Record<string, any[]>;
@@ -24,6 +25,7 @@ interface WalletState {
   setActiveWalletAddress: (address: string | null) => void;
   updateBalance: (address: string, balance: number) => void;
   updateDetailedBalance: (balance: WalletBalance) => void;
+  setMissingTokenPrices: (address: string, mints: string[]) => void;
   updateTotalBalance: () => void;
   addTransaction: (address: string, transaction: any) => void;
   setTransactions: (address: string, transactions: any[]) => void;
@@ -59,6 +61,7 @@ export const useWalletStore = create<WalletState>()(
       walletGroups: [],
       balances: {},
       detailedBalances: {},
+      missingTokenPrices: {},
       totalBalance: 0,
       totalUsdValue: 0,
       transactions: {},
@@ -157,6 +160,15 @@ export const useWalletStore = create<WalletState>()(
         get().updateTotalBalance();
       },
 
+      setMissingTokenPrices: (address, mints) => {
+        set((state) => ({
+          missingTokenPrices: {
+            ...state.missingTokenPrices,
+            [address]: mints,
+          },
+        }));
+      },
+
       updateTotalBalance: () => {
         const state = get();
         let totalBalance = 0;
@@ -207,6 +219,7 @@ export const useWalletStore = create<WalletState>()(
           walletGroups: [],
           balances: {},
           detailedBalances: {},
+          missingTokenPrices: {},
           totalBalance: 0,
           totalUsdValue: 0,
           transactions: {},

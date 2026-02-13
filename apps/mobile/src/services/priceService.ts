@@ -1,4 +1,5 @@
 import { COINGECKO_API_KEY } from "../config/env";
+import { cacheUtils } from "../utils/cache";
 
 interface PriceResponse {
   solana: {
@@ -16,6 +17,7 @@ export class PriceService {
   private static instance: PriceService;
   private cache: Map<string, { price: number; timestamp: number }> = new Map();
   private cacheDuration = 5 * 60 * 1000; // 5 minutes cache
+  private inFlightSol?: Promise<number>;
 
   private constructor() {}
 
@@ -34,7 +36,20 @@ export class PriceService {
       return cached.price;
     }
 
-    try {
+    const cachedPersisted = await cacheUtils.getCachedPrice(cacheKey);
+    if (cachedPersisted !== null) {
+      this.cache.set(cacheKey, {
+        price: cachedPersisted,
+        timestamp: Date.now(),
+      });
+      return cachedPersisted;
+    }
+
+    if (this.inFlightSol) {
+      return this.inFlightSol;
+    }
+
+    this.inFlightSol = (async () => {
       const headers: HeadersInit = {
         "Content-Type": "application/json",
       };
@@ -62,12 +77,18 @@ export class PriceService {
         price,
         timestamp: Date.now(),
       });
+      await cacheUtils.setCachedPrice(cacheKey, price);
 
       return price;
+    })();
+
+    try {
+      return await this.inFlightSol;
     } catch (error) {
       console.error("Error fetching SOL price:", error);
-      // Return cached price if available, otherwise return a default value
-      return cached?.price || 100;
+      return cached?.price || cachedPersisted || 100;
+    } finally {
+      this.inFlightSol = undefined;
     }
   }
 
@@ -84,15 +105,26 @@ export class PriceService {
     const result: Record<string, number> = {};
     const uncached: string[] = [];
 
-    uniqueMints.forEach((mint) => {
+    for (const mint of uniqueMints) {
       const cacheKey = `mint:${mint}`;
       const cached = this.cache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < this.cacheDuration) {
         result[mint] = cached.price;
-      } else {
-        uncached.push(mint);
+        continue;
       }
-    });
+
+      const cachedPersisted = await cacheUtils.getCachedPrice(cacheKey);
+      if (cachedPersisted !== null) {
+        result[mint] = cachedPersisted;
+        this.cache.set(cacheKey, {
+          price: cachedPersisted,
+          timestamp: Date.now(),
+        });
+        continue;
+      }
+
+      uncached.push(mint);
+    }
 
     if (uncached.length === 0) {
       return result;
@@ -105,30 +137,24 @@ export class PriceService {
     }
 
     try {
-      const responses = await Promise.all(
-        chunks.map(async (chunk) => {
-          const ids = encodeURIComponent(chunk.join(","));
-          const response = await fetch(
-            `https://api.coingecko.com/api/v3/simple/token_price/solana?contract_addresses=${ids}&vs_currencies=usd`,
-            {
-              method: "GET",
-              headers: COINGECKO_API_KEY
-                ? { "x-cg-api-key": COINGECKO_API_KEY }
-                : undefined,
-            },
-          );
+      for (const chunk of chunks) {
+        const ids = encodeURIComponent(chunk.join(","));
+        const response = await fetch(
+          `https://api.coingecko.com/api/v3/simple/token_price/solana?contract_addresses=${ids}&vs_currencies=usd`,
+          {
+            method: "GET",
+            headers: COINGECKO_API_KEY
+              ? { "x-cg-api-key": COINGECKO_API_KEY }
+              : undefined,
+          },
+        );
 
-          if (!response.ok) {
-            throw new Error(`CoinGecko token price error: ${response.status}`);
-          }
+        if (!response.ok) {
+          throw new Error(`CoinGecko token price error: ${response.status}`);
+        }
 
-          const data: CoinGeckoTokenPriceResponse = await response.json();
-          return data;
-        }),
-      );
-
-      responses.forEach((payload) => {
-        Object.entries(payload ?? {}).forEach(([mint, entry]) => {
+        const data: CoinGeckoTokenPriceResponse = await response.json();
+        Object.entries(data ?? {}).forEach(([mint, entry]) => {
           const price = entry?.usd;
           if (typeof price === "number" && Number.isFinite(price)) {
             result[mint] = price;
@@ -136,9 +162,10 @@ export class PriceService {
               price,
               timestamp: Date.now(),
             });
+            cacheUtils.setCachedPrice(`mint:${mint}`, price).catch(() => {});
           }
         });
-      });
+      }
     } catch (error) {
       console.warn("Error fetching token prices:", error);
     }

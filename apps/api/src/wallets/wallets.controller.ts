@@ -7,17 +7,17 @@ export class WalletsController {
   constructor(private readonly walletsService: WalletsService) {}
 
   @Get()
-  async getPortfolio() {
-    return await this.walletsService.getAggregatedPortfolio();
+  getPortfolio() {
+    return this.walletsService.getAggregatedPortfolio();
   }
 
   @Get(':address')
-  async getWallet(@Param('address') address: string) {
-    return await this.walletsService.getWallet(address);
+  getWallet(@Param('address') address: string) {
+    return this.walletsService.getWallet(address);
   }
 
   @Post('link')
-  async linkWallet(@Body() dto: LinkWalletDto) {
-    return await this.walletsService.linkWallet(dto);
+  linkWallet(@Body() dto: LinkWalletDto) {
+    return this.walletsService.linkWallet(dto);
   }
 }
