@@ -15,12 +15,12 @@ import type {
   SilentReauthorizationRecord,
   WalletCapabilityReport,
   AuthorizationPrimitive,
+  WalletProvider,
 } from "@wallethub/contracts";
 import { walletService } from "../services/walletService";
 import { authorizationApi } from "../services/authorizationService";
 import { iconService } from "../services/iconService";
-import { rpcService } from "../services/rpcService";
-import { priceService } from "../services/priceService";
+import { portfolioService } from "../services/portfolioService";
 import { HELIUS_RPC_URL, SOLANA_CLUSTER } from "../config/env";
 import { requireBiometricApproval } from "../security/biometrics";
 import { decodeWalletAddress } from "../utils/solanaAddress";
@@ -43,6 +43,15 @@ const DEFAULT_CAPABILITIES: WalletCapabilityReport = {
   supportedTransactionVersions: [],
   featureFlags: [],
 };
+
+const KNOWN_WALLET_PROVIDERS = new Set<WalletProvider>([
+  "phantom",
+  "solflare",
+  "backpack",
+  "ledger",
+  "mobile-stack",
+  "custom",
+]);
 
 type WalletCapabilitiesResponse = Awaited<
   ReturnType<Web3MobileWallet["getCapabilities"]>
@@ -102,6 +111,7 @@ export interface UseSolanaResult {
     { balance: number; usdValue: number; lastUpdated: string }
   >;
   refreshBalance: (address?: string) => Promise<number | null>;
+  refreshPortfolio: () => Promise<void>;
   availableWallets: DetectedWalletApp[];
   detectingWallets: boolean;
   refreshWalletDetection: () => Promise<DetectedWalletApp[]>;
@@ -182,49 +192,27 @@ export function useSolana(): UseSolanaResult {
         return null;
       }
       try {
-        const balance = await rpcService.getBalance(targetAddress);
-        setBalances((prev) => ({ ...prev, [targetAddress]: balance }));
+        const wallet = await portfolioService.fetchWallet(targetAddress);
+        const solBalanceEntry =
+          wallet.balances.find(
+            (entry) =>
+              entry.tokenSymbol === "SOL" ||
+              entry.mint === "So11111111111111111111111111111111111111112",
+          ) ?? null;
+        const solBalance = solBalanceEntry?.amount ?? 0;
+        const balanceLamports = Math.round(solBalance * LAMPORTS_PER_SOL);
 
-        const now = new Date().toISOString();
-        const solBalance = balance / LAMPORTS_PER_SOL;
-        let totalUsdValue = 0;
-
-        try {
-          const [solPrice, tokenAccounts] = await Promise.all([
-            priceService.getSolPriceInUsd(),
-            rpcService.getParsedTokenAccountsByOwner(
-              new PublicKey(targetAddress),
-            ),
-          ]);
-
-          const tokensWithBalance = tokenAccounts.filter(
-            (token) => token.uiAmount > 0,
-          );
-          const mintPrices = await priceService.getTokenPricesInUsd(
-            tokensWithBalance.map((token) => token.mint),
-          );
-
-          const tokenUsdValue = tokensWithBalance.reduce((sum, token) => {
-            const price = mintPrices[token.mint] ?? 0;
-            return sum + token.uiAmount * price;
-          }, 0);
-
-          totalUsdValue = solBalance * solPrice + tokenUsdValue;
-        } catch (pricingError) {
-          console.warn("Failed to aggregate token prices", pricingError);
-          const solPrice = await priceService.getSolPriceInUsd().catch(() => 0);
-          totalUsdValue = solBalance * solPrice;
-        }
-
+        setBalances((prev) => ({ ...prev, [targetAddress]: balanceLamports }));
         setDetailedBalances((prev) => ({
           ...prev,
           [targetAddress]: {
             balance: solBalance,
-            usdValue: Number(totalUsdValue.toFixed(2)),
-            lastUpdated: now,
+            usdValue: wallet.totalUsdValue,
+            lastUpdated: wallet.lastSync ?? new Date().toISOString(),
           },
         }));
-        return balance;
+
+        return balanceLamports;
       } catch (error) {
         console.warn("Error refreshing balance", error);
         setBalances((prev) => {
@@ -242,6 +230,41 @@ export function useSolana(): UseSolanaResult {
     },
     [activeWallet?.address],
   );
+
+  const refreshPortfolio = useCallback(async () => {
+    try {
+      const portfolio = await portfolioService.fetchPortfolio();
+      const nextBalances: Record<string, number> = {};
+      const nextDetailed: Record<
+        string,
+        { balance: number; usdValue: number; lastUpdated: string }
+      > = {};
+
+      portfolio.wallets.forEach((wallet) => {
+        const solBalanceEntry =
+          wallet.balances.find(
+            (entry) =>
+              entry.tokenSymbol === "SOL" ||
+              entry.mint === "So11111111111111111111111111111111111111112",
+          ) ?? null;
+        const solBalance = solBalanceEntry?.amount ?? 0;
+        nextBalances[wallet.address] = Math.round(
+          solBalance * LAMPORTS_PER_SOL,
+        );
+        nextDetailed[wallet.address] = {
+          balance: solBalance,
+          usdValue: wallet.totalUsdValue,
+          lastUpdated: wallet.lastSync ?? new Date().toISOString(),
+        };
+      });
+
+      setBalances((prev) => ({ ...prev, ...nextBalances }));
+      setDetailedBalances((prev) => ({ ...prev, ...nextDetailed }));
+    } catch (error) {
+      console.warn("Error refreshing portfolio", error);
+      throw error;
+    }
+  }, []);
 
   const normalizeAuthorization = useCallback(
     (
@@ -320,6 +343,23 @@ export function useSolana(): UseSolanaResult {
         setActiveWalletAddress(
           (current) => current ?? accountsToLink[0].address,
         );
+
+        const linkCalls = accountsToLink.map((walletAccount) => {
+          const providerCandidate = walletAccount.walletAppId ?? "custom";
+          const provider = (KNOWN_WALLET_PROVIDERS.has(
+            providerCandidate as WalletProvider,
+          )
+            ? providerCandidate
+            : "custom") as WalletProvider;
+
+          return portfolioService.linkWallet({
+            address: walletAccount.address,
+            provider,
+            label: walletAccount.label ?? walletAccount.walletName,
+          });
+        });
+
+        await Promise.allSettled(linkCalls);
 
         await Promise.all(
           accountsToLink.map((walletAccount) =>
@@ -734,6 +774,7 @@ export function useSolana(): UseSolanaResult {
     balances,
     detailedBalances,
     refreshBalance,
+    refreshPortfolio,
     availableWallets,
     detectingWallets,
     refreshWalletDetection,

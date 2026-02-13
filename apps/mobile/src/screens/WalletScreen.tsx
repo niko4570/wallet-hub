@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState, useEffect } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -21,16 +21,15 @@ import { useSolana } from "../context/SolanaContext";
 import { useWalletStore } from "../store/walletStore";
 import { formatUsd, formatAddress } from "../utils/format";
 import { DetectedWalletApp, LinkedWallet } from "../types/wallet";
-import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import * as Haptics from "expo-haptics";
 import { WalletOption } from "../components/wallet/WalletOption";
 import { IconLoader } from "../components/common/IconLoader";
-import { priceService } from "../services/priceService";
 import { toast } from "../components/common/ErrorToast";
 
 const WalletScreen = () => {
   const {
     refreshBalance,
+    refreshPortfolio,
     refreshWalletDetection,
     disconnect,
     startAuthorization,
@@ -57,7 +56,6 @@ const WalletScreen = () => {
   const [sendRecipient, setSendRecipient] = useState("");
   const [sendAmount, setSendAmount] = useState("");
   const [sending, setSending] = useState(false);
-  const [solPriceUsd, setSolPriceUsd] = useState(100); // Default value while loading
 
   const activeWalletBalanceSol = activeWallet
     ? detailedBalances[activeWallet.address]?.balance || 0
@@ -67,22 +65,6 @@ const WalletScreen = () => {
     activeWallet?.label ||
     (activeWallet ? formatAddress(activeWallet.address) : "Select a wallet");
 
-  const fetchSolPrice = useCallback(async () => {
-    try {
-      const price = await priceService.getSolPriceInUsd();
-      setSolPriceUsd(price);
-    } catch (error) {
-      console.warn("Failed to fetch SOL price:", error);
-    }
-  }, []);
-
-  // Fetch SOL price on component mount only if there are linked wallets
-  useEffect(() => {
-    if (linkedWallets.length > 0) {
-      fetchSolPrice();
-    }
-  }, [fetchSolPrice, linkedWallets.length]);
-
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -90,17 +72,10 @@ const WalletScreen = () => {
         refreshWalletDetection().catch((err: any) =>
           console.warn("Wallet detection refresh failed", err),
         ),
-        ...linkedWallets.map((wallet: LinkedWallet) =>
-          refreshBalance(wallet.address).catch((err: any) => {
-            console.warn(`Balance refresh failed for ${wallet.address}`, err);
-          }),
-        ),
+        refreshPortfolio().catch((err: any) => {
+          console.warn("Portfolio refresh failed", err);
+        }),
       ];
-
-      // Only fetch SOL price if there are linked wallets
-      if (linkedWallets.length > 0) {
-        refreshPromises.push(fetchSolPrice());
-      }
 
       await Promise.all(refreshPromises);
     } catch (err: any) {
@@ -108,7 +83,7 @@ const WalletScreen = () => {
     } finally {
       setRefreshing(false);
     }
-  }, [linkedWallets, refreshBalance, refreshWalletDetection, fetchSolPrice]);
+  }, [refreshPortfolio, refreshWalletDetection]);
 
   const handleSelectWallet = useCallback(
     (wallet: LinkedWallet) => {
