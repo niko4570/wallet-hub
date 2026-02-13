@@ -404,6 +404,13 @@ const WalletScreen = () => {
             const walletBalance = detailedBalances[wallet.address];
             const walletBalanceSol = walletBalance?.balance || 0;
             const walletBalanceUsd = walletBalance?.usdValue || 0;
+            const walletTokens = walletBalance?.tokens || [];
+            console.log(
+              "TOKENS_DEBUG",
+              wallet.address,
+              walletTokens.length,
+              walletTokens,
+            );
 
             return (
               <View key={wallet.address} style={styles.walletCard}>
@@ -436,6 +443,26 @@ const WalletScreen = () => {
                     {formatUsd(walletBalanceUsd)}
                   </Text>
                 </View>
+                {walletTokens.length > 0 && (
+                  <View style={styles.tokenList}>
+                    {walletTokens.map((token) => {
+                      const label = token.symbol || token.name || token.mint;
+                      return (
+                        <View key={token.mint} style={styles.tokenRow}>
+                          <View style={styles.tokenMeta}>
+                            <Text style={styles.tokenSymbol}>{label}</Text>
+                            <Text style={styles.tokenAmount}>
+                              {token.balance.toFixed(4)}
+                            </Text>
+                          </View>
+                          <Text style={styles.tokenUsd}>
+                            {formatUsd(token.usdValue)}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
                 <View style={styles.walletActions}>
                   {!isActiveWallet && (
                     <TouchableOpacity
@@ -854,6 +881,37 @@ const styles = StyleSheet.create({
   walletBalanceUsd: {
     color: "rgba(255, 255, 255, 0.6)",
     fontSize: 14,
+  },
+  tokenList: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.08)",
+    paddingTop: 10,
+    gap: 8,
+  },
+  tokenRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  tokenMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  tokenSymbol: {
+    color: "#F2EEFF",
+    fontWeight: "700",
+    fontSize: 12,
+    textTransform: "uppercase",
+  },
+  tokenAmount: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 12,
+  },
+  tokenUsd: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 12,
   },
   walletActions: {
     flexDirection: "row",

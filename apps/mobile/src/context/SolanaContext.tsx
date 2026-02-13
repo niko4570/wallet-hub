@@ -18,6 +18,7 @@ export const SolanaProvider: React.FC<{ children: ReactNode }> = ({
     activeWallet,
     activeWalletAddress,
     balances,
+    detailedBalances,
     setLinkedWallets,
     setActiveWallet,
     setActiveWalletAddress,
@@ -52,33 +53,61 @@ export const SolanaProvider: React.FC<{ children: ReactNode }> = ({
 
     // Always sync linked wallets, even if empty
     if (solana.linkedWallets.length > 0 || linkedWallets.length === 0) {
-      setLinkedWallets(solana.linkedWallets);
+      const sameLength =
+        solana.linkedWallets.length === linkedWallets.length;
+      const sameAddresses =
+        sameLength &&
+        solana.linkedWallets.every(
+          (wallet, index) => wallet.address === linkedWallets[index]?.address,
+        );
+      if (!sameAddresses) {
+        setLinkedWallets(solana.linkedWallets);
+      }
     }
 
     // Sync active wallet
     if (solana.activeWallet) {
-      setActiveWallet(solana.activeWallet);
+      if (activeWallet?.address !== solana.activeWallet.address) {
+        setActiveWallet(solana.activeWallet);
+      }
     } else if (solana.linkedWallets.length > 0) {
       // If no active wallet but there are linked wallets, set the first one as active
-      setActiveWallet(solana.linkedWallets[0]);
+      if (activeWallet?.address !== solana.linkedWallets[0]?.address) {
+        setActiveWallet(solana.linkedWallets[0]);
+      }
     }
 
     // Sync balances
     if (solana.balances) {
       const entries = Object.entries(solana.balances);
       entries.forEach(([address, balance]) => {
-        updateBalance(address, balance);
+        if (balances[address] !== balance) {
+          updateBalance(address, balance);
+        }
       });
     }
 
     if (solana.detailedBalances) {
       Object.entries(solana.detailedBalances).forEach(([address, balance]) => {
-        updateDetailedBalance({
-          address,
-          balance: balance.balance,
-          usdValue: balance.usdValue,
-          lastUpdated: balance.lastUpdated,
-        });
+        const current = detailedBalances[address];
+        const tokensLength = balance.tokens?.length ?? 0;
+        const currentTokensLength = current?.tokens?.length ?? 0;
+        const needsUpdate =
+          !current ||
+          current.balance !== balance.balance ||
+          current.usdValue !== balance.usdValue ||
+          current.lastUpdated !== balance.lastUpdated ||
+          currentTokensLength !== tokensLength;
+
+        if (needsUpdate) {
+          updateDetailedBalance({
+            address,
+            balance: balance.balance,
+            usdValue: balance.usdValue,
+            lastUpdated: balance.lastUpdated,
+            tokens: balance.tokens,
+          });
+        }
       });
     }
   }, [
@@ -88,6 +117,9 @@ export const SolanaProvider: React.FC<{ children: ReactNode }> = ({
     solana.balances,
     solana.detailedBalances,
     linkedWallets.length,
+    activeWallet?.address,
+    balances,
+    detailedBalances,
     setLinkedWallets,
     setActiveWallet,
     updateBalance,

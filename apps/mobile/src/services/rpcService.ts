@@ -298,9 +298,7 @@ class RpcService {
             uiAmount,
           };
         })
-        .filter(
-          (entry): entry is ParsedTokenAccountBalance => entry !== null,
-        );
+        .filter((entry): entry is ParsedTokenAccountBalance => entry !== null);
     } catch (error) {
       console.error("Error fetching parsed token accounts:", error);
       throw error;

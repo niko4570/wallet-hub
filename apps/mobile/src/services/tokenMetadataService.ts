@@ -9,6 +9,17 @@ export interface TokenMetadata {
   logoURI?: string;
 }
 
+export interface HeliusTokenBalance {
+  mint: string;
+  symbol?: string;
+  name?: string;
+  balance: number;
+  decimals: number;
+  usdValue?: number;
+  pricePerToken?: number;
+  logoUri?: string;
+}
+
 const HELIUS_WALLET_BALANCES_PATH = "/v1/wallet";
 const HELIUS_PAGE_LIMIT = 100;
 
@@ -25,29 +36,17 @@ const buildMetadataMap = (
 };
 
 export const tokenMetadataService = {
-  async getMetadataMapForWallet(
+  async getTokenBalancesForWallet(
     walletAddress: string,
-    mints: string[],
-  ): Promise<Record<string, TokenMetadata>> {
-    const cached = await cacheUtils.getCachedTokenMetadata();
-    if (cached && typeof cached === "object") {
-      const map = cached as Record<string, TokenMetadata>;
-      return mints.reduce((acc, mint) => {
-        if (map[mint]) {
-          acc[mint] = map[mint];
-        }
-        return acc;
-      }, {} as Record<string, TokenMetadata>);
-    }
-
+  ): Promise<HeliusTokenBalance[]> {
     if (!HELIUS_API_KEY) {
-      console.warn("Helius API key missing; cannot fetch token metadata.");
-      return {};
+      console.warn("Helius API key missing; cannot fetch token balances.");
+      return [];
     }
 
     try {
       const baseUrl = HELIUS_API_BASE.replace(/\/$/, "");
-      const tokens: TokenMetadata[] = [];
+      const balances: HeliusTokenBalance[] = [];
       let page = 1;
       let hasMore = true;
 
@@ -73,7 +72,10 @@ export const tokenMetadataService = {
             mint: string;
             symbol?: string;
             name?: string;
+            balance?: number;
             decimals?: number;
+            pricePerToken?: number;
+            usdValue?: number;
             logoUri?: string;
           }>;
           pagination?: {
@@ -81,18 +83,58 @@ export const tokenMetadataService = {
           };
         };
 
-        const pageTokens = (payload.balances ?? []).map((entry) => ({
-          address: entry.mint,
+        const pageBalances = (payload.balances ?? []).map((entry) => ({
+          mint: entry.mint,
           symbol: entry.symbol,
           name: entry.name,
-          decimals: entry.decimals,
-          logoURI: entry.logoUri,
+          balance: entry.balance ?? 0,
+          decimals: entry.decimals ?? 0,
+          pricePerToken: entry.pricePerToken,
+          usdValue: entry.usdValue,
+          logoUri: entry.logoUri,
         }));
 
-        tokens.push(...pageTokens);
+        balances.push(...pageBalances);
         hasMore = Boolean(payload.pagination?.hasMore);
         page += 1;
       }
+
+      return balances;
+    } catch (error) {
+      console.warn("Failed to fetch token balances from Helius", error);
+      return [];
+    }
+  },
+
+  async getMetadataMapForWallet(
+    walletAddress: string,
+    mints: string[],
+  ): Promise<Record<string, TokenMetadata>> {
+    const cached = await cacheUtils.getCachedTokenMetadata();
+    if (cached && typeof cached === "object") {
+      const map = cached as Record<string, TokenMetadata>;
+      return mints.reduce((acc, mint) => {
+        if (map[mint]) {
+          acc[mint] = map[mint];
+        }
+        return acc;
+      }, {} as Record<string, TokenMetadata>);
+    }
+
+    if (!HELIUS_API_KEY) {
+      console.warn("Helius API key missing; cannot fetch token metadata.");
+      return {};
+    }
+
+    try {
+      const balances = await this.getTokenBalancesForWallet(walletAddress);
+      const tokens = balances.map((entry) => ({
+        address: entry.mint,
+        symbol: entry.symbol,
+        name: entry.name,
+        decimals: entry.decimals,
+        logoURI: entry.logoUri,
+      }));
 
       const map = buildMetadataMap(tokens);
       await cacheUtils.setCachedTokenMetadata(map);

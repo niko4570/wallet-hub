@@ -240,32 +240,95 @@ export function useSolana(): UseSolanaResult {
           const tokensWithBalance = tokenAccounts.filter(
             (token) => token.uiAmount > 0,
           );
-          const mints = tokensWithBalance.map((token) => token.mint);
+
+          let heliusBalances: Array<{
+            mint: string;
+            balance: number;
+            decimals: number;
+            symbol?: string;
+            name?: string;
+            pricePerToken?: number;
+            usdValue?: number;
+          }> = [];
+
+          if (tokensWithBalance.length === 0) {
+            heliusBalances =
+              await tokenMetadataService.getTokenBalancesForWallet(
+                targetAddress,
+              );
+          }
+
+          const isNativeSol = (mint: string, symbol?: string) => {
+            if (symbol === "SOL") return true;
+            return (
+              mint === "So11111111111111111111111111111111111111111" ||
+              mint === "So11111111111111111111111111111111111111112"
+            );
+          };
+
+          const filteredHeliusBalances = heliusBalances.filter(
+            (token) => !isNativeSol(token.mint, token.symbol),
+          );
+
+          const mints =
+            tokensWithBalance.length > 0
+              ? tokensWithBalance.map((token) => token.mint)
+              : filteredHeliusBalances.map((token) => token.mint);
+
           const [mintPrices, metadataMap] = await Promise.all([
             priceService.getTokenPricesInUsd(mints),
             tokenMetadataService.getMetadataMapForWallet(targetAddress, mints),
           ]);
 
+          console.log("MINT_PRICES_DEBUG", mintPrices);
+          console.log("METADATA_MAP_DEBUG", metadataMap);
+
           const missingPrices: string[] = [];
-          tokenDetails = tokensWithBalance.map((token) => {
-            const price = mintPrices[token.mint];
-            if (price === undefined) {
-              missingPrices.push(metadataMap[token.mint]?.symbol ?? token.mint);
-            }
+          tokenDetails =
+            tokensWithBalance.length > 0
+              ? tokensWithBalance.map((token) => {
+                  const price = mintPrices[token.mint];
+                  if (price === undefined) {
+                    missingPrices.push(
+                      metadataMap[token.mint]?.symbol ?? token.mint,
+                    );
+                  }
 
-            const balance = token.uiAmount;
-            const usdValue =
-              typeof price === "number" ? balance * price : 0;
+                  const balance = token.uiAmount;
+                  const usdValue =
+                    typeof price === "number" ? balance * price : 0;
 
-            return {
-              mint: token.mint,
-              symbol: metadataMap[token.mint]?.symbol,
-              name: metadataMap[token.mint]?.name,
-              balance,
-              usdValue,
-              decimals: token.decimals,
-            };
-          });
+                  return {
+                    mint: token.mint,
+                    symbol: metadataMap[token.mint]?.symbol,
+                    name: metadataMap[token.mint]?.name,
+                    balance,
+                    usdValue,
+                    decimals: token.decimals,
+                  };
+                })
+              : filteredHeliusBalances.map((token) => {
+                  const price =
+                    mintPrices[token.mint] ?? token.pricePerToken ?? 0;
+                  if (!price) {
+                    missingPrices.push(token.symbol ?? token.mint);
+                  }
+
+                  const balance = token.balance;
+                  const usdValue =
+                    typeof price === "number"
+                      ? balance * price
+                      : (token.usdValue ?? 0);
+
+                  return {
+                    mint: token.mint,
+                    symbol: token.symbol ?? metadataMap[token.mint]?.symbol,
+                    name: token.name ?? metadataMap[token.mint]?.name,
+                    balance,
+                    usdValue,
+                    decimals: token.decimals,
+                  };
+                });
 
           const tokenUsdValue = tokenDetails.reduce(
             (sum, token) => sum + token.usdValue,
@@ -280,15 +343,22 @@ export function useSolana(): UseSolanaResult {
           totalUsdValue = solBalance * solPrice;
         }
 
+        const walletBalance = {
+          address: targetAddress,
+          balance: solBalance,
+          usdValue: Number(totalUsdValue.toFixed(2)),
+          lastUpdated: now,
+          tokens: tokenDetails,
+        };
+
         setDetailedBalances((prev) => ({
           ...prev,
-          [targetAddress]: {
-            balance: solBalance,
-            usdValue: Number(totalUsdValue.toFixed(2)),
-            lastUpdated: now,
-            tokens: tokenDetails,
-          },
+          [targetAddress]: walletBalance,
         }));
+
+        // 使用 getState() 避免无限循环
+        const walletStore = useWalletStore.getState();
+        walletStore.updateDetailedBalance(walletBalance);
         return balance;
       } catch (error) {
         console.warn("Error refreshing balance", error);

@@ -1,8 +1,9 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-ifneq (,$(wildcard .env.local))
-include .env.local
+# 使用 dotenv 加载 .env 文件中的环境变量
+ifneq (,$(wildcard .env))
+include .env
 export
 endif
 
