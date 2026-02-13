@@ -15,7 +15,7 @@ import { StackNavigationProp } from "@react-navigation/stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { formatAddress, formatSignature, formatAmount } from "../utils/format";
 import { useWalletStore } from "../store/walletStore";
-import { rpcService, heliusService } from "../services";
+import { rpcService } from "../services";
 import { Transaction, AuthorizationEvent as AuthEvent } from "../types";
 import { SkeletonTransaction } from "../components/common/SkeletonLoader";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
@@ -33,218 +33,6 @@ const ActivityScreen = () => {
   const [authorizations, setAuthorizations] = useState<AuthEvent[]>([]);
   const [lastSignature, setLastSignature] = useState<string | undefined>();
   const [hasMore, setHasMore] = useState(true);
-
-  const parseHeliusTransaction = useCallback(
-    (
-      payload: any,
-      signature: string,
-      fallbackBlockTime: number | null,
-      fallbackStatus: string,
-      walletAddress?: string,
-    ): Transaction | null => {
-      try {
-        // Handle array format data returned by Helius API
-        const txArray = Array.isArray(payload) ? payload : [];
-        const tx = txArray[0] ?? payload?.data ?? payload;
-        if (!tx) {
-          return null;
-        }
-
-        const blockTime =
-          typeof tx?.timestamp === "number"
-            ? tx.timestamp
-            : typeof tx?.blockTime === "number"
-              ? tx.blockTime
-              : typeof tx?.block_time === "number"
-                ? tx.block_time
-                : fallbackBlockTime;
-
-        const derivedStatus =
-          typeof tx?.status === "string"
-            ? tx.status.toLowerCase() === "success" ||
-              tx.status.toLowerCase() === "confirmed"
-              ? "success"
-              : tx.status.toLowerCase() === "failed"
-                ? "failed"
-                : "pending"
-            : typeof tx?.success === "boolean"
-              ? tx.success
-                ? "success"
-                : "failed"
-              : fallbackStatus === "confirmed"
-                ? "success"
-                : "pending";
-
-        const feeRaw =
-          typeof tx?.fee === "number"
-            ? tx.fee
-            : typeof tx?.feeLamports === "number"
-              ? tx.feeLamports
-              : undefined;
-        const fee =
-          typeof feeRaw === "number"
-            ? feeRaw > 1
-              ? feeRaw / LAMPORTS_PER_SOL
-              : feeRaw
-            : undefined;
-
-        const collectTransfers = (entries: any[] | undefined) =>
-          Array.isArray(entries) ? entries : [];
-
-        const tokenTransfers = collectTransfers(
-          tx?.tokenTransfers ?? tx?.token_transfers,
-        );
-        const solTransfers = collectTransfers(
-          tx?.nativeTransfers ?? tx?.solTransfers ?? tx?.native_transfers,
-        );
-        const allTransfers = [...solTransfers, ...tokenTransfers];
-
-        const pickTransfer = (transfers: any[]) => {
-          if (!walletAddress) {
-            return transfers[0];
-          }
-          return (
-            transfers.find(
-              (transfer) =>
-                transfer?.source === walletAddress ||
-                transfer?.destination === walletAddress ||
-                transfer?.fromUserAccount === walletAddress ||
-                transfer?.toUserAccount === walletAddress ||
-                transfer?.from === walletAddress ||
-                transfer?.to === walletAddress,
-            ) ?? transfers[0]
-          );
-        };
-
-        const selectedTransfer = pickTransfer(allTransfers);
-
-        const readString = (...values: Array<string | undefined>) =>
-          values.find(
-            (value) => typeof value === "string" && value.length > 0,
-          ) || "";
-
-        const readNumber = (value: unknown) => {
-          if (typeof value === "number") return value;
-          if (typeof value === "string" && value.length > 0) {
-            const parsed = Number(value);
-            return Number.isFinite(parsed) ? parsed : undefined;
-          }
-          return undefined;
-        };
-
-        const normalizeTokenAmount = (
-          rawAmount: unknown,
-          decimals?: number,
-        ) => {
-          const numericAmount = readNumber(rawAmount);
-          if (typeof numericAmount !== "number") return 0;
-          if (typeof decimals === "number" && Number.isInteger(numericAmount)) {
-            return numericAmount / Math.pow(10, decimals);
-          }
-          return numericAmount;
-        };
-
-        let source = "";
-        let destination = "";
-        let amount = 0;
-        let amountUnit = "SOL";
-
-        if (selectedTransfer) {
-          source = readString(
-            selectedTransfer.source,
-            selectedTransfer.fromUserAccount,
-            selectedTransfer.from,
-            selectedTransfer.sender,
-          );
-          destination = readString(
-            selectedTransfer.destination,
-            selectedTransfer.toUserAccount,
-            selectedTransfer.to,
-            selectedTransfer.receiver,
-          );
-
-          const lamports = readNumber(
-            selectedTransfer.lamports ??
-              selectedTransfer.lamport ??
-              selectedTransfer.amount,
-          );
-          if (typeof lamports === "number") {
-            amount = lamports / LAMPORTS_PER_SOL;
-            amountUnit = "SOL";
-          } else {
-            const decimals = readNumber(
-              selectedTransfer.decimals ??
-                selectedTransfer.tokenDecimals ??
-                selectedTransfer?.token?.decimals ??
-                selectedTransfer?.tokenAmount?.decimals,
-            );
-            amount = normalizeTokenAmount(
-              selectedTransfer.amount ??
-                selectedTransfer.value ??
-                selectedTransfer.uiAmount ??
-                selectedTransfer?.tokenAmount?.amount ??
-                selectedTransfer?.tokenAmount,
-              typeof decimals === "number" ? decimals : undefined,
-            );
-            amountUnit =
-              readString(
-                selectedTransfer.symbol,
-                selectedTransfer.tokenSymbol,
-                selectedTransfer?.token?.symbol,
-              ) || "TOKEN";
-          }
-        }
-
-        // Try to get source and destination from multiple fields
-        if (!source || !destination) {
-          source = readString(
-            tx?.source,
-            tx?.from,
-            tx?.signer,
-            tx?.transaction?.message?.accountKeys?.[0],
-          );
-          destination = readString(
-            tx?.destination,
-            tx?.to,
-            tx?.receiver,
-            tx?.transaction?.message?.accountKeys?.[1],
-          );
-        }
-
-        // If still not found, use a default value instead of returning null
-        if (!source) {
-          source = "Unknown";
-        }
-        if (!destination) {
-          destination = "Unknown";
-        }
-
-        const slot = typeof tx?.slot === "number" ? tx.slot : undefined;
-        const memo = typeof tx?.memo === "string" ? tx.memo : undefined;
-
-        return {
-          id: signature,
-          signature,
-          source,
-          destination,
-          amount,
-          amountUnit,
-          status: derivedStatus,
-          timestamp: new Date(
-            blockTime ? blockTime * 1000 : Date.now(),
-          ).toISOString(),
-          type: "transfer",
-          fee,
-          slot,
-          memo,
-        };
-      } catch (error) {
-        console.warn(`Failed to parse Helius transaction ${signature}:`, error);
-        return null;
-      }
-    },
-    [],
-  );
 
   // Calculate transaction amount and determine direction
   const parseTransaction = useCallback(
@@ -356,19 +144,29 @@ const ActivityScreen = () => {
   const fetchTransactions = useCallback(
     async (isLoadMore = false, currentLastSignature?: string) => {
       if (!activeWallet) {
+        console.log("No active wallet, setting transactions to empty");
         setTransactions([]);
         return;
       }
 
       try {
+        console.log(
+          `Fetching transactions for wallet: ${activeWallet.address}`,
+        );
         const limit = 20;
+        console.log(
+          `Getting signatures with limit: ${limit}, last signature: ${currentLastSignature}`,
+        );
         const signatures = await rpcService.getSignaturesForAddress(
           activeWallet.address,
           limit,
           isLoadMore ? currentLastSignature : undefined,
         );
 
+        console.log(`Got ${signatures.length} signatures`);
+
         if (signatures.length === 0) {
+          console.log("No signatures found");
           if (!isLoadMore) {
             setTransactions([]);
           }
@@ -376,34 +174,24 @@ const ActivityScreen = () => {
           return;
         }
 
+        console.log(`Processing ${signatures.length} signatures`);
         const transactionPromises: Array<Promise<Transaction | null>> =
           signatures.map(async (sig) => {
             try {
-              const heliusPayload = await heliusService.getTransaction(
-                sig.signature,
+              console.log(
+                `Fetching transaction for signature: ${sig.signature}`,
               );
-              const parsed = parseHeliusTransaction(
-                heliusPayload,
-                sig.signature,
-                sig.blockTime,
-                sig.status,
-                activeWallet.address,
-              );
-              if (parsed) {
-                return parsed;
-              }
-            } catch (error) {
-              console.warn(`Helius fetch failed for ${sig.signature}:`, error);
-            }
-
-            try {
               const tx = await rpcService.getTransaction(sig.signature);
-              return parseTransaction(
+              const parsed = parseTransaction(
                 tx,
                 sig.signature,
                 sig.blockTime,
                 sig.status,
               );
+              console.log(
+                `Parsed transaction: ${parsed ? "success" : "failed"}`,
+              );
+              return parsed;
             } catch (error) {
               console.warn(
                 `Failed to fetch transaction ${sig.signature}:`,
@@ -417,6 +205,8 @@ const ActivityScreen = () => {
         const validTransactions = results.filter(
           (tx): tx is Transaction => tx !== null,
         );
+
+        console.log(`Got ${validTransactions.length} valid transactions`);
 
         // Batch update state to reduce re-renders
         if (isLoadMore) {
@@ -437,7 +227,7 @@ const ActivityScreen = () => {
         }
       }
     },
-    [activeWallet, parseHeliusTransaction, parseTransaction],
+    [activeWallet, parseTransaction],
   );
 
   // Fetch authorizations
@@ -464,7 +254,7 @@ const ActivityScreen = () => {
     };
 
     loadData();
-  }, [activeWallet, activeTab]);
+  }, [activeWallet, activeTab, fetchTransactions, fetchAuthorizations]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -482,7 +272,7 @@ const ActivityScreen = () => {
     } finally {
       setRefreshing(false);
     }
-  }, [activeTab]);
+  }, [activeTab, fetchTransactions, fetchAuthorizations]);
 
   const loadMore = useCallback(async () => {
     if (!loadingMore && hasMore && activeTab === "transactions") {
