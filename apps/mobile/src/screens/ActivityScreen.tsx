@@ -9,8 +9,8 @@ import {
   FlatList,
   ListRenderItemInfo,
   Linking,
-  SafeAreaView,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
@@ -20,7 +20,13 @@ import { rpcService } from "../services";
 import { Transaction, AuthorizationEvent as AuthEvent } from "../types";
 import { SkeletonTransaction } from "../components/common/SkeletonLoader";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { ArrowUpRight, ArrowDownLeft, Info, Search, X } from "lucide-react-native";
+import {
+  ArrowUpRight,
+  ArrowDownLeft,
+  Info,
+  Search,
+  X,
+} from "lucide-react-native";
 
 const ActivityScreen = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
@@ -35,36 +41,39 @@ const ActivityScreen = () => {
   const [authorizations, setAuthorizations] = useState<AuthEvent[]>([]);
   const [lastSignature, setLastSignature] = useState<string | undefined>();
   const [hasMore, setHasMore] = useState(true);
-  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [selectedTransaction, setSelectedTransaction] =
+    useState<Transaction | null>(null);
   const [showTransactionDetail, setShowTransactionDetail] = useState(false);
 
   // Group transactions by date
   const groupedTransactions = useMemo(() => {
     const groups: { [key: string]: Transaction[] } = {};
-    
+
     transactions.forEach((transaction) => {
       const date = new Date(transaction.timestamp);
-      const dateKey = date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
+      const dateKey = date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
       });
-      
+
       if (!groups[dateKey]) {
         groups[dateKey] = [];
       }
-      
+
       groups[dateKey].push(transaction);
     });
-    
+
     // Convert to array of { date, transactions } objects
-    return Object.entries(groups).map(([date, transactions]) => ({
-      date,
-      transactions
-    })).sort((a, b) => {
-      // Sort by date descending
-      return new Date(b.date).getTime() - new Date(a.date).getTime();
-    });
+    return Object.entries(groups)
+      .map(([date, transactions]) => ({
+        date,
+        transactions,
+      }))
+      .sort((a, b) => {
+        // Sort by date descending
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
+      });
   }, [transactions]);
 
   // Calculate transaction amount and determine direction
@@ -411,7 +420,9 @@ const ActivityScreen = () => {
             {isOutbound ? "Sent" : "Received"}
           </Text>
           <Text style={styles.transactionAddress}>
-            {isOutbound ? `To ${formattedCounterparty}` : `From ${formattedCounterparty}`}
+            {isOutbound
+              ? `To ${formattedCounterparty}`
+              : `From ${formattedCounterparty}`}
           </Text>
         </View>
         <View style={styles.transactionAmountContainer}>
@@ -430,13 +441,17 @@ const ActivityScreen = () => {
     );
   };
 
-  const renderTransactionGroup = ({ item }: ListRenderItemInfo<{ date: string; transactions: Transaction[] }>) => {
+  const renderTransactionGroup = ({
+    item,
+  }: ListRenderItemInfo<{ date: string; transactions: Transaction[] }>) => {
     return (
       <View style={styles.transactionGroup}>
         <Text style={styles.transactionGroupDate}>{item.date}</Text>
         {item.transactions.map((transaction) => (
           <View key={transaction.id}>
-            {renderTransactionItem({ item: transaction } as ListRenderItemInfo<Transaction>)}
+            {renderTransactionItem({
+              item: transaction,
+            } as ListRenderItemInfo<Transaction>)}
           </View>
         ))}
       </View>
@@ -469,13 +484,15 @@ const ActivityScreen = () => {
 
     const isOutbound = selectedTransaction.source === activeWallet?.address;
     const amountUnit = selectedTransaction.amountUnit ?? "SOL";
-    const formattedDate = new Date(selectedTransaction.timestamp).toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
+    const formattedDate = new Date(
+      selectedTransaction.timestamp,
+    ).toLocaleString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
     });
 
     return (
@@ -489,7 +506,7 @@ const ActivityScreen = () => {
           </Text>
           <View style={{ width: 24 }} />
         </View>
-        
+
         <View style={styles.transactionDetailContent}>
           <View style={styles.transactionDetailIcon}>
             {isOutbound ? (
@@ -498,43 +515,53 @@ const ActivityScreen = () => {
               <ArrowDownLeft size={40} color="#00FFB3" />
             )}
           </View>
-          
+
           <Text style={styles.transactionDetailAmount}>
             {isOutbound
               ? `- ${formatAmount(selectedTransaction.amount)} ${amountUnit}`
               : `+ ${formatAmount(selectedTransaction.amount)} ${amountUnit}`}
           </Text>
-          
+
           <View style={styles.transactionDetailInfo}>
             <View style={styles.transactionDetailRow}>
               <Text style={styles.transactionDetailLabel}>Date</Text>
               <Text style={styles.transactionDetailValue}>{formattedDate}</Text>
             </View>
-            
+
             <View style={styles.transactionDetailRow}>
               <Text style={styles.transactionDetailLabel}>Status</Text>
-              <Text style={[
-                styles.transactionDetailValue,
-                selectedTransaction.status === "success" ? styles.statusSuccess : styles.statusFailed
-              ]}>
-                {selectedTransaction.status === "success" ? "Succeeded" : "Failed"}
+              <Text
+                style={[
+                  styles.transactionDetailValue,
+                  selectedTransaction.status === "success"
+                    ? styles.statusSuccess
+                    : styles.statusFailed,
+                ]}
+              >
+                {selectedTransaction.status === "success"
+                  ? "Succeeded"
+                  : "Failed"}
               </Text>
             </View>
-            
+
             <View style={styles.transactionDetailRow}>
               <Text style={styles.transactionDetailLabel}>
                 {isOutbound ? "To" : "From"}
               </Text>
               <Text style={styles.transactionDetailValue}>
-                {formatAddress(isOutbound ? selectedTransaction.destination : selectedTransaction.source)}
+                {formatAddress(
+                  isOutbound
+                    ? selectedTransaction.destination
+                    : selectedTransaction.source,
+                )}
               </Text>
             </View>
-            
+
             <View style={styles.transactionDetailRow}>
               <Text style={styles.transactionDetailLabel}>Network</Text>
               <Text style={styles.transactionDetailValue}>Solana</Text>
             </View>
-            
+
             {typeof selectedTransaction.fee === "number" && (
               <View style={styles.transactionDetailRow}>
                 <Text style={styles.transactionDetailLabel}>Network Fee</Text>
@@ -544,7 +571,7 @@ const ActivityScreen = () => {
               </View>
             )}
           </View>
-          
+
           <TouchableOpacity
             style={styles.viewOnSolscanButton}
             onPress={() => {
