@@ -70,37 +70,128 @@ class WalletService {
     }
   }
 
+  /**
+   * Get the first installed wallet app
+   * @returns The first installed wallet app or null if none found
+   */
+  async getFirstInstalledWallet(): Promise<DetectedWalletApp | null> {
+    try {
+      const detectedWallets = await this.detectWallets();
+      return (
+        detectedWallets.find(
+          (wallet) => wallet.installed && wallet.id !== "system-picker",
+        ) || null
+      );
+    } catch (error) {
+      console.error("Error getting first installed wallet:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Start wallet authorization with auto-detection of installed wallet
+   * @returns Authorization preview
+   */
+  async startWalletAuthorizationWithAutoDetect(): Promise<AuthorizationPreview> {
+    try {
+      await requireBiometricApproval("Authenticate to connect wallet", {
+        allowSessionReuse: true,
+      });
+
+      const installedWallet = await this.getFirstInstalledWallet();
+      if (!installedWallet) {
+        throw new Error(
+          "No compatible wallet found. Please install a Solana wallet app.",
+        );
+      }
+
+      console.log("Auto-detected wallet:", installedWallet.name);
+      return await this.startWalletAuthorization(installedWallet);
+    } catch (error) {
+      console.error("Auto-detect wallet authorization failed:", error);
+      throw error;
+    }
+  }
+
   async startWalletAuthorization(
     wallet?: DetectedWalletApp,
   ): Promise<AuthorizationPreview> {
     try {
-      await requireBiometricApproval("Authenticate to choose a wallet");
+      await requireBiometricApproval("Authenticate to choose a wallet", {
+        allowSessionReuse: true,
+      });
 
-      // For installed wallets, don't pass baseUri - let the system handle it
-      // Only pass baseUri for fallback wallets or when wallet is not installed
-      const transactOptions =
-        wallet?.installed === false && wallet.baseUri
-          ? { baseUri: wallet.baseUri }
+      const walletBaseUri = wallet?.baseUri;
+      const preferRemoteAssociation =
+        walletBaseUri != null && walletBaseUri.startsWith("https://");
+      const localAssociationUri =
+        wallet?.scheme && !wallet.scheme.startsWith("http")
+          ? wallet.scheme
           : undefined;
 
-      const result = await transact(async (walletApi: Web3MobileWallet) => {
-        // Request authorization
-        const authorization = await walletApi.authorize({
-          identity: {
-            name: "WalletHub",
-            uri: "https://wallethub.app",
-          },
-          chain: "solana:mainnet",
-        });
+      const runAuthorization = async (options?: {
+        baseUri: string;
+      }): Promise<AuthorizationPreview> => {
+        console.log("Starting authorization with wallet:", wallet?.name);
+        console.log("Wallet installed:", wallet?.installed);
+        console.log("Using transactOptions:", options);
+        console.log("Wallet scheme:", wallet?.scheme);
 
-        return { authorization };
-      }, transactOptions);
+        const result = await transact(async (walletApi: Web3MobileWallet) => {
+          const authorization = await walletApi.authorize({
+            identity: {
+              name: "WalletHub",
+              uri: "https://wallethub.app",
+            },
+            chain: "solana:mainnet-beta",
+            addresses: undefined,
+          });
 
-      const normalized = this.normalizeAuthorization(
-        result.authorization,
-        wallet,
-      );
-      return { walletApp: wallet, accounts: normalized };
+          return { authorization };
+        }, options);
+
+        console.log(
+          "Authorization result accounts:",
+          result.authorization.accounts,
+        );
+        console.log(
+          "Number of accounts returned:",
+          result.authorization.accounts.length,
+        );
+
+        const normalized = this.normalizeAuthorization(
+          result.authorization,
+          wallet,
+        );
+
+        console.log("Normalized accounts:", normalized);
+        return { walletApp: wallet, accounts: normalized };
+      };
+
+      if (preferRemoteAssociation) {
+        try {
+          return await runAuthorization({ baseUri: walletBaseUri! });
+        } catch (error) {
+          if (this.shouldRetryWithLocalAssociation(error)) {
+            console.warn(
+              "Remote association failed, retrying with local scheme...",
+              error,
+            );
+          } else {
+            throw error;
+          }
+        }
+      } else if (wallet?.installed && !walletBaseUri && !localAssociationUri) {
+        console.warn(
+          `No valid baseUri for installed wallet ${wallet.name}, may fallback to system chooser`,
+        );
+      }
+
+      if (localAssociationUri) {
+        return await runAuthorization({ baseUri: localAssociationUri });
+      }
+
+      return await runAuthorization();
     } catch (error: any) {
       console.error("Wallet authorization failed:", error);
 
@@ -144,6 +235,47 @@ class WalletService {
     }
   }
 
+  async signMessage(
+    wallet: LinkedWallet,
+    payload: Uint8Array,
+  ): Promise<Uint8Array> {
+    const addressBase64 = Buffer.from(
+      new PublicKey(wallet.address).toBytes(),
+    ).toString("base64");
+
+    try {
+      const signedPayloads = await transact(
+        async (walletApi: Web3MobileWallet) => {
+          await walletApi.authorize({
+            identity: {
+              name: "WalletHub",
+              uri: "https://wallethub.app",
+            },
+            chain: "solana:mainnet-beta",
+            auth_token: wallet.authToken,
+          });
+
+          return walletApi.signMessages({
+            addresses: [addressBase64],
+            payloads: [payload],
+            auth_token: wallet.authToken,
+          } as any);
+        },
+        wallet.walletUriBase ? { baseUri: wallet.walletUriBase } : undefined,
+      );
+
+      const [signature] = signedPayloads ?? [];
+      if (!signature) {
+        throw new Error("Wallet did not return a signature.");
+      }
+
+      return signature;
+    } catch (error) {
+      console.error("Error signing message with wallet:", error);
+      throw error;
+    }
+  }
+
   async getWalletBalance(address: string): Promise<number> {
     try {
       const publicKey = new PublicKey(address);
@@ -159,12 +291,22 @@ class WalletService {
     authorization: AuthorizationResult,
     walletApp?: DetectedWalletApp,
   ): LinkedWallet[] {
+    // Only use wallet_uri_base if it's HTTPS, otherwise use the configured baseUri
+    let walletUriBase = null;
+    if (
+      authorization.wallet_uri_base &&
+      authorization.wallet_uri_base.startsWith("https://")
+    ) {
+      walletUriBase = authorization.wallet_uri_base;
+    } else if (walletApp?.baseUri && walletApp.baseUri.startsWith("https://")) {
+      walletUriBase = walletApp.baseUri;
+    }
+
     return authorization.accounts.map((accountFromWallet) => ({
       address: decodeWalletAddress(accountFromWallet.address),
       label: accountFromWallet.label,
       authToken: authorization.auth_token,
-      walletUriBase:
-        authorization.wallet_uri_base ?? walletApp?.baseUri ?? null,
+      walletUriBase: walletUriBase,
       walletAppId: walletApp?.id,
       walletName: walletApp?.name ?? accountFromWallet.label,
       icon: (authorization as any).wallet_icon ?? walletApp?.icon,
@@ -179,6 +321,27 @@ class WalletService {
     } catch (error) {
       console.error("Error refreshing wallet registry:", error);
     }
+  }
+
+  private shouldRetryWithLocalAssociation(error: unknown): boolean {
+    if (!error) {
+      return false;
+    }
+    const message =
+      typeof error === "string"
+        ? error
+        : error instanceof Error
+          ? error.message
+          : ((error as any)?.toString?.() ?? "");
+    const normalizedMessage = String(message ?? "");
+    const code = (error as any)?.code ?? (error as any)?.name;
+
+    return (
+      normalizedMessage.includes("Local association cancelled") ||
+      normalizedMessage.includes("Local association canceled") ||
+      code === "ERR_LOCAL_ASSOCIATION_CANCELED" ||
+      code === "ERR_LOCAL_ASSOCIATION_CANCELLED"
+    );
   }
 }
 

@@ -93,6 +93,10 @@ export interface UseSolanaResult {
     amountSol: number,
     options?: { fromAddress?: string },
   ) => Promise<string>;
+  registerPrimaryWallet: (
+    wallet?: DetectedWalletApp,
+  ) => Promise<LinkedWallet[]>;
+  registerPrimaryWalletAutoDetect: () => Promise<LinkedWallet[]>;
   linkedWallets: LinkedWallet[];
   activeWallet: LinkedWallet | null;
   selectActiveWallet: (address: string) => void;
@@ -165,6 +169,9 @@ export function useSolana(): UseSolanaResult {
   const [detectingWallets, setDetectingWallets] = useState(false);
   const setMissingTokenPrices = useWalletStore(
     (state) => state.setMissingTokenPrices,
+  );
+  const setPrimaryWalletAddressInStore = useWalletStore(
+    (state) => state.setPrimaryWalletAddress,
   );
 
   const connection = useMemo(
@@ -360,6 +367,11 @@ export function useSolana(): UseSolanaResult {
         // 使用 getState() 避免无限循环
         const walletStore = useWalletStore.getState();
         walletStore.updateDetailedBalance(walletBalance);
+        walletStore.updateHistoricalBalance(targetAddress, {
+          timestamp: Date.now(),
+          usd: walletBalance.usdValue,
+          sol: walletBalance.balance,
+        });
         return balance;
       } catch (error) {
         console.warn("Error refreshing balance", error);
@@ -465,6 +477,11 @@ export function useSolana(): UseSolanaResult {
           ),
         );
 
+        const walletState = useWalletStore.getState();
+        if (!walletState.primaryWalletAddress && accountsToLink.length > 0) {
+          walletState.setPrimaryWalletAddress(accountsToLink[0].address);
+        }
+
         return accountsToLink;
       } catch (error) {
         console.error("Error finalizing authorization:", error);
@@ -473,6 +490,39 @@ export function useSolana(): UseSolanaResult {
     },
     [refreshBalance, upsertWallets],
   );
+
+  const registerPrimaryWallet = useCallback(
+    async (walletChoice?: DetectedWalletApp) => {
+      await requireBiometricApproval("Authenticate to register wallet", {
+        allowSessionReuse: true,
+      });
+      const preview = await startAuthorization(walletChoice);
+      const accounts = await finalizeAuthorization(preview);
+      if (accounts.length > 0) {
+        setPrimaryWalletAddressInStore(accounts[0].address);
+      }
+      return accounts;
+    },
+    [finalizeAuthorization, setPrimaryWalletAddressInStore, startAuthorization],
+  );
+
+  const registerPrimaryWalletAutoDetect = useCallback(async () => {
+    try {
+      await requireBiometricApproval("Authenticate to connect wallet", {
+        allowSessionReuse: true,
+      });
+      const preview =
+        await walletService.startWalletAuthorizationWithAutoDetect();
+      const accounts = await finalizeAuthorization(preview);
+      if (accounts.length > 0) {
+        setPrimaryWalletAddressInStore(accounts[0].address);
+      }
+      return accounts;
+    } catch (error) {
+      console.error("Auto-detect wallet registration failed:", error);
+      throw error;
+    }
+  }, [finalizeAuthorization, setPrimaryWalletAddressInStore]);
 
   const silentRefreshAuthorization = useCallback(
     async (address?: string) => {
@@ -862,6 +912,8 @@ export function useSolana(): UseSolanaResult {
   return {
     disconnect,
     sendSol,
+    registerPrimaryWallet,
+    registerPrimaryWalletAutoDetect,
     linkedWallets,
     activeWallet,
     selectActiveWallet,

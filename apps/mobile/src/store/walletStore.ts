@@ -6,8 +6,9 @@ import {
   TokenBalance,
   WalletBalance,
   WalletGroup,
+  WatchOnlyAccount,
+  WalletActivity,
 } from "../types/wallet";
-import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 
 interface WalletState {
   // State
@@ -23,11 +24,19 @@ interface WalletState {
   transactions: Record<string, any[]>;
   isLoading: boolean;
   error: string | null;
+  primaryWalletAddress: string | null;
+  watchOnlyAccounts: WatchOnlyAccount[];
+  watchOnlyBalances: Record<string, WalletBalance>;
+  watchOnlyActivity: Record<string, WalletActivity[]>;
+  historicalBalances: Record<string, Array<{ timestamp: number; usd: number; sol: number }>>;
 
   // Actions
+  updateHistoricalBalance: (address: string, balance: { timestamp: number; usd: number; sol: number }) => void;
+  getHistoricalBalances: (address: string) => Array<{ timestamp: number; usd: number; sol: number }>;
   setLinkedWallets: (wallets: LinkedWallet[]) => void;
   setActiveWallet: (wallet: LinkedWallet | null) => void;
   setActiveWalletAddress: (address: string | null) => void;
+  setPrimaryWalletAddress: (address: string | null) => void;
   updateBalance: (address: string, balance: number) => void;
   updateDetailedBalance: (balance: WalletBalance) => void;
   setMissingTokenPrices: (address: string, mints: string[]) => void;
@@ -40,6 +49,12 @@ interface WalletState {
   addWallet: (wallet: LinkedWallet) => void;
   removeWallet: (address: string) => void;
   clearAllWallets: () => void;
+  addWatchOnlyAccount: (account: WatchOnlyAccount) => void;
+  removeWatchOnlyAccount: (address: string) => void;
+  setWatchOnlyAccounts: (accounts: WatchOnlyAccount[]) => void;
+  updateWatchOnlyBalance: (balance: WalletBalance) => void;
+  updateWatchOnlyActivity: (address: string, activity: WalletActivity[]) => void;
+  clearWatchOnlyData: () => void;
 
   // Wallet group actions
   createWalletGroup: (name: string, walletAddresses: string[]) => void;
@@ -60,18 +75,23 @@ export const useWalletStore = create<WalletState>()(
   persist(
     (set, get) => ({
       // Initial state
-      linkedWallets: [],
-      activeWallet: null,
-      activeWalletAddress: null,
-      walletGroups: [],
-      balances: {},
-      detailedBalances: {},
-      missingTokenPrices: {},
-      totalBalance: 0,
-      totalUsdValue: 0,
-      transactions: {},
-      isLoading: false,
-      error: null,
+       linkedWallets: [],
+       activeWallet: null,
+       activeWalletAddress: null,
+       primaryWalletAddress: null,
+       walletGroups: [],
+       balances: {},
+       detailedBalances: {},
+       missingTokenPrices: {},
+       totalBalance: 0,
+       totalUsdValue: 0,
+       transactions: {},
+       isLoading: false,
+       error: null,
+       watchOnlyAccounts: [],
+       watchOnlyBalances: {},
+       watchOnlyActivity: {},
+       historicalBalances: {},
 
       // Actions
       setLinkedWallets: (wallets) => set({ linkedWallets: wallets }),
@@ -83,11 +103,22 @@ export const useWalletStore = create<WalletState>()(
         });
       },
 
-      setActiveWalletAddress: (address) => {
-        const wallet =
-          get().linkedWallets.find((w) => w.address === address) || null;
-        set({ activeWalletAddress: address, activeWallet: wallet });
-      },
+       setActiveWalletAddress: (address) => {
+         const wallet =
+           get().linkedWallets.find((w) => w.address === address) || null;
+         set({ activeWalletAddress: address, activeWallet: wallet });
+       },
+
+       setPrimaryWalletAddress: (address) =>
+         set((state) => {
+           if (
+             address &&
+             !state.linkedWallets.some((wallet) => wallet.address === address)
+           ) {
+             return {};
+           }
+           return { primaryWalletAddress: address };
+         }),
 
       updateBalance: (address, balance) => {
         set((state) => ({
@@ -145,6 +176,10 @@ export const useWalletStore = create<WalletState>()(
               state.activeWalletAddress === address
                 ? updatedWallets[0]?.address || null
                 : state.activeWalletAddress,
+            primaryWalletAddress:
+              state.primaryWalletAddress === address
+                ? null
+                : state.primaryWalletAddress,
             balances: updatedBalances,
             detailedBalances: updatedDetailedBalances,
             transactions: updatedTransactions,
@@ -229,21 +264,170 @@ export const useWalletStore = create<WalletState>()(
         });
       },
 
-      clearAllWallets: () => {
-        set({
-          linkedWallets: [],
-          activeWallet: null,
-          activeWalletAddress: null,
-          walletGroups: [],
-          balances: {},
-          detailedBalances: {},
-          missingTokenPrices: {},
-          totalBalance: 0,
-          totalUsdValue: 0,
-          transactions: {},
-          error: null,
-        });
-      },
+        clearAllWallets: () => {
+          set({
+            linkedWallets: [],
+            activeWallet: null,
+            activeWalletAddress: null,
+           primaryWalletAddress: null,
+           walletGroups: [],
+           balances: {},
+           detailedBalances: {},
+           missingTokenPrices: {},
+           totalBalance: 0,
+           totalUsdValue: 0,
+            transactions: {},
+            error: null,
+            watchOnlyAccounts: [],
+            watchOnlyBalances: {},
+            watchOnlyActivity: {},
+          });
+        },
+
+       addWatchOnlyAccount: (account) =>
+         set((state) => {
+           const normalizedAddress = account.address.trim();
+           const existingIndex = state.watchOnlyAccounts.findIndex(
+             (entry) => entry.address === normalizedAddress,
+           );
+
+          const fallbackLabel =
+            account.label ??
+            state.watchOnlyAccounts[existingIndex]?.label ??
+            `Watch ${
+              existingIndex >= 0
+                ? existingIndex + 1
+                : state.watchOnlyAccounts.length + 1
+            }`;
+
+           const nextAccount: WatchOnlyAccount = {
+             address: normalizedAddress,
+             label: fallbackLabel,
+             color:
+               account.color ??
+               state.watchOnlyAccounts[existingIndex]?.color,
+             createdAt:
+               account.createdAt ??
+               state.watchOnlyAccounts[existingIndex]?.createdAt ??
+               new Date().toISOString(),
+           };
+
+           if (existingIndex >= 0) {
+             const nextAccounts = [...state.watchOnlyAccounts];
+             nextAccounts[existingIndex] = {
+               ...nextAccounts[existingIndex],
+               ...nextAccount,
+             };
+             return { watchOnlyAccounts: nextAccounts };
+           }
+
+           return {
+             watchOnlyAccounts: [...state.watchOnlyAccounts, nextAccount],
+           };
+         }),
+
+       setWatchOnlyAccounts: (accounts) =>
+         set({
+           watchOnlyAccounts: accounts,
+         }),
+
+        removeWatchOnlyAccount: (address) =>
+          set((state) => {
+            const normalizedAddress = address.trim();
+            const filtered = state.watchOnlyAccounts.filter(
+              (entry) => entry.address !== normalizedAddress,
+            );
+            if (filtered.length === state.watchOnlyAccounts.length) {
+              return state;
+            }
+            const { [normalizedAddress]: _removed, ...rest } =
+              state.watchOnlyBalances;
+            const { [normalizedAddress]: _activity, ...activityRest } =
+              state.watchOnlyActivity;
+            return {
+              watchOnlyAccounts: filtered,
+              watchOnlyBalances: rest,
+              watchOnlyActivity: activityRest,
+            };
+          }),
+
+        updateWatchOnlyBalance: (balance) => {
+          const tokens = Array.isArray(balance.tokens) ? balance.tokens : [];
+          const normalizedTokens: TokenBalance[] = tokens.map((token) => ({
+            mint: token.mint,
+            symbol: token.symbol,
+           name: token.name,
+           balance: token.balance,
+           usdValue: token.usdValue,
+           decimals: token.decimals,
+         }));
+
+         set((state) => ({
+           watchOnlyBalances: {
+             ...state.watchOnlyBalances,
+             [balance.address]: {
+               ...balance,
+               tokens: normalizedTokens,
+             },
+           },
+          }));
+        },
+
+        updateWatchOnlyActivity: (address, activity) => {
+          const normalizedAddress = address.trim();
+          set((state) => ({
+            watchOnlyActivity: {
+              ...state.watchOnlyActivity,
+              [normalizedAddress]: activity,
+            },
+          }));
+        },
+
+        clearWatchOnlyData: () =>
+          set({
+            watchOnlyAccounts: [],
+            watchOnlyBalances: {},
+            watchOnlyActivity: {},
+          }),
+
+        updateHistoricalBalance: (address, balance) =>
+          set((state) => {
+            const existingBalances = state.historicalBalances[address] || [];
+            
+            // Check if we already have data for this timestamp
+            const existingIndex = existingBalances.findIndex(
+              (item) => item.timestamp === balance.timestamp
+            );
+
+            let updatedBalances;
+            if (existingIndex >= 0) {
+              // Update existing balance
+              updatedBalances = [...existingBalances];
+              updatedBalances[existingIndex] = balance;
+            } else {
+              // Add new balance
+              updatedBalances = [...existingBalances, balance];
+              // Sort by timestamp in ascending order
+              updatedBalances.sort((a, b) => a.timestamp - b.timestamp);
+              // Keep only the last 24 hours of data (1 hour intervals)
+              const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+              updatedBalances = updatedBalances.filter(
+                (item) => item.timestamp >= oneDayAgo
+              );
+            }
+
+            return {
+              historicalBalances: {
+                ...state.historicalBalances,
+                [address]: updatedBalances,
+              },
+            };
+          }),
+
+        getHistoricalBalances: (address) => {
+          const state = get();
+          return state.historicalBalances[address] || [];
+        },
 
       // Wallet group actions
       createWalletGroup: (name, walletAddresses) => {
@@ -399,21 +583,46 @@ export const useWalletStore = create<WalletState>()(
       },
     }),
     {
-      name: 'wallet-storage',
+      name: "wallet-storage",
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({
-        linkedWallets: state.linkedWallets,
-        activeWallet: state.activeWallet,
-        activeWalletAddress: state.activeWalletAddress,
-        walletGroups: state.walletGroups
-      }),
-      version: 1,
-      migrate: (persisted, version) => {
-        if (version === 0) {
-          // Add migration logic if needed in the future
-        }
-        return persisted;
+       partialize: (state) => ({
+         linkedWallets: state.linkedWallets,
+         activeWallet: state.activeWallet,
+         activeWalletAddress: state.activeWalletAddress,
+         primaryWalletAddress: state.primaryWalletAddress,
+         walletGroups: state.walletGroups,
+         watchOnlyAccounts: state.watchOnlyAccounts,
+         watchOnlyBalances: state.watchOnlyBalances,
+         watchOnlyActivity: state.watchOnlyActivity,
+         historicalBalances: state.historicalBalances,
+        }),
+        version: 4,
+        migrate: (persisted: any, version) => {
+          if (!persisted) {
+            return persisted;
+          }
+          if (version < 2) {
+            return {
+              ...persisted,
+              primaryWalletAddress: persisted.primaryWalletAddress ?? null,
+              watchOnlyAccounts: persisted.watchOnlyAccounts ?? [],
+              watchOnlyBalances: persisted.watchOnlyBalances ?? {},
+            };
+          }
+          if (version < 3) {
+            return {
+              ...persisted,
+              watchOnlyActivity: persisted.watchOnlyActivity ?? {},
+            };
+          }
+          if (version < 4) {
+            return {
+              ...persisted,
+              historicalBalances: persisted.historicalBalances ?? {},
+            };
+          }
+          return persisted;
+        },
       },
-    },
-  ),
-);
+    ),
+  );

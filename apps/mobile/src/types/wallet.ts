@@ -57,6 +57,25 @@ export interface TokenBalance {
   decimals: number;
 }
 
+export interface WalletActivity {
+  signature: string;
+  timestamp: number;
+  type: string;
+  description?: string;
+  fee?: number;
+  source?: string;
+  mint?: string;
+  amount?: number;
+  direction?: "in" | "out" | "internal";
+}
+
+export interface WatchOnlyAccount {
+  address: string;
+  label?: string;
+  color?: string;
+  createdAt?: string;
+}
+
 export interface WalletState {
   linkedWallets: LinkedWallet[];
   activeWallet: LinkedWallet | null;
