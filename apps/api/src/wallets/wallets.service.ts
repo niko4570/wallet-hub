@@ -2,13 +2,53 @@ import {
   AggregatedPortfolio,
   PendingAction,
   WalletAccount,
+  WalletBalance,
   computeAggregatedPortfolio,
 } from '@wallethub/contracts';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { LinkWalletDto } from './dto/link-wallet.dto';
+
+const JUPITER_PORTFOLIO_ENDPOINT =
+  'https://api.jup.ag/portfolio/v1/wallet' as const;
+const SOL_MINT = 'So11111111111111111111111111111111111111112';
+const PORTFOLIO_CACHE_TTL_MS = 60 * 1000;
+const TRANSACTION_CACHE_TTL_MS = 30 * 1000;
+const JUPITER_TRANSACTIONS_ENDPOINT =
+  'https://api.jup.ag/portfolio/v1/transactions';
+const JUPITER_TRANSACTIONS_LIMIT = 50;
+
+interface PortfolioCacheEntry {
+  wallet: WalletAccount;
+  expiresAt: number;
+}
+
+interface TransactionCacheEntry {
+  records: JupiterTransaction[];
+  expiresAt: number;
+}
+
+export interface JupiterTransaction {
+  signature: string;
+  timestamp: number;
+  type: string;
+  description?: string;
+  source?: string;
+  pnlUsd?: number;
+  amountUsd?: number;
+  feeUsd?: number;
+  raw: Record<string, any>;
+}
 
 @Injectable()
 export class WalletsService {
+  private readonly logger = new Logger(WalletsService.name);
+  private readonly jupiterApiKey =
+    process.env.JUPITER_API_KEY?.trim() ||
+    process.env.EXPO_PUBLIC_JUPITER_API_KEY?.trim() ||
+    '';
+  private readonly portfolioCache = new Map<string, PortfolioCacheEntry>();
+  private readonly transactionCache = new Map<string, TransactionCacheEntry>();
+
   private readonly pendingActions: PendingAction[] = [
     {
       id: 'session-rotation',
@@ -68,17 +108,48 @@ export class WalletsService {
     },
   ];
 
-  getAggregatedPortfolio(): AggregatedPortfolio {
-    return computeAggregatedPortfolio(this.wallets, this.pendingActions, 3.4);
+  async getAggregatedPortfolio(): Promise<AggregatedPortfolio> {
+    const refreshed = await Promise.all(
+      this.wallets.map((wallet) =>
+        this.refreshWalletFromJupiter(wallet.address, wallet),
+      ),
+    );
+
+    this.wallets = refreshed;
+    return computeAggregatedPortfolio(refreshed, this.pendingActions, 3.4);
   }
 
-  getWallet(address: string): WalletAccount {
-    const wallet = this.wallets.find((item) => item.address === address);
-    if (!wallet) {
-      throw new NotFoundException(`Wallet ${address} was not found`);
+  async getWallet(address: string): Promise<WalletAccount> {
+    const normalized = address.trim();
+    const hydrated = await this.refreshWalletFromJupiter(normalized);
+    if (hydrated) {
+      return hydrated;
     }
 
-    return wallet;
+    const fallback = this.wallets.find((item) => item.address === normalized);
+    if (!fallback) {
+      throw new NotFoundException(`Wallet ${normalized} was not found`);
+    }
+    return fallback;
+  }
+
+  async getWalletTransactions(
+    address: string,
+  ): Promise<JupiterTransaction[]> {
+    const normalized = address.trim();
+    const cached = this.getCachedTransactions(normalized);
+    if (cached) {
+      return cached;
+    }
+
+    const fetched = await this.fetchTransactionsFromJupiter(normalized);
+    if (fetched.length > 0) {
+      this.transactionCache.set(normalized, {
+        records: fetched,
+        expiresAt: Date.now() + TRANSACTION_CACHE_TTL_MS,
+      });
+    }
+    return fetched;
   }
 
   linkWallet(payload: LinkWalletDto): WalletAccount {
@@ -103,5 +174,304 @@ export class WalletsService {
 
     this.wallets = [...this.wallets, newWallet];
     return newWallet;
+  }
+
+  private async refreshWalletFromJupiter(
+    address: string,
+    fallback?: WalletAccount,
+  ): Promise<WalletAccount> {
+    const cached = this.getCachedPortfolio(address);
+    if (cached) {
+      if (!fallback) {
+        this.upsertWallet(cached);
+      }
+      return cached;
+    }
+
+    const fetched = await this.fetchPortfolioFromJupiter(address);
+    if (fetched) {
+      this.portfolioCache.set(address, {
+        wallet: fetched,
+        expiresAt: Date.now() + PORTFOLIO_CACHE_TTL_MS,
+      });
+      this.upsertWallet(fetched);
+      return fetched;
+    }
+
+    if (fallback) {
+      return fallback;
+    }
+
+    const existing = this.wallets.find((wallet) => wallet.address === address);
+    if (existing) {
+      return existing;
+    }
+
+    throw new NotFoundException(`Wallet ${address} was not found`);
+  }
+
+  private getCachedPortfolio(address: string): WalletAccount | null {
+    const entry = this.portfolioCache.get(address);
+    if (!entry) {
+      return null;
+    }
+    if (entry.expiresAt < Date.now()) {
+      this.portfolioCache.delete(address);
+      return null;
+    }
+    return entry.wallet;
+  }
+
+  private getCachedTransactions(address: string): JupiterTransaction[] | null {
+    const entry = this.transactionCache.get(address);
+    if (!entry) {
+      return null;
+    }
+    if (entry.expiresAt < Date.now()) {
+      this.transactionCache.delete(address);
+      return null;
+    }
+    return entry.records;
+  }
+
+  private upsertWallet(nextWallet: WalletAccount) {
+    const existingIndex = this.wallets.findIndex(
+      (wallet) => wallet.address === nextWallet.address,
+    );
+    if (existingIndex >= 0) {
+      const updated = [...this.wallets];
+      updated[existingIndex] = {
+        ...nextWallet,
+        shareOfPortfolio: updated[existingIndex].shareOfPortfolio,
+      };
+      this.wallets = updated;
+    } else {
+      this.wallets = [...this.wallets, nextWallet];
+    }
+  }
+
+  private normalizeWalletBalance(token: any): WalletBalance | null {
+    const mint =
+      token?.address || token?.mint || token?.tokenAddress || token?.id || null;
+    if (!mint) {
+      return null;
+    }
+
+    const amount =
+      this.toNumber(token?.amount) ??
+      this.toNumber(token?.quantity) ??
+      this.toNumber(token?.balance) ??
+      this.toNumber(token?.tokenAmount?.uiAmount) ??
+      0;
+    const usdValue =
+      this.toNumber(token?.usdValue) ??
+      this.toNumber(token?.valueUsd) ??
+      this.toNumber(token?.value) ??
+      this.toNumber(token?.tokenValue) ??
+      (this.toNumber(token?.pricePerToken) ?? 0) * amount;
+
+    const symbol =
+      token?.symbol ||
+      token?.tokenSymbol ||
+      (mint === SOL_MINT ? 'SOL' : undefined) ||
+      token?.name ||
+      'Token';
+
+    return {
+      tokenSymbol: symbol,
+      mint,
+      amount,
+      usdValue: Number(usdValue?.toFixed?.(4) ?? usdValue ?? 0),
+    };
+  }
+
+  private extractTokens(payload: any): any[] {
+    if (Array.isArray(payload?.tokens)) {
+      return payload.tokens;
+    }
+    if (Array.isArray(payload?.wallet?.tokens)) {
+      return payload.wallet.tokens;
+    }
+    if (Array.isArray(payload?.data?.tokens)) {
+      return payload.data.tokens;
+    }
+    if (Array.isArray(payload?.data?.wallet?.tokens)) {
+      return payload.data.wallet.tokens;
+    }
+    return [];
+  }
+
+  private extractTransactions(payload: any): any[] {
+    if (!payload) {
+      return [];
+    }
+    if (Array.isArray(payload)) {
+      return payload;
+    }
+    if (Array.isArray(payload?.transactions)) {
+      return payload.transactions;
+    }
+    if (Array.isArray(payload?.data?.transactions)) {
+      return payload.data.transactions;
+    }
+    if (Array.isArray(payload?.data)) {
+      return payload.data;
+    }
+    return [];
+  }
+
+  private toNumber(value: unknown): number | undefined {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return undefined;
+  }
+
+  private toTimestamp(value: unknown): number {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value > 1_000_000_000_000 ? value : value * 1000;
+    }
+    return Date.now();
+  }
+
+  private async fetchPortfolioFromJupiter(
+    address: string,
+  ): Promise<WalletAccount | null> {
+    if (!this.jupiterApiKey) {
+      this.logger.warn(
+        'Jupiter API key missing; falling back to cached wallet data',
+      );
+      return null;
+    }
+
+    try {
+      const response = await fetch(
+        `${JUPITER_PORTFOLIO_ENDPOINT}/${address.trim()}`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': this.jupiterApiKey,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        this.logger.warn(
+          `Jupiter portfolio API error ${response.status} for ${address}: ${body}`,
+        );
+        return null;
+      }
+
+      const payload = await response.json();
+      const tokens = this.extractTokens(payload)
+        .map((token) => this.normalizeWalletBalance(token))
+        .filter(Boolean) as WalletBalance[];
+
+      if (tokens.length === 0) {
+        return null;
+      }
+
+      const totalUsdValue = Number(
+        (
+          payload?.totalValueUsd ??
+          payload?.wallet?.totalValueUsd ??
+          payload?.data?.totalValueUsd ??
+          tokens.reduce((sum, balance) => sum + balance.usdValue, 0)
+        ).toFixed(2),
+      );
+
+      return {
+        address,
+        label: address,
+        provider: 'custom',
+        balances: tokens,
+        totalUsdValue,
+        shareOfPortfolio: 0,
+        lastSync: new Date().toISOString(),
+        sessionKeyIds: [],
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to fetch Jupiter portfolio for ${address}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      return null;
+    }
+  }
+
+  private async fetchTransactionsFromJupiter(
+    address: string,
+  ): Promise<JupiterTransaction[]> {
+    if (!this.jupiterApiKey) {
+      this.logger.warn(
+        'Jupiter API key missing; cannot fetch transaction history',
+      );
+      return [];
+    }
+
+    try {
+      const response = await fetch(JUPITER_TRANSACTIONS_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'x-api-key': this.jupiterApiKey,
+        },
+        body: JSON.stringify({
+          wallet: address,
+          limit: JUPITER_TRANSACTIONS_LIMIT,
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        this.logger.warn(
+          `Jupiter transactions API error ${response.status} for ${address}: ${body}`,
+        );
+        return [];
+      }
+
+      const payload = await response.json();
+      return this.extractTransactions(payload)
+        .map((entry) => this.normalizeTransaction(entry))
+        .filter(Boolean) as JupiterTransaction[];
+    } catch (error) {
+      this.logger.error(
+        `Failed to fetch Jupiter transactions for ${address}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      return [];
+    }
+  }
+
+  private normalizeTransaction(entry: any): JupiterTransaction | null {
+    const signature =
+      entry?.signature ??
+      entry?.txSignature ??
+      entry?.transactionSignature ??
+      null;
+    if (!signature) {
+      return null;
+    }
+
+    return {
+      signature,
+      timestamp: this.toTimestamp(entry?.timestamp ?? entry?.blockTime),
+      type: String(entry?.type ?? entry?.action ?? 'unknown').toLowerCase(),
+      description: entry?.description ?? entry?.label,
+      source: entry?.platform ?? entry?.dex ?? entry?.programId ?? 'jupiter',
+      pnlUsd: this.toNumber(entry?.pnlUsd),
+      amountUsd:
+        this.toNumber(entry?.amountUsd) ?? this.toNumber(entry?.volumeUsd),
+      feeUsd: this.toNumber(entry?.feeUsd ?? entry?.feesUsd),
+      raw: entry,
+    };
   }
 }

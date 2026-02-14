@@ -1,10 +1,14 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { HeliusService } from '../helius/helius.service';
 import { LinkWalletDto } from './dto/link-wallet.dto';
 import { WalletsService } from './wallets.service';
 
 @Controller('wallets')
 export class WalletsController {
-  constructor(private readonly walletsService: WalletsService) {}
+  constructor(
+    private readonly walletsService: WalletsService,
+    private readonly heliusService: HeliusService,
+  ) {}
 
   @Get()
   getPortfolio() {
@@ -14,6 +18,16 @@ export class WalletsController {
   @Get(':address')
   getWallet(@Param('address') address: string) {
     return this.walletsService.getWallet(address);
+  }
+
+  @Get(':address/transactions')
+  getWalletTransactions(@Param('address') address: string) {
+    return this.walletsService.getWalletTransactions(address);
+  }
+
+  @Get(':address/activity')
+  getActivity(@Param('address') address: string) {
+    return this.heliusService.getActivity(address);
   }
 
   @Post('link')
