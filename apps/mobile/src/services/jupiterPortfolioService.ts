@@ -1,6 +1,6 @@
 import { jupiterService } from "./jupiterService";
 
-const PORTFOLIO_ENDPOINT = "/portfolio/v1/wallet";
+const PORTFOLIO_ENDPOINT = "/v6/portfolio/wallet";
 
 export interface JupiterPortfolioToken {
   address?: string;
