@@ -36,10 +36,31 @@ class WalletAdapterService {
       const preview = await walletService.startWalletAuthorization(walletApp);
       const accounts = await walletService.finalizeWalletAuthorization(preview);
 
-      // Update wallet store
-      walletStore.setLinkedWallets(accounts);
-      walletStore.setActiveWallet(accounts[0]);
-      walletStore.setActiveWalletAddress(accounts[0].address);
+      // Update wallet store - add new accounts instead of replacing all
+      const existingWallets = walletStore.linkedWallets;
+      const combinedWallets = [...existingWallets];
+      
+      // Add new accounts that don't already exist
+      accounts.forEach((newAccount) => {
+        const existingIndex = combinedWallets.findIndex(
+          (wallet) => wallet.address === newAccount.address
+        );
+        
+        if (existingIndex === -1) {
+          combinedWallets.push(newAccount);
+        } else {
+          // Update existing account with new information
+          combinedWallets[existingIndex] = newAccount;
+        }
+      });
+      
+      walletStore.setLinkedWallets(combinedWallets);
+      
+      // Set active wallet to the first new account if not already set
+      if (!walletStore.activeWallet && accounts.length > 0) {
+        walletStore.setActiveWallet(accounts[0]);
+        walletStore.setActiveWalletAddress(accounts[0].address);
+      }
 
       // Refresh balances for new wallets
       await this.refreshBalances(accounts.map((account) => account.address));

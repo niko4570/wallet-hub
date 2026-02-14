@@ -1,9 +1,8 @@
 import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { cacheUtils } from "../utils/cache";
 import { rpcService } from "./rpcService";
-// Directly access the environment variable to ensure it's loaded correctly
-declare const process: { env?: Record<string, string | undefined> };
-const JUPITER_API_KEY = process.env?.EXPO_PUBLIC_JUPITER_API_KEY || "";
+import { priceService } from "./priceService";
+import { jupiterService } from "./jupiterService";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -27,24 +26,20 @@ export interface TokenBalance {
 }
 
 interface JupiterToken {
-  id: string;
-  name: string;
-  symbol: string;
-  icon: string;
-  decimals: number;
-  usdPrice: number;
+  id?: string;
+  address?: string;
+  name?: string;
+  symbol?: string;
+  icon?: string;
+  logoURI?: string;
+  decimals?: number;
+  usdPrice?: number;
 }
-
-type JupiterPriceResponse = Record<string, number>;
-
-type JupiterPriceEnvelope = {
-  data?: Record<string, { price?: number | string }>;
-};
 
 const WALLET_BALANCE_TTL = 30 * 1000;
 const METADATA_TTL = 24 * 60 * 60 * 1000;
 const JUPITER_TOKENS_API = "https://api.jup.ag/tokens/v2";
-const JUPITER_PRICE_API = "https://api.jup.ag/price/v3";
+const METADATA_SEARCH_BATCH = 8;
 
 type WalletBalanceCacheEntry = {
   data: TokenBalance[];
@@ -129,33 +124,6 @@ const persistWalletBalancesCache = async (
   await cacheUtils.setCachedWalletBalances(stored, WALLET_BALANCE_TTL);
 };
 
-// Validates mint address using base58 regex
-const isValidMintAddress = (mint: string): boolean => {
-  const base58Regex =
-    /^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{32,44}$/;
-  return base58Regex.test(mint);
-};
-
-// Processes mints in batches to avoid API limits
-const processInBatches = async <T>(
-  items: string[],
-  batchSize: number,
-  processor: (batch: string[]) => Promise<T>,
-): Promise<T[]> => {
-  const batches: string[][] = [];
-  for (let i = 0; i < items.length; i += batchSize) {
-    batches.push(items.slice(i, i + batchSize));
-  }
-
-  const results: T[] = [];
-  for (const batch of batches) {
-    const result = await processor(batch);
-    results.push(result);
-  }
-
-  return results;
-};
-
 // Get actual token holdings for a wallet using direct RPC (native SOL + SPL tokens)
 const getWalletHoldings = async (
   walletAddress: string,
@@ -213,7 +181,27 @@ const getWalletHoldings = async (
   }
 };
 
-// Fetch token metadata using Jupiter /tokens/v2/search
+const normalizeToken = (
+  token: JupiterToken | undefined | null,
+): TokenMetadata | null => {
+  if (!token) {
+    return null;
+  }
+
+  const address = token.address ?? token.id;
+  if (!address) {
+    return null;
+  }
+
+  return {
+    address,
+    symbol: token.symbol,
+    name: token.name,
+    decimals: token.decimals,
+    logoURI: token.logoURI ?? token.icon,
+  };
+};
+
 const fetchTokenMetadata = async (
   mints: string[],
 ): Promise<Record<string, TokenMetadata>> => {
@@ -221,136 +209,73 @@ const fetchTokenMetadata = async (
     return {};
   }
 
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-  };
-  if (JUPITER_API_KEY) {
-    headers["x-api-key"] = JUPITER_API_KEY;
-  }
-
-  const BATCH_SIZE = 50;
+  const uniqueMints = Array.from(new Set(mints));
   const metadataMap: Record<string, TokenMetadata> = {};
 
-  try {
-    if (mints.length <= BATCH_SIZE) {
-      const batchResult = await fetchMetadataBatch(mints, headers);
-      Object.assign(metadataMap, batchResult);
-    } else {
-      const batches: string[][] = [];
-      for (let i = 0; i < mints.length; i += BATCH_SIZE) {
-        batches.push(mints.slice(i, i + BATCH_SIZE));
-      }
-
-      for (const batch of batches) {
+  for (let i = 0; i < uniqueMints.length; i += METADATA_SEARCH_BATCH) {
+    const batch = uniqueMints.slice(i, i + METADATA_SEARCH_BATCH);
+    const results = await Promise.all(
+      batch.map(async (mint) => {
         try {
-          const batchResult = await fetchMetadataBatch(batch, headers);
-          Object.assign(metadataMap, batchResult);
-        } catch (batchError) {
-          console.error(`Error fetching metadata batch:`, batchError);
-        }
-      }
-    }
-
-    return metadataMap;
-  } catch (error) {
-    console.error(`Error in fetchTokenMetadata:`, error);
-    return {};
-  }
-};
-
-const fetchMetadataBatch = async (
-  mints: string[],
-  headers: HeadersInit,
-): Promise<Record<string, TokenMetadata>> => {
-  if (mints.length === 0) {
-    return {};
-  }
-
-  try {
-    const metadataMap: Record<string, TokenMetadata> = {};
-
-    // Fetch metadata for each mint individually (search endpoint)
-    for (const mint of mints) {
-      try {
-        const url = `${JUPITER_TOKENS_API}/search?query=${encodeURIComponent(mint)}`;
-        const response = await fetch(url, {
-          headers,
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.warn(
-            `Jupiter metadata API error for ${mint}: ${response.status}`,
+          const data = await jupiterService.requestJson<JupiterToken[]>(
+            `${JUPITER_TOKENS_API}/search`,
             {
-              url,
-              error: errorText,
+              params: { query: mint },
+              cacheTtlMs: METADATA_TTL / 12,
             },
           );
-          continue;
+          return normalizeToken(Array.isArray(data) ? data[0] : undefined);
+        } catch (error) {
+          console.warn(`Error fetching metadata for ${mint}:`, error);
+          return null;
         }
+      }),
+    );
 
-        const data = await response.json();
-        if (Array.isArray(data) && data.length > 0) {
-          const token = data[0];
-          metadataMap[mint] = {
-            address: token.id,
-            symbol: token.symbol,
-            name: token.name,
-            decimals: token.decimals,
-            logoURI: token.icon,
-          };
-        }
-      } catch (error) {
-        console.warn(`Error fetching metadata for ${mint}:`, error);
-        continue;
+    results.forEach((token, index) => {
+      if (!token) {
+        return;
       }
-    }
-
-    return metadataMap;
-  } catch (error) {
-    console.error(`Error in fetchMetadataBatch:`, error);
-    return {};
+      const mint = batch[index];
+      metadataMap[mint] = {
+        address: token.address || mint,
+        symbol: token.symbol,
+        name: token.name,
+        decimals: token.decimals,
+        logoURI: token.logoURI,
+      };
+    });
   }
+
+  return metadataMap;
 };
 
-const fetchJupiterTokens = async (): Promise<JupiterToken[]> => {
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
+const ensureMetadataForMints = async (
+  mints: string[],
+): Promise<Record<string, TokenMetadata>> => {
+  if (mints.length === 0) {
+    return (metadataCache as Record<string, TokenMetadata>) || {};
+  }
+
+  const cachedMap = await getMetadataCache();
+  const missingMints = mints.filter((mint) => !cachedMap[mint]);
+
+  if (missingMints.length === 0) {
+    return cachedMap;
+  }
+
+  const fetchedMap = await fetchTokenMetadata(missingMints);
+  if (Object.keys(fetchedMap).length === 0) {
+    return cachedMap;
+  }
+
+  const mergedMap = {
+    ...cachedMap,
+    ...fetchedMap,
   };
-  if (JUPITER_API_KEY) {
-    headers["x-api-key"] = JUPITER_API_KEY;
-  }
 
-  try {
-    // Fix: Change parameter from tag=verified to query=verified
-    const url = `${JUPITER_TOKENS_API}/tag?query=verified`;
-    console.debug("Fetching Jupiter tokens with URL:", url);
-
-    const response = await fetch(url, {
-      headers,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Jupiter tokens API error: ${response.status}`, {
-        url,
-        error: errorText,
-        headers: { ...headers, "x-api-key": "[REDACTED]" }, // Don't log actual API key
-      });
-      throw new Error(
-        `Jupiter tokens API error: ${response.status} - ${errorText}`,
-      );
-    }
-
-    const data = await response.json();
-    console.debug(
-      `Successfully fetched ${Array.isArray(data) ? data.length : 0} tokens from Jupiter`,
-    );
-    return data;
-  } catch (error) {
-    console.error("Error fetching Jupiter tokens:", error);
-    throw error;
-  }
+  await persistMetadataCache(mergedMap);
+  return mergedMap;
 };
 
 const parsePriceValue = (value?: number | string): number | null => {
@@ -366,132 +291,6 @@ const parsePriceValue = (value?: number | string): number | null => {
   return null;
 };
 
-const fetchJupiterPrices = async (
-  mints: string[],
-): Promise<JupiterPriceResponse> => {
-  if (mints.length === 0) {
-    return {};
-  }
-
-  // Validate and clean mint addresses
-  const validatedMints = mints
-    .map((mint) => mint.trim())
-    .filter(isValidMintAddress)
-    .map((mint) => mint.toUpperCase());
-
-  if (validatedMints.length === 0) {
-    console.warn("No valid mint addresses provided");
-    return {};
-  }
-
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-  };
-  if (JUPITER_API_KEY) {
-    headers["x-api-key"] = JUPITER_API_KEY;
-  }
-
-  const BATCH_SIZE = 50;
-  const results: JupiterPriceResponse = {};
-
-  try {
-    // Process in batches to avoid API limits
-    if (validatedMints.length <= BATCH_SIZE) {
-      // Single batch
-      const batchResult = await fetchPriceBatch(validatedMints, headers);
-      Object.assign(results, batchResult);
-    } else {
-      // Multiple batches
-      const batches: string[][] = [];
-      for (let i = 0; i < validatedMints.length; i += BATCH_SIZE) {
-        batches.push(validatedMints.slice(i, i + BATCH_SIZE));
-      }
-
-      for (const batch of batches) {
-        try {
-          const batchResult = await fetchPriceBatch(batch, headers);
-          Object.assign(results, batchResult);
-        } catch (batchError) {
-          console.error(`Error fetching batch:`, batchError);
-          // Continue with other batches even if one fails
-        }
-      }
-    }
-
-    // If no results, fallback to SOL mint test
-    if (Object.keys(results).length === 0) {
-      console.warn("No price results, falling back to SOL mint test");
-      const solResult = await fetchPriceBatch([SOL_MINT], headers);
-      Object.assign(results, solResult);
-    }
-
-    return results;
-  } catch (error) {
-    console.error("Error in fetchJupiterPrices:", error);
-    // Fallback to SOL mint test
-    try {
-      console.warn("Falling back to SOL mint test due to error");
-      const solResult = await fetchPriceBatch([SOL_MINT], headers);
-      return solResult;
-    } catch (fallbackError) {
-      console.error("Fallback SOL mint test failed:", fallbackError);
-      return {};
-    }
-  }
-};
-
-const fetchPriceBatch = async (
-  mints: string[],
-  headers: HeadersInit,
-): Promise<JupiterPriceResponse> => {
-  if (mints.length === 0) {
-    return {};
-  }
-
-  try {
-    // Build query with join(',') and encodeURIComponent
-    const ids = mints.join(",");
-    const encodedIds = encodeURIComponent(ids);
-    const url = `${JUPITER_PRICE_API}?ids=${encodedIds}`;
-
-    console.debug(`Fetching prices for ${mints.length} mints:`, {
-      first: mints[0],
-      last: mints[mints.length - 1],
-      count: mints.length,
-    });
-
-    const response = await fetch(url, {
-      headers,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Jupiter price API error: ${response.status}`, {
-        url,
-        error: errorText,
-        mintCount: mints.length,
-      });
-      throw new Error(
-        `Jupiter price API error: ${response.status} - ${errorText}`,
-      );
-    }
-
-    const data = await response.json();
-    const normalized: JupiterPriceResponse = {};
-
-    mints.forEach((mint) => {
-      const price = data[mint]?.usdPrice;
-      if (typeof price === "number" && Number.isFinite(price)) {
-        normalized[mint] = price;
-      }
-    });
-
-    return normalized;
-  } catch (error) {
-    console.error(`Error fetching price batch:`, error);
-    throw error;
-  }
-};
 
 export const tokenMetadataService = {
   async getTokenBalancesForWallet(
@@ -540,13 +339,13 @@ export const tokenMetadataService = {
         console.debug(`Processing ${mints.length} unique mints`);
 
         // Step 3: Fetch token metadata using Jupiter /tokens/v2/search
-        const metadataMap = await fetchTokenMetadata(mints);
+        const metadataMap = await ensureMetadataForMints(mints);
         console.debug(
           `Fetched metadata for ${Object.keys(metadataMap).length} mints`,
         );
 
-        // Step 4: Fetch prices using Jupiter /price/v3
-        const prices = await fetchJupiterPrices(mints);
+        // Step 4: Fetch prices using centralized priceService
+        const prices = await priceService.getTokenPricesInUsd(mints);
         console.debug(`Fetched prices for ${Object.keys(prices).length} mints`);
 
         // Step 5: Combine holdings with metadata and prices
@@ -625,46 +424,11 @@ export const tokenMetadataService = {
   },
 
   async getMetadataMapForWallet(
-    walletAddress: string,
+    _walletAddress: string,
     mints: string[],
   ): Promise<Record<string, TokenMetadata>> {
     try {
-      const map = await getMetadataCache();
-      const responseMap = mints.reduce(
-        (acc, mint) => {
-          if (map[mint]) {
-            acc[mint] = map[mint];
-          }
-          return acc;
-        },
-        {} as Record<string, TokenMetadata>,
-      );
-
-      const missingMints = mints.filter((mint) => !map[mint]);
-      if (missingMints.length === 0) {
-        return responseMap;
-      }
-
-      // Get all tokens from Jupiter
-      const tokens = await fetchJupiterTokens();
-      const tokenMetadataList = tokens
-        .filter(
-          (token: JupiterToken) => token.id && missingMints.includes(token.id),
-        )
-        .map((token: JupiterToken) => ({
-          address: token.id,
-          symbol: token.symbol,
-          name: token.name,
-          decimals: token.decimals,
-          logoURI: token.icon,
-        }));
-
-      const mergedMap = {
-        ...map,
-        ...buildMetadataMap(tokenMetadataList),
-      };
-      await persistMetadataCache(mergedMap);
-
+      const mergedMap = await ensureMetadataForMints(mints);
       return mints.reduce(
         (acc, mint) => {
           if (mergedMap[mint]) {
@@ -680,12 +444,4 @@ export const tokenMetadataService = {
     }
   },
 
-  async getTokenPrices(mints: string[]): Promise<Record<string, number>> {
-    try {
-      return fetchJupiterPrices(mints);
-    } catch (error) {
-      console.warn("Failed to fetch token prices from Jupiter", error);
-      return {};
-    }
-  },
 };

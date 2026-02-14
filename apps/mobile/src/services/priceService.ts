@@ -1,12 +1,14 @@
 import { cacheUtils } from "../utils/cache";
+import { jupiterService } from "./jupiterService";
 
 declare const process: { env?: Record<string, string | undefined> };
 
 const JUPITER_API_KEY = process.env?.EXPO_PUBLIC_JUPITER_API_KEY || "";
 const WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112";
-const PRICE_ENDPOINT = "https://api.jup.ag/price/v3";
 const PRICE_CHUNK_SIZE = 50;
 const DEFAULT_SOL_FALLBACK = 100;
+const RATE_LIMIT_COOLDOWN_MS = 5 * 1000;
+const UNAUTHORIZED_COOLDOWN_MS = 60 * 1000;
 
 type JupiterPriceEntry = {
   price?: number | string;
@@ -16,12 +18,40 @@ type JupiterPriceEnvelope = {
   data?: Record<string, JupiterPriceEntry>;
 };
 
+type PriceServiceStatus =
+  | {
+      state: "healthy";
+      lastSuccessAt: number;
+    }
+  | {
+      state:
+        | "missing_api_key"
+        | "unauthorized"
+        | "rate_limited"
+        | "network_error";
+      lastError: string;
+      occurredAt: number;
+    };
+
 export class PriceService {
   private static instance: PriceService;
   private cache: Map<string, { price: number; timestamp: number }> = new Map();
   private cacheDuration = 5 * 60 * 1000; // 5 minutes cache
   private inFlightSol?: Promise<number>;
   private hasWarnedAboutKey = false;
+  private status: PriceServiceStatus = JUPITER_API_KEY
+    ? {
+        state: "healthy",
+        lastSuccessAt: 0,
+      }
+    : {
+        state: "missing_api_key",
+        lastError:
+          "EXPO_PUBLIC_JUPITER_API_KEY not set; falling back to cached prices.",
+        occurredAt: Date.now(),
+      };
+  private rateLimitedUntil = 0;
+  private unauthorizedUntil = 0;
 
   private constructor() {}
 
@@ -32,19 +62,50 @@ export class PriceService {
     return PriceService.instance;
   }
 
-  private buildHeaders(): HeadersInit {
-    const headers: HeadersInit = {
-      "Content-Type": "application/json",
-    };
+  private ensureApiKey(): boolean {
     if (JUPITER_API_KEY) {
-      headers["x-api-key"] = JUPITER_API_KEY;
-    } else if (!this.hasWarnedAboutKey) {
+      return true;
+    }
+    if (!this.hasWarnedAboutKey) {
       this.hasWarnedAboutKey = true;
       console.warn(
         "[priceService] EXPO_PUBLIC_JUPITER_API_KEY not set; falling back to cached prices.",
       );
     }
-    return headers;
+    this.status = {
+      state: "missing_api_key",
+      lastError:
+        "EXPO_PUBLIC_JUPITER_API_KEY not set; falling back to cached prices.",
+      occurredAt: Date.now(),
+    };
+    return false;
+  }
+
+  private updateStatus(next: PriceServiceStatus) {
+    this.status = next;
+  }
+
+  private classifyError(
+    error: unknown,
+  ): Exclude<PriceServiceStatus["state"], "healthy" | "missing_api_key"> {
+    const message =
+      error instanceof Error ? error.message : String(error ?? "unknown");
+    const normalized = message.toLowerCase();
+    if (message.includes("401") || normalized.includes("unauthorized")) {
+      return "unauthorized";
+    }
+    if (message.includes("429") || normalized.includes("rate limit")) {
+      return "rate_limited";
+    }
+    return "network_error";
+  }
+
+  getStatus(): PriceServiceStatus {
+    return this.status;
+  }
+
+  hasApiKey(): boolean {
+    return Boolean(JUPITER_API_KEY);
   }
 
   private parsePrice(value?: number | string): number | null {
@@ -65,38 +126,80 @@ export class PriceService {
       return {};
     }
 
-    const headers = this.buildHeaders();
-    if (!JUPITER_API_KEY) {
-      throw new Error(
-        "Jupiter API key missing. Set EXPO_PUBLIC_JUPITER_API_KEY to fetch live prices.",
+    if (!this.ensureApiKey()) {
+      return {};
+    }
+
+    if (this.rateLimitedUntil && Date.now() < this.rateLimitedUntil) {
+      this.updateStatus({
+        state: "rate_limited",
+        lastError: "Jupiter price API rate limited. Cooling down.",
+        occurredAt: Date.now(),
+      });
+      return {};
+    }
+
+    if (this.unauthorizedUntil && Date.now() < this.unauthorizedUntil) {
+      this.updateStatus({
+        state: "unauthorized",
+        lastError: "Jupiter price API unauthorized. Waiting before retry.",
+        occurredAt: Date.now(),
+      });
+      return {};
+    }
+
+    try {
+      const envelope = await jupiterService.requestJson<JupiterPriceEnvelope>(
+        "/price/v3",
+        {
+          params: {
+            ids: mints.join(","),
+          },
+        },
       );
-    }
 
-    const params = new URLSearchParams({
-      ids: mints.join(","),
-    });
-    const response = await fetch(`${PRICE_ENDPOINT}?${params.toString()}`, {
-      headers,
-    });
-    if (!response.ok) {
-      const message =
-        response.status === 401
-          ? "Unauthorized response from Jupiter price API. Check EXPO_PUBLIC_JUPITER_API_KEY."
-          : `Jupiter price API error: ${response.status}`;
-      throw new Error(message);
-    }
+      const payload =
+        envelope?.data && typeof envelope.data === "object"
+          ? envelope.data
+          : (envelope as unknown as Record<string, JupiterPriceEntry>);
 
-    const data = await response.json();
-    const normalized: Record<string, number> = {};
+      const normalized: Record<string, number> = {};
 
-    mints.forEach((mint) => {
-      const price = data[mint]?.usdPrice;
-      if (typeof price === "number" && Number.isFinite(price)) {
-        normalized[mint] = price;
+      mints.forEach((mint) => {
+        const entry = payload?.[mint];
+        const parsed = this.parsePrice(
+          entry?.price ??
+            (entry as { usdPrice?: number | string } | undefined)?.usdPrice,
+        );
+        if (parsed !== null) {
+          normalized[mint] = parsed;
+        }
+      });
+
+      this.updateStatus({
+        state: "healthy",
+        lastSuccessAt: Date.now(),
+      });
+      this.rateLimitedUntil = 0;
+      this.unauthorizedUntil = 0;
+      return normalized;
+    } catch (error) {
+      const classification = this.classifyError(error);
+      if (classification === "rate_limited") {
+        this.rateLimitedUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+      } else if (classification === "unauthorized") {
+        this.unauthorizedUntil = Date.now() + UNAUTHORIZED_COOLDOWN_MS;
       }
-    });
-
-    return normalized;
+      this.updateStatus({
+        state: classification,
+        lastError:
+          error instanceof Error
+            ? error.message
+            : "Jupiter price API request failed",
+        occurredAt: Date.now(),
+      });
+      throw error;
+    }
   }
 
   async getSolPriceInUsd(): Promise<number> {
