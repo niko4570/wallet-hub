@@ -34,7 +34,6 @@ packages/
       - `EXPO_PUBLIC_HELIUS_API_KEY` for on-device Solana RPC access.
       - `EXPO_PUBLIC_JUPITER_API_KEY` is **required** for Jupiter portfolio/price/token APIs (`/portfolio/v1/wallet`, `/price/v3/price`, `/tokens/v2`). Request a key from [Jupiter’s developer portal](https://dev.jup.ag/) and keep it scoped per environment.
       - `JUPITER_API_KEY` (API service) falls back to the Expo key if unset; set it when deploying the Nest backend so `/wallets` endpoints can hydrate data directly from Jupiter without hitting the client.
-      - Optional WebView integrations: `EXPO_PUBLIC_JUPITER_PLUGIN_URL`, `EXPO_PUBLIC_JUPITER_PLUGIN_ALLOWLIST`, `EXPO_PUBLIC_TELEMETRY_URL`.
 
 3. **Run services**
 

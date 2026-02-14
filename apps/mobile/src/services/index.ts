@@ -1,6 +1,5 @@
 // Import existing services
 import { priceService } from "./priceService";
-import { telemetryService } from "./telemetryService";
 import { authorizationApi } from "./authorizationService";
 import { iconService } from "./iconService";
 import { walletService } from "./walletService";
@@ -15,7 +14,6 @@ import { jupiterService } from "./jupiterService";
 // Service registry interface
 interface ServiceRegistry {
   price: typeof priceService;
-  telemetry: typeof telemetryService;
   authorization: typeof authorizationApi;
   icon: typeof iconService;
   wallet: typeof walletService;
@@ -29,7 +27,6 @@ interface ServiceRegistry {
 // Create service registry
 export const services: ServiceRegistry = {
   price: priceService,
-  telemetry: telemetryService,
   authorization: authorizationApi,
   icon: iconService,
   wallet: walletService,
@@ -43,7 +40,6 @@ export const services: ServiceRegistry = {
 // Export services individually for convenience
 export {
   priceService,
-  telemetryService,
   authorizationApi,
   iconService,
   walletService,

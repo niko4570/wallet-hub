@@ -11,13 +11,10 @@ import {
   Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useNavigation } from "@react-navigation/native";
-import { StackNavigationProp } from "@react-navigation/stack";
-import { RootStackParamList } from "../navigation/AppNavigator";
-import { formatAddress, formatSignature, formatAmount } from "../utils/format";
+import { formatAddress, formatAmount } from "../utils/format";
 import { useWalletStore } from "../store/walletStore";
 import { rpcService } from "../services";
-import { Transaction, AuthorizationEvent as AuthEvent } from "../types";
+import { Transaction } from "../types";
 import { SkeletonTransaction } from "../components/common/SkeletonLoader";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import {
@@ -29,16 +26,11 @@ import {
 } from "lucide-react-native";
 
 const ActivityScreen = () => {
-  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const { linkedWallets, activeWallet } = useWalletStore();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [activeTab, setActiveTab] = useState<"transactions" | "authorizations">(
-    "transactions",
-  );
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [authorizations, setAuthorizations] = useState<AuthEvent[]>([]);
   const [lastSignature, setLastSignature] = useState<string | undefined>();
   const [hasMore, setHasMore] = useState(true);
   const [selectedTransaction, setSelectedTransaction] =
@@ -310,37 +302,26 @@ const ActivityScreen = () => {
     [activeWallet, parseTransaction],
   );
 
-  // Fetch authorizations
-  const fetchAuthorizations = useCallback(async () => {
-    setAuthorizations([]);
-  }, []);
-
   // Load data when active wallet changes or tab changes
   useEffect(() => {
     if (__DEV__) {
       console.log(
-        `useEffect triggered - activeWallet: ${activeWallet?.address}, activeTab: ${activeTab}`,
+        `useEffect triggered - activeWallet: ${activeWallet?.address}`,
       );
     }
 
-    // Only load data if we have an active wallet
     if (activeWallet) {
       const loadData = async () => {
         setLoading(true);
         try {
-          if (activeTab === "transactions") {
-            // Reset state
-            setLastSignature(undefined);
-            setHasMore(true);
-            if (__DEV__) {
-              console.log(
-                `Calling fetchTransactions with activeWallet: ${activeWallet.address}`,
-              );
-            }
-            await fetchTransactions(false);
-          } else {
-            await fetchAuthorizations();
+          setLastSignature(undefined);
+          setHasMore(true);
+          if (__DEV__) {
+            console.log(
+              `Calling fetchTransactions with activeWallet: ${activeWallet.address}`,
+            );
           }
+          await fetchTransactions(false);
         } finally {
           setLoading(false);
           if (__DEV__) {
@@ -357,28 +338,23 @@ const ActivityScreen = () => {
       setTransactions([]);
       setLoading(false);
     }
-  }, [activeWallet, activeTab, fetchTransactions, fetchAuthorizations]);
+  }, [activeWallet, fetchTransactions]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      if (activeTab === "transactions") {
-        // Reset state
-        setLastSignature(undefined);
-        setHasMore(true);
-        await fetchTransactions(false);
-      } else {
-        await fetchAuthorizations();
-      }
+      setLastSignature(undefined);
+      setHasMore(true);
+      await fetchTransactions(false);
     } catch (error) {
       console.error("Refresh failed:", error);
     } finally {
       setRefreshing(false);
     }
-  }, [activeTab, fetchTransactions, fetchAuthorizations]);
+  }, [fetchTransactions]);
 
   const loadMore = useCallback(async () => {
-    if (!loadingMore && hasMore && activeTab === "transactions") {
+    if (!loadingMore && hasMore) {
       setLoadingMore(true);
       try {
         await fetchTransactions(true, lastSignature);
@@ -386,15 +362,11 @@ const ActivityScreen = () => {
         setLoadingMore(false);
       }
     }
-  }, [loadingMore, hasMore, activeTab, lastSignature]);
+  }, [loadingMore, hasMore, fetchTransactions, lastSignature]);
 
   const handleTransactionDetail = (transaction: Transaction) => {
     setSelectedTransaction(transaction);
     setShowTransactionDetail(true);
-  };
-
-  const handleAuthorizationDetail = (authorizationId: string) => {
-    navigation.navigate("AuthorizationDetail", { authorizationId });
   };
 
   const renderTransactionItem = ({ item }: ListRenderItemInfo<Transaction>) => {
@@ -601,96 +573,36 @@ const ActivityScreen = () => {
         </View>
       </View>
 
-      {/* Content */}
-      {activeTab === "transactions" ? (
-        <FlatList
-          data={groupedTransactions}
-          renderItem={renderTransactionGroup}
-          keyExtractor={(item) => item.date}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor="#7F56D9"
-              colors={["#7F56D9"]}
-            />
-          }
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.3}
-          ListFooterComponent={renderFooter}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateText}>
-                {transactions.length === 0
-                  ? "No transactions found"
-                  : "Loading transactions..."}
-              </Text>
-              <Text style={styles.emptyStateSubtext}>
-                Found {transactions.length} transactions
-              </Text>
-            </View>
-          }
-          extraData={transactions.length}
-        />
-      ) : (
-        <View style={styles.content}>
-          <View style={styles.section}>
-            {authorizations.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyStateText}>
-                  No authorization events found
-                </Text>
-              </View>
-            ) : (
-              authorizations.map((authorization) => (
-                <TouchableOpacity
-                  key={authorization.id}
-                  style={styles.authorizationCard}
-                  onPress={() => handleAuthorizationDetail(authorization.id)}
-                >
-                  <View style={styles.authorizationHeader}>
-                    <Text style={styles.authorizationWallet}>
-                      {authorization.walletName ||
-                        formatAddress(authorization.walletAddress)}
-                    </Text>
-                    <View
-                      style={[
-                        styles.authorizationStatus,
-                        authorization.status === "fresh"
-                          ? styles.authorizationStatusFresh
-                          : styles.authorizationStatusStale,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.authorizationStatusText,
-                          authorization.status === "fresh"
-                            ? styles.authorizationStatusTextFresh
-                            : styles.authorizationStatusTextStale,
-                        ]}
-                      >
-                        {authorization.status}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.authorizationInfo}>
-                    <Text style={styles.authorizationMethod}>
-                      Method: {authorization.method}
-                    </Text>
-                    <Text style={styles.authorizationAddress}>
-                      {formatAddress(authorization.walletAddress)}
-                    </Text>
-                  </View>
-                  <Text style={styles.authorizationTimestamp}>
-                    {new Date(authorization.timestamp).toLocaleString()}
-                  </Text>
-                </TouchableOpacity>
-              ))
-            )}
+      <FlatList
+        data={groupedTransactions}
+        renderItem={renderTransactionGroup}
+        keyExtractor={(item) => item.date}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#7F56D9"
+            colors={["#7F56D9"]}
+          />
+        }
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={renderFooter}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>
+              {transactions.length === 0
+                ? "No transactions found"
+                : "Loading transactions..."}
+            </Text>
+            <Text style={styles.emptyStateSubtext}>
+              Found {transactions.length} transactions
+            </Text>
           </View>
-        </View>
-      )}
+        }
+        extraData={transactions.length}
+      />
 
       {/* Transaction Detail Modal */}
       {showTransactionDetail && renderTransactionDetail()}
@@ -734,35 +646,8 @@ const styles = StyleSheet.create({
   headerAction: {
     padding: 8,
   },
-  tabBar: {
-    flexDirection: "row",
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255, 255, 255, 0.1)",
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 16,
-    alignItems: "center",
-  },
-  activeTab: {
-    borderBottomWidth: 2,
-    borderBottomColor: "#7F56D9",
-  },
-  tabText: {
-    color: "rgba(255, 255, 255, 0.6)",
-    fontWeight: "600",
-  },
-  activeTabText: {
-    color: "#7F56D9",
-  },
-  content: {
-    flex: 1,
-  },
   listContent: {
     paddingVertical: 12,
-  },
-  section: {
-    padding: 24,
   },
   emptyState: {
     backgroundColor: "rgba(255, 255, 255, 0.05)",
@@ -911,69 +796,6 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
-  },
-  authorizationCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-  },
-  authorizationHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  authorizationWallet: {
-    color: "#FFFFFF",
-    fontWeight: "600",
-    fontSize: 14,
-    flex: 1,
-  },
-  authorizationStatus: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginLeft: 12,
-  },
-  authorizationStatusFresh: {
-    backgroundColor: "rgba(127, 86, 217, 0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(127, 86, 217, 0.4)",
-  },
-  authorizationStatusStale: {
-    backgroundColor: "rgba(255, 77, 77, 0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 77, 77, 0.4)",
-  },
-  authorizationStatusText: {
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  authorizationStatusTextFresh: {
-    color: "#7F56D9",
-  },
-  authorizationStatusTextStale: {
-    color: "#FF4D4D",
-  },
-  authorizationInfo: {
-    marginBottom: 8,
-  },
-  authorizationMethod: {
-    color: "rgba(255, 255, 255, 0.8)",
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  authorizationAddress: {
-    color: "rgba(255, 255, 255, 0.6)",
-    fontSize: 12,
-  },
-  authorizationTimestamp: {
-    color: "rgba(255, 255, 255, 0.4)",
-    fontSize: 11,
   },
 });
 
