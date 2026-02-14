@@ -14,11 +14,12 @@ ENV_EXPORT := EXPO_PUBLIC_API_URL=$(EXPO_PUBLIC_API_URL) \
 	EXPO_PUBLIC_COINGECKO_API_KEY=$(EXPO_PUBLIC_COINGECKO_API_KEY) \
 	EXPO_PUBLIC_HELIUS_API_BASE=$(EXPO_PUBLIC_HELIUS_API_BASE)
 
-.PHONY: help install dev-api dev-mobile dev-app dev-all build build-api build-contracts lint test-api android adb-reverse web clean-mobile clean-app ios check-env-mobile print-env-mobile
+.PHONY: help install dev-api dev-mobile dev-app dev-all build build-api build-contracts lint test-api android adb-reverse web clean-mobile clean-app ios check-env-mobile print-env-mobile export-env setup
 
 help:
 	@echo "WalletHub shortcuts:"
 	@echo "  make install        # npm install (root workspaces)"
+	@echo "  make setup          # setup project with dependencies"
 	@echo "  make dev-api        # start Nest API (watch mode, optional)"
 	@echo "  make dev-mobile     # start Expo dev server"
 	@echo "  make dev-app        # alias for dev-mobile"
@@ -35,9 +36,15 @@ help:
 	@echo "  make clean-app      # alias for clean-mobile"
 	@echo "  make check-env-mobile # warn if mobile env vars are missing"
 	@echo "  make print-env-mobile # print mobile env vars"
+	@echo "  make export-env     # export environment variables"
 
 install:
 	npm install
+
+# Setup project with dependencies
+setup:
+	npm install
+	npm run build:contracts
 
 # Start API development server
 dev-api:
@@ -98,6 +105,7 @@ lint:
 test-api:
 	npm run test --workspace apps/api -- --runInBand
 
+# Check mobile environment variables
 check-env-mobile:
 	@if [ -z "$(EXPO_PUBLIC_HELIUS_API_KEY)" ]; then \
 		echo "Warning: EXPO_PUBLIC_HELIUS_API_KEY is not set (RPC will use demo/limited access)."; \
@@ -106,8 +114,18 @@ check-env-mobile:
 		echo "Warning: EXPO_PUBLIC_COINGECKO_API_KEY is not set (price lookups may be rate-limited)."; \
 	fi
 
+# Print mobile environment variables
 print-env-mobile:
 	@echo "EXPO_PUBLIC_API_URL=$(EXPO_PUBLIC_API_URL)"
 	@echo "EXPO_PUBLIC_HELIUS_API_KEY=$(EXPO_PUBLIC_HELIUS_API_KEY)"
 	@echo "EXPO_PUBLIC_COINGECKO_API_KEY=$(EXPO_PUBLIC_COINGECKO_API_KEY)"
 	@echo "EXPO_PUBLIC_HELIUS_API_BASE=$(EXPO_PUBLIC_HELIUS_API_BASE)"
+
+# Export environment variables
+export-env:
+	@echo "Exporting environment variables..."
+	@echo "EXPO_PUBLIC_API_URL=$(EXPO_PUBLIC_API_URL)"
+	@echo "EXPO_PUBLIC_HELIUS_API_KEY=$(EXPO_PUBLIC_HELIUS_API_KEY)"
+	@echo "EXPO_PUBLIC_COINGECKO_API_KEY=$(EXPO_PUBLIC_COINGECKO_API_KEY)"
+	@echo "EXPO_PUBLIC_HELIUS_API_BASE=$(EXPO_PUBLIC_HELIUS_API_BASE)"
+	@echo "\nAdd these to your .env file if not already set."

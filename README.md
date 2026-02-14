@@ -32,7 +32,8 @@ packages/
     - Mobile:
       - `EXPO_PUBLIC_API_URL` to point at the running backend (e.g. `http://localhost:3000` or your LAN IP).
       - `EXPO_PUBLIC_HELIUS_API_KEY` for on-device Solana RPC access.
-      - `EXPO_PUBLIC_JUPITER_API_KEY` is **required** for Jupiter price + token metadata APIs (`/price/v3/price`, `/tokens/v2`). Request a key from [Jupiter’s developer portal](https://dev.jup.ag/) and keep it scoped per environment.
+      - `EXPO_PUBLIC_JUPITER_API_KEY` is **required** for Jupiter portfolio/price/token APIs (`/portfolio/v1/wallet`, `/price/v3/price`, `/tokens/v2`). Request a key from [Jupiter’s developer portal](https://dev.jup.ag/) and keep it scoped per environment.
+      - `JUPITER_API_KEY` (API service) falls back to the Expo key if unset; set it when deploying the Nest backend so `/wallets` endpoints can hydrate data directly from Jupiter without hitting the client.
       - Optional WebView integrations: `EXPO_PUBLIC_JUPITER_PLUGIN_URL`, `EXPO_PUBLIC_JUPITER_PLUGIN_ALLOWLIST`, `EXPO_PUBLIC_TELEMETRY_URL`.
 
 3. **Run services**
@@ -53,6 +54,11 @@ packages/
    - Solana RPC: set `EXPO_PUBLIC_HELIUS_API_KEY` or override `EXPO_PUBLIC_RPC_URL` via `apps/mobile/src/config/env.ts` to point at your node.
    - Sensitive wallet actions (connect, send, session management) now require biometric approval via Expo Local Authentication.
    - Security posture, threat model, and assumptions live in [`docs/threat-model.md`](./docs/threat-model.md).
+   - **Wallet connection behavior**: Some wallet apps like Phantom may only return one account by default. To connect multiple accounts:
+     - Ensure you have created multiple accounts in your wallet app
+     - When reconnecting, look for an account selection interface
+     - If no selection interface appears, try using a different wallet app that supports multi-account connections
+     - The app is designed to support multiple accounts, but the actual number of accounts returned depends on the wallet app's implementation.
 
 ## Dockerized API
 
