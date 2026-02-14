@@ -70,49 +70,6 @@ class WalletService {
     }
   }
 
-  /**
-   * Get the first installed wallet app
-   * @returns The first installed wallet app or null if none found
-   */
-  async getFirstInstalledWallet(): Promise<DetectedWalletApp | null> {
-    try {
-      const detectedWallets = await this.detectWallets();
-      return (
-        detectedWallets.find(
-          (wallet) => wallet.installed && wallet.id !== "system-picker",
-        ) || null
-      );
-    } catch (error) {
-      console.error("Error getting first installed wallet:", error);
-      return null;
-    }
-  }
-
-  /**
-   * Start wallet authorization with auto-detection of installed wallet
-   * @returns Authorization preview
-   */
-  async startWalletAuthorizationWithAutoDetect(): Promise<AuthorizationPreview> {
-    try {
-      await requireBiometricApproval("Authenticate to connect wallet", {
-        allowSessionReuse: true,
-      });
-
-      const installedWallet = await this.getFirstInstalledWallet();
-      if (!installedWallet) {
-        throw new Error(
-          "No compatible wallet found. Please install a Solana wallet app.",
-        );
-      }
-
-      console.log("Auto-detected wallet:", installedWallet.name);
-      return await this.startWalletAuthorization(installedWallet);
-    } catch (error) {
-      console.error("Auto-detect wallet authorization failed:", error);
-      throw error;
-    }
-  }
-
   async startWalletAuthorization(
     wallet?: DetectedWalletApp,
   ): Promise<AuthorizationPreview> {

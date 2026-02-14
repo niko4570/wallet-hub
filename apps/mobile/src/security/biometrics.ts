@@ -53,11 +53,11 @@ export async function requireBiometricApproval(
   });
 
   if (!result.success) {
-    if (result.error === "user_cancel" || result.error === "system_cancel") {
+    if ((result as any).error === "user_cancel" || (result as any).error === "system_cancel") {
       throw new Error("Biometric authentication was cancelled.");
     }
     throw new Error(
-      result.warning || result.error || "Biometric authentication failed.",
+      (result as any).warning || (result as any).error || "Biometric authentication failed.",
     );
   }
 

@@ -108,11 +108,31 @@ export const notificationService = {
         return cachedPushToken;
       }
       const projectId = resolveProjectId();
-      const response = await Notifications.getExpoPushTokenAsync(
-        projectId ? { projectId } : undefined,
-      );
-      cachedPushToken = response.data;
-      return cachedPushToken;
+
+      // Try to get push token with project ID if available
+      try {
+        const response = await Notifications.getExpoPushTokenAsync(
+          projectId ? { projectId } : undefined,
+        );
+        cachedPushToken = response.data;
+        return cachedPushToken;
+      } catch (firebaseError) {
+        // Handle Firebase initialization error gracefully
+        console.warn(
+          "Firebase initialization error (expected in development):",
+          firebaseError,
+        );
+
+        // For development purposes, return a mock token
+        // This allows the app to continue working without push notifications
+        if (__DEV__) {
+          console.log("Using mock push token for development");
+          cachedPushToken = `mock-token-${Date.now()}`;
+          return cachedPushToken;
+        }
+
+        return null;
+      }
     } catch (error) {
       console.error("Error fetching Expo push token:", error);
       return null;

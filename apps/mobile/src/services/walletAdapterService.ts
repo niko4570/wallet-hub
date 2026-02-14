@@ -1,13 +1,19 @@
-import { transact } from "@solana-mobile/mobile-wallet-adapter-protocol";
-import type {
-  MobileWallet,
-  AuthorizationResult,
-} from "@solana-mobile/mobile-wallet-adapter-protocol";
+import {
+  transact,
+  type Web3MobileWallet,
+} from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
+import type { AuthorizationResult } from "@solana-mobile/mobile-wallet-adapter-protocol";
 import { Transaction, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { useWalletStore } from "../store/walletStore";
 import { walletService } from "./walletService";
 import { priceService } from "./priceService";
 import { DetectedWalletApp, LinkedWallet } from "../types/wallet";
+import { SOLANA_CLUSTER } from "../config/env";
+
+const APP_IDENTITY = {
+  name: "WalletHub",
+  uri: "https://wallethub.app",
+};
 
 class WalletAdapterService {
   private static instance: WalletAdapterService;
@@ -32,7 +38,8 @@ class WalletAdapterService {
     walletStore.setError(null);
 
     try {
-      // Use existing walletService to start authorization
+      // Use existing walletService to start authorization. Passing no wallet lets MWA
+      // present its native chooser when multiple wallets are installed.
       const preview = await walletService.startWalletAuthorization(walletApp);
       const accounts = await walletService.finalizeWalletAuthorization(preview);
 
@@ -106,48 +113,44 @@ class WalletAdapterService {
     wallet: LinkedWallet,
   ): Promise<string> {
     try {
-      const result = await transact(
-        async (walletInstance: MobileWallet) => {
-          // First authorize if needed
-          let authorization: AuthorizationResult;
-          try {
+      const signature = await transact(
+        async (walletInstance: Web3MobileWallet) => {
+          let authorization: AuthorizationResult | null = null;
+
+          if (wallet.authToken) {
+            try {
+              authorization = await walletInstance.reauthorize({
+                identity: APP_IDENTITY,
+                auth_token: wallet.authToken,
+              });
+            } catch (error) {
+              console.warn("Reauthorization failed, falling back to authorize", error);
+            }
+          }
+
+          if (!authorization) {
             authorization = await walletInstance.authorize({
-              identity: {
-                name: "WalletHub",
-                uri: "https://wallethub.app",
-              },
-              chain: "solana:mainnet-beta",
-            });
-          } catch (error) {
-            console.error("Authorization failed, trying reauthorize:", error);
-            authorization = await walletInstance.reauthorize({
-              identity: {
-                name: "WalletHub",
-                uri: "https://wallethub.app",
-              },
-              auth_token: wallet.authToken,
+              identity: APP_IDENTITY,
+              chain: SOLANA_CLUSTER,
             });
           }
 
-          // Sign and send transaction
-          const { signatures } = await walletInstance.signAndSendTransactions({
-            payloads: [
-              Buffer.from(
-                transaction.serialize({ requireAllSignatures: false }),
-              ).toString("base64"),
-            ],
-            options: {
-              commitment: "confirmed",
-              skip_preflight: false,
-            },
+          const [signedSignature] = await walletInstance.signAndSendTransactions({
+            commitment: "confirmed",
+            skipPreflight: false,
+            transactions: [transaction],
           });
 
-          return signatures[0];
+          if (!signedSignature) {
+            throw new Error("Wallet did not return a transaction signature");
+          }
+
+          return signedSignature;
         },
         wallet.walletUriBase ? { baseUri: wallet.walletUriBase } : undefined,
       );
 
-      return result;
+      return signature;
     } catch (error) {
       console.error("Transaction failed:", error);
       throw error;

@@ -1,4 +1,3 @@
-import { getFallbackIcon } from "../config/api";
 import { IconSource } from "../types/icon";
 
 // Local wallet icons
@@ -22,7 +21,7 @@ class IconService {
     }
 
     // Return fallback icon if no local icon available
-    return getFallbackIcon(walletId);
+    return this.getFallbackIcon(walletId);
   }
 
   async getWalletIcon(
@@ -34,7 +33,7 @@ class IconService {
       return await this.fetchWalletIcon(walletId);
     } catch (error) {
       console.warn("Error getting wallet icon:", error);
-      return getFallbackIcon(walletId);
+      return this.getFallbackIcon(walletId);
     }
   }
 
@@ -52,6 +51,22 @@ class IconService {
     }
   }
 
+  getFallbackIcon(walletId: string): string {
+    // Mapping of wallet IDs to fallback emojis
+    const iconMap: Record<string, string> = {
+      phantom: "🟣",
+      solflare: "🟠",
+      backpack: "🧳",
+      glow: "✨",
+      tiplink: "🔗",
+      safepal: "🔐",
+      trust: "🛡️",
+      sollet: "💼",
+    };
+
+    return iconMap[walletId] || "💳";
+  }
+
   getIconSource(walletId: string): IconSource {
     // Check if local icon exists
     if (localWalletIcons[walletId]) {
@@ -63,7 +78,7 @@ class IconService {
 
     // Fallback to emoji as text
     return {
-      url: getFallbackIcon(walletId),
+      url: this.getFallbackIcon(walletId),
       type: "png", // Emoji treated as image
     };
   }
