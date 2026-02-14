@@ -27,13 +27,11 @@ import { useSolana } from "../context/SolanaContext";
 import { useWalletStore } from "../store/walletStore";
 import { formatUsd, formatAddress } from "../utils/format";
 import {
-  DetectedWalletApp,
   LinkedWallet,
   WatchOnlyAccount,
   WalletActivity,
 } from "../types/wallet";
 import * as Haptics from "expo-haptics";
-import { WalletOption } from "../components/wallet/WalletOption";
 import { toast } from "../components/common/ErrorToast";
 import { WatchOnlyForm } from "../components/watchlist/WatchOnlyForm";
 import { fetchAccountSnapshot } from "../services/watchlistDataService";
@@ -88,11 +86,8 @@ const QuickActionButton: React.FC<QuickActionButtonProps> = ({
 const WalletScreen = () => {
   const {
     refreshBalance,
-    refreshWalletDetection,
     startAuthorization,
     finalizeAuthorization,
-    availableWallets,
-    detectingWallets,
     sendSol,
   } = useSolana();
 
@@ -123,9 +118,6 @@ const WalletScreen = () => {
   const [sendRecipient, setSendRecipient] = useState("");
   const [sendAmount, setSendAmount] = useState("");
   const [sending, setSending] = useState(false);
-  const [accountModalMode, setAccountModalMode] = useState<
-    "manage" | "connect"
-  >("connect");
   const [watchModalVisible, setWatchModalVisible] = useState(false);
   const [addingWatchOnly, setAddingWatchOnly] = useState(false);
   const [refreshingWatchMap, setRefreshingWatchMap] = useState<
@@ -272,16 +264,12 @@ const WalletScreen = () => {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const refreshPromises: Array<Promise<any>> = [
-        refreshWalletDetection().catch((err: any) =>
-          console.warn("Wallet detection refresh failed", err),
-        ),
-        ...linkedWallets.map((wallet: LinkedWallet) =>
+      const refreshPromises: Array<Promise<any>> = linkedWallets.map(
+        (wallet: LinkedWallet) =>
           refreshBalance(wallet.address).catch((err: any) => {
             console.warn(`Balance refresh failed for ${wallet.address}`, err);
           }),
-        ),
-      ];
+      );
 
       await Promise.all(refreshPromises);
     } catch (err: any) {
@@ -289,29 +277,12 @@ const WalletScreen = () => {
     } finally {
       setRefreshing(false);
     }
-  }, [linkedWallets, refreshBalance, refreshWalletDetection]);
+  }, [linkedWallets, refreshBalance]);
 
-  const openAccountModal = useCallback(
-    (overrideMode?: "manage" | "connect") => {
-      const nextMode =
-        overrideMode ??
-        (linkedWallets.length > 0 ? "manage" : ("connect" as const));
-      setAccountModalMode(nextMode);
-      setConnectModalVisible(true);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    },
-    [linkedWallets.length],
-  );
-
-  const handleConnectNewWallet = useCallback(() => {
-    setAccountModalMode("connect");
+  const openAccountModal = useCallback(() => {
+    setConnectModalVisible(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
-
-  const handleBackToManage = useCallback(() => {
-    if (linkedWallets.length > 0) {
-      setAccountModalMode("manage");
-    }
-  }, [linkedWallets.length]);
 
   const handleConnectPress = useCallback(() => {
     openAccountModal();
@@ -319,7 +290,7 @@ const WalletScreen = () => {
 
   const handleCycleWallet = useCallback(() => {
     if (linkedWallets.length === 0) {
-      openAccountModal("connect");
+      openAccountModal();
       return;
     }
 
@@ -341,10 +312,10 @@ const WalletScreen = () => {
   }, [activeWallet, linkedWallets, openAccountModal, setActiveWallet]);
 
   const handleStartConnect = useCallback(
-    async (walletChoice?: DetectedWalletApp) => {
+    async () => {
       try {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        const preview = await startAuthorization(walletChoice);
+        const preview = await startAuthorization();
         const accounts = await finalizeAuthorization(preview);
         await Promise.all(
           accounts.map((account: LinkedWallet) =>
@@ -812,37 +783,6 @@ const WalletScreen = () => {
     return allActivity.sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
   }, [watchOnlyActivity]);
 
-  const renderAvailableWallets = useMemo(() => {
-    if (detectingWallets) {
-      return (
-        <View style={styles.modalLoading}>
-          <ActivityIndicator color="#7F56D9" />
-          <Text style={styles.modalLoadingText}>Detecting wallets...</Text>
-        </View>
-      );
-    }
-    if (availableWallets.length === 0) {
-      return (
-        <View style={styles.emptyWalletDetection}>
-          <Text style={styles.emptyWalletDetectionText}>
-            No compatible wallets detected nearby. Launch Phantom, Backpack, or
-            another MWA-compatible wallet, then try again.
-          </Text>
-        </View>
-      );
-    }
-    return availableWallets.map((wallet: DetectedWalletApp) => (
-      <WalletOption
-        key={wallet.id}
-        wallet={wallet}
-        onPress={() => handleStartConnect(wallet)}
-      />
-    ));
-  }, [availableWallets, detectingWallets, handleStartConnect]);
-
-  const showManageAccounts =
-    accountModalMode === "manage" && linkedWallets.length > 0;
-
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
@@ -1197,27 +1137,7 @@ const WalletScreen = () => {
           <View style={styles.modalBackdrop}>
             <View style={styles.accountSheet}>
               <View style={styles.sheetHeaderRow}>
-                {showManageAccounts && (
-                  <Text style={styles.sheetTitle}>账户管理</Text>
-                )}
-                {!showManageAccounts && (
-                  <View style={styles.sheetHeaderConnect}>
-                    {linkedWallets.length > 0 && (
-                      <TouchableOpacity
-                        style={styles.sheetBackButton}
-                        onPress={handleBackToManage}
-                      >
-                        <Feather
-                          name="chevron-left"
-                          size={16}
-                          color="#FFFFFF"
-                        />
-                        <Text style={styles.sheetBackButtonText}>返回账户</Text>
-                      </TouchableOpacity>
-                    )}
-                    <Text style={styles.sheetTitle}>连接钱包</Text>
-                  </View>
-                )}
+                <Text style={styles.sheetTitle}>账户管理</Text>
                 <TouchableOpacity
                   style={styles.sheetCloseButton}
                   onPress={() => setConnectModalVisible(false)}
@@ -1225,236 +1145,197 @@ const WalletScreen = () => {
                   <Feather name="x" size={16} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>
-              {showManageAccounts ? (
-                <View style={styles.sheetBody}>
-                  <View style={styles.sheetSection}>
-                    <Text style={styles.sheetSectionTitle}>当前钱包</Text>
-                    {activeWallet ? (
-                      <>
-                        <View style={styles.sheetCurrentWallet}>
-                          <View style={styles.sheetWalletAvatarLarge}>
-                            <Text style={styles.sheetWalletAvatarText}>
-                              {activeWalletLabel.charAt(0).toUpperCase()}
-                            </Text>
-                          </View>
-                          <View style={styles.sheetWalletMeta}>
-                            <Text
-                              style={styles.sheetWalletName}
-                              numberOfLines={1}
-                            >
-                              {activeWallet.label ||
-                                activeWallet.walletName ||
-                                formatAddress(activeWallet.address)}
-                            </Text>
-                            <Text style={styles.sheetWalletAddress}>
-                              {formatAddress(activeWallet.address)}
-                            </Text>
-                          </View>
-                          <View style={styles.sheetWalletBadges}>
-                            {isActivePrimary && (
-                              <View
-                                style={[
-                                  styles.sheetBadge,
-                                  styles.sheetBadgePrimary,
-                                ]}
-                              >
-                                <Text style={styles.sheetBadgeText}>P</Text>
-                              </View>
-                            )}
+              <View style={styles.sheetBody}>
+                <View style={styles.sheetSection}>
+                  <Text style={styles.sheetSectionTitle}>当前钱包</Text>
+                  {activeWallet ? (
+                    <>
+                      <View style={styles.sheetCurrentWallet}>
+                        <View style={styles.sheetWalletAvatarLarge}>
+                          <Text style={styles.sheetWalletAvatarText}>
+                            {activeWalletLabel.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={styles.sheetWalletMeta}>
+                          <Text
+                            style={styles.sheetWalletName}
+                            numberOfLines={1}
+                          >
+                            {activeWallet.label ||
+                              activeWallet.walletName ||
+                              formatAddress(activeWallet.address)}
+                          </Text>
+                          <Text style={styles.sheetWalletAddress}>
+                            {formatAddress(activeWallet.address)}
+                          </Text>
+                        </View>
+                        <View style={styles.sheetWalletBadges}>
+                          {isActivePrimary && (
                             <View
                               style={[
                                 styles.sheetBadge,
-                                styles.sheetBadgeActive,
+                                styles.sheetBadgePrimary,
                               ]}
                             >
-                              <Text style={styles.sheetBadgeText}>Current</Text>
+                              <Text style={styles.sheetBadgeText}>P</Text>
                             </View>
+                          )}
+                          <View
+                            style={[
+                              styles.sheetBadge,
+                              styles.sheetBadgeActive,
+                            ]}
+                          >
+                            <Text style={styles.sheetBadgeText}>Current</Text>
                           </View>
                         </View>
-                        <View style={styles.quickActionsRow}>
-                          <QuickActionButton
-                            icon="copy"
-                            label="Copy Address"
-                            onPress={handleCopyAddress}
-                          />
-                          <QuickActionButton
-                            icon="star"
-                            label={
-                              isActivePrimary
-                                ? "Already Primary"
-                                : "Set as Primary"
-                            }
-                            onPress={
-                              !isActivePrimary
-                                ? handleSetPrimaryWallet
-                                : undefined
-                            }
-                            disabled={isActivePrimary}
-                          />
-                          <QuickActionButton
-                            icon="log-out"
-                            label="Disconnect"
-                            onPress={
-                              activeWallet
-                                ? () => handleRemoveLinkedWallet(activeWallet)
-                                : undefined
-                            }
-                          />
-                        </View>
-                      </>
-                    ) : (
-                      <View style={styles.sheetEmptyState}>
-                        <Feather name="zap" size={18} color="#9CFFDA" />
-                        <Text style={styles.sheetEmptyTitle}>尚未连接钱包</Text>
-                        <Text style={styles.sheetEmptySubtitle}>
-                          点击“连接新钱包”开始
-                        </Text>
                       </View>
-                    )}
-                  </View>
-                  <View style={styles.sheetSection}>
-                    <View style={styles.sheetSectionHeader}>
-                      <View>
-                        <Text style={styles.sheetSectionTitle}>已连接钱包</Text>
-                        <Text style={styles.sheetSectionSubtitle}>
-                          点击钱包即可快速切换
-                        </Text>
+                      <View style={styles.quickActionsRow}>
+                        <QuickActionButton
+                          icon="copy"
+                          label="Copy Address"
+                          onPress={handleCopyAddress}
+                        />
+                        <QuickActionButton
+                          icon="star"
+                          label={
+                            isActivePrimary ? "Already Primary" : "Set as Primary"
+                          }
+                          onPress={
+                            !isActivePrimary ? handleSetPrimaryWallet : undefined
+                          }
+                          disabled={isActivePrimary}
+                        />
+                        <QuickActionButton
+                          icon="log-out"
+                          label="Disconnect"
+                          onPress={
+                            activeWallet
+                              ? () => handleRemoveLinkedWallet(activeWallet)
+                              : undefined
+                          }
+                        />
                       </View>
-                      <TouchableOpacity
-                        style={styles.sheetSecondaryButton}
-                        onPress={handleConnectNewWallet}
-                      >
-                        <Feather name="plus" size={14} color="#0B1221" />
-                        <Text style={styles.sheetSecondaryButtonText}>
-                          连接新钱包
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                    {linkedWallets.length === 0 ? (
-                      <View style={styles.sheetEmptyState}>
-                        <Feather name="link-2" size={18} color="#9CFFDA" />
-                        <Text style={styles.sheetEmptyTitle}>
-                          暂无已连接钱包
-                        </Text>
-                        <Text style={styles.sheetEmptySubtitle}>
-                          使用上方按钮连接新钱包
-                        </Text>
-                      </View>
-                    ) : (
-                      <ScrollView
-                        style={styles.sheetWalletList}
-                        showsVerticalScrollIndicator={false}
-                      >
-                        {linkedWallets.map((wallet) => {
-                          const isActiveWallet =
-                            wallet.address === activeWallet?.address;
-                          const isPrimaryWallet =
-                            wallet.address === primaryWalletAddress;
-                          const walletLabel =
-                            wallet.label ||
-                            wallet.walletName ||
-                            formatAddress(wallet.address);
-                          return (
-                            <View
-                              key={wallet.address}
-                              style={styles.sheetWalletRow}
-                            >
-                              <TouchableOpacity
-                                style={styles.sheetWalletInfo}
-                                onPress={() => handleSelectLinkedWallet(wallet)}
-                                activeOpacity={0.85}
-                              >
-                                <View
-                                  style={[
-                                    styles.sheetWalletAvatar,
-                                    isActiveWallet &&
-                                      styles.sheetWalletAvatarActive,
-                                  ]}
-                                >
-                                  <Text style={styles.sheetWalletAvatarText}>
-                                    {walletLabel.charAt(0).toUpperCase()}
-                                  </Text>
-                                </View>
-                                <View style={styles.sheetWalletMeta}>
-                                  <Text
-                                    style={styles.sheetWalletName}
-                                    numberOfLines={1}
-                                  >
-                                    {walletLabel}
-                                  </Text>
-                                  <Text style={styles.sheetWalletAddress}>
-                                    {formatAddress(wallet.address)}
-                                  </Text>
-                                </View>
-                                <View style={styles.sheetWalletBadges}>
-                                  {isPrimaryWallet && (
-                                    <View
-                                      style={[
-                                        styles.sheetBadge,
-                                        styles.sheetBadgePrimary,
-                                      ]}
-                                    >
-                                      <Text style={styles.sheetBadgeText}>
-                                        P
-                                      </Text>
-                                    </View>
-                                  )}
-                                  {isActiveWallet && (
-                                    <View
-                                      style={[
-                                        styles.sheetBadge,
-                                        styles.sheetBadgeActive,
-                                      ]}
-                                    >
-                                      <Text style={styles.sheetBadgeText}>
-                                        Current
-                                      </Text>
-                                    </View>
-                                  )}
-                                </View>
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={styles.sheetWalletRemove}
-                                onPress={() => handleRemoveLinkedWallet(wallet)}
-                              >
-                                <Feather
-                                  name="trash-2"
-                                  size={16}
-                                  color="#FF8BA7"
-                                />
-                              </TouchableOpacity>
-                            </View>
-                          );
-                        })}
-                      </ScrollView>
-                    )}
-                  </View>
-                </View>
-              ) : (
-                <View style={styles.sheetBody}>
-                  <Text style={styles.sheetSectionTitle}>检测到的钱包</Text>
-                  <Text style={styles.sheetSectionSubtitle}>
-                    打开 Phantom、Solflare、Backpack 等 MWA 钱包后点击连接。
-                  </Text>
-                  <ScrollView
-                    style={styles.sheetWalletList}
-                    showsVerticalScrollIndicator={false}
-                  >
-                    {renderAvailableWallets}
-                  </ScrollView>
-                  {linkedWallets.length > 0 && (
-                    <TouchableOpacity
-                      style={styles.sheetSecondaryButtonGhost}
-                      onPress={handleBackToManage}
-                    >
-                      <Feather name="users" size={14} color="#C7B5FF" />
-                      <Text style={styles.sheetSecondaryGhostText}>
-                        返回已连接钱包
+                    </>
+                  ) : (
+                    <View style={styles.sheetEmptyState}>
+                      <Feather name="zap" size={18} color="#9CFFDA" />
+                      <Text style={styles.sheetEmptyTitle}>尚未连接钱包</Text>
+                      <Text style={styles.sheetEmptySubtitle}>
+                        点击“连接新钱包”开始
                       </Text>
-                    </TouchableOpacity>
+                    </View>
                   )}
                 </View>
-              )}
+                <View style={styles.sheetSection}>
+                  <View style={styles.sheetSectionHeader}>
+                    <View>
+                      <Text style={styles.sheetSectionTitle}>已连接钱包</Text>
+                      <Text style={styles.sheetSectionSubtitle}>
+                        点击钱包即可快速切换
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.sheetSecondaryButton}
+                      onPress={handleStartConnect}
+                    >
+                      <Feather name="plus" size={14} color="#0B1221" />
+                      <Text style={styles.sheetSecondaryButtonText}>
+                        连接新钱包
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  {linkedWallets.length === 0 ? (
+                    <View style={styles.sheetEmptyState}>
+                      <Feather name="link-2" size={18} color="#9CFFDA" />
+                      <Text style={styles.sheetEmptyTitle}>
+                        暂无已连接钱包
+                      </Text>
+                      <Text style={styles.sheetEmptySubtitle}>
+                        使用上方按钮连接新钱包
+                      </Text>
+                    </View>
+                  ) : (
+                    <ScrollView
+                      style={styles.sheetWalletList}
+                      showsVerticalScrollIndicator={false}
+                    >
+                      {linkedWallets.map((wallet) => {
+                        const isActiveWallet =
+                          wallet.address === activeWallet?.address;
+                        const isPrimaryWallet =
+                          wallet.address === primaryWalletAddress;
+                        const walletLabel =
+                          wallet.label ||
+                          wallet.walletName ||
+                          formatAddress(wallet.address);
+                        return (
+                          <View key={wallet.address} style={styles.sheetWalletRow}>
+                            <TouchableOpacity
+                              style={styles.sheetWalletInfo}
+                              onPress={() => handleSelectLinkedWallet(wallet)}
+                              activeOpacity={0.85}
+                            >
+                              <View
+                                style={[
+                                  styles.sheetWalletAvatar,
+                                  isActiveWallet &&
+                                    styles.sheetWalletAvatarActive,
+                                ]}
+                              >
+                                <Text style={styles.sheetWalletAvatarText}>
+                                  {walletLabel.charAt(0).toUpperCase()}
+                                </Text>
+                              </View>
+                              <View style={styles.sheetWalletMeta}>
+                                <Text
+                                  style={styles.sheetWalletName}
+                                  numberOfLines={1}
+                                >
+                                  {walletLabel}
+                                </Text>
+                                <Text style={styles.sheetWalletAddress}>
+                                  {formatAddress(wallet.address)}
+                                </Text>
+                              </View>
+                              <View style={styles.sheetWalletBadges}>
+                                {isPrimaryWallet && (
+                                  <View
+                                    style={[
+                                      styles.sheetBadge,
+                                      styles.sheetBadgePrimary,
+                                    ]}
+                                  >
+                                    <Text style={styles.sheetBadgeText}>P</Text>
+                                  </View>
+                                )}
+                                {isActiveWallet && (
+                                  <View
+                                    style={[
+                                      styles.sheetBadge,
+                                      styles.sheetBadgeActive,
+                                    ]}
+                                  >
+                                    <Text style={styles.sheetBadgeText}>
+                                      Current
+                                    </Text>
+                                  </View>
+                                )}
+                              </View>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.sheetWalletRemove}
+                              onPress={() => handleRemoveLinkedWallet(wallet)}
+                            >
+                              <Feather name="trash-2" size={16} color="#FF8BA7" />
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
+                    </ScrollView>
+                  )}
+                </View>
+              </View>
             </View>
           </View>
         </Modal>

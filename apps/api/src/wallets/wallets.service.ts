@@ -133,9 +133,7 @@ export class WalletsService {
     return fallback;
   }
 
-  async getWalletTransactions(
-    address: string,
-  ): Promise<JupiterTransaction[]> {
+  async getWalletTransactions(address: string): Promise<JupiterTransaction[]> {
     const normalized = address.trim();
     const cached = this.getCachedTransactions(normalized);
     if (cached) {

@@ -237,7 +237,9 @@ export class SessionSecurityGuard implements CanActivate {
       throw new UnauthorizedException('Invalid nonce encoding.');
     }
 
-    const ttlMs = Number(process.env.SESSION_NONCE_TTL_MS ?? DEFAULT_NONCE_TTL_MS);
+    const ttlMs = Number(
+      process.env.SESSION_NONCE_TTL_MS ?? DEFAULT_NONCE_TTL_MS,
+    );
     const now = Date.now();
     const key = `${address}:${nonce}`;
     const expiresAt = SessionSecurityGuard.nonceCache.get(key);

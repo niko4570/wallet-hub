@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Expo, ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
 import { RegisterNotificationDto } from './dto/register-notification.dto';
 import type { HeliusWebhookTransaction } from '../helius/helius.service';
@@ -87,11 +83,9 @@ export class NotificationsService {
     tx: HeliusWebhookTransaction,
   ): NotificationSummary {
     const change = (tx.balanceChanges ?? []).find((entry) =>
-      [
-        entry?.userAccount,
-        entry?.toUserAccount,
-        entry?.fromUserAccount,
-      ].some((candidate) => this.normalizeAddress(candidate) === address),
+      [entry?.userAccount, entry?.toUserAccount, entry?.fromUserAccount].some(
+        (candidate) => this.normalizeAddress(candidate) === address,
+      ),
     );
 
     if (!change) {
@@ -106,8 +100,7 @@ export class NotificationsService {
       };
     }
 
-    const amountRaw =
-      typeof change.amount === 'number' ? change.amount : 0;
+    const amountRaw = typeof change.amount === 'number' ? change.amount : 0;
     const decimals =
       typeof change.decimals === 'number'
         ? change.decimals
@@ -120,8 +113,7 @@ export class NotificationsService {
         : change.mint === SOL_MINT
           ? LAMPORTS_PER_SOL
           : 1;
-    const normalizedAmount =
-      divisor > 0 ? amountRaw / divisor : amountRaw || 0;
+    const normalizedAmount = divisor > 0 ? amountRaw / divisor : amountRaw || 0;
     const direction = normalizedAmount >= 0 ? 'receive' : 'send';
     const symbol =
       change.mint === SOL_MINT
@@ -130,15 +122,13 @@ export class NotificationsService {
           ? change.mint.slice(0, 4).toUpperCase()
           : 'Token';
 
-    const formattedAmount = Math.abs(normalizedAmount) >= 1
-      ? Math.abs(normalizedAmount).toFixed(2)
-      : Math.abs(normalizedAmount).toFixed(4);
+    const formattedAmount =
+      Math.abs(normalizedAmount) >= 1
+        ? Math.abs(normalizedAmount).toFixed(2)
+        : Math.abs(normalizedAmount).toFixed(4);
 
     return {
-      title:
-        direction === 'receive'
-          ? 'Funds received'
-          : 'Funds sent',
+      title: direction === 'receive' ? 'Funds received' : 'Funds sent',
       body: `${direction === 'receive' ? 'Received' : 'Sent'} ${formattedAmount} ${symbol}`,
       data: {
         address,
@@ -174,10 +164,7 @@ export class NotificationsService {
     }
   }
 
-  private handleTicketError(
-    token: string | undefined,
-    ticket: ExpoPushTicket,
-  ) {
+  private handleTicketError(token: string | undefined, ticket: ExpoPushTicket) {
     if (!token || ticket.status !== 'error') {
       return;
     }
