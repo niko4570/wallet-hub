@@ -1,6 +1,17 @@
 import * as LocalAuthentication from "expo-local-authentication";
 
 const DEFAULT_PROMPT = "Authenticate to continue";
+const SESSION_TTL_MS = 2 * 60 * 1000; // 2 minutes
+
+let lastSuccessTimestamp = 0;
+
+export interface BiometricApprovalOptions {
+  /**
+   * Allow reusing a recent successful biometric session within SESSION_TTL_MS.
+   * Defaults to false, which forces a fresh biometric prompt.
+   */
+  allowSessionReuse?: boolean;
+}
 
 /**
  * Ensures the user completes a biometric (or secure fallback) challenge
@@ -8,10 +19,23 @@ const DEFAULT_PROMPT = "Authenticate to continue";
  */
 export async function requireBiometricApproval(
   intent: string = DEFAULT_PROMPT,
+  options?: BiometricApprovalOptions,
 ): Promise<void> {
+  const now = Date.now();
+  const canReuseSession =
+    options?.allowSessionReuse &&
+    lastSuccessTimestamp > 0 &&
+    now - lastSuccessTimestamp < SESSION_TTL_MS;
+
+  if (canReuseSession) {
+    return;
+  }
+
   const hasHardware = await LocalAuthentication.hasHardwareAsync();
   if (!hasHardware) {
-    throw new Error("Biometric authentication hardware is unavailable on this device.");
+    throw new Error(
+      "Biometric authentication hardware is unavailable on this device.",
+    );
   }
 
   const isEnrolled = await LocalAuthentication.isEnrolledAsync();
@@ -32,6 +56,26 @@ export async function requireBiometricApproval(
     if (result.error === "user_cancel" || result.error === "system_cancel") {
       throw new Error("Biometric authentication was cancelled.");
     }
-    throw new Error(result.warning || result.error || "Biometric authentication failed.");
+    throw new Error(
+      result.warning || result.error || "Biometric authentication failed.",
+    );
   }
+
+  lastSuccessTimestamp = Date.now();
+}
+
+export function resetBiometricSession(): void {
+  lastSuccessTimestamp = 0;
+}
+
+export function getBiometricSessionState(): {
+  lastSuccessAt: number;
+  expiresAt: number;
+} {
+  const expiresAt =
+    lastSuccessTimestamp > 0 ? lastSuccessTimestamp + SESSION_TTL_MS : 0;
+  return {
+    lastSuccessAt: lastSuccessTimestamp,
+    expiresAt,
+  };
 }
