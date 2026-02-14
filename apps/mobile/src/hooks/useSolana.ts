@@ -96,7 +96,6 @@ export interface UseSolanaResult {
   registerPrimaryWallet: (
     wallet?: DetectedWalletApp,
   ) => Promise<LinkedWallet[]>;
-  registerPrimaryWalletAutoDetect: () => Promise<LinkedWallet[]>;
   linkedWallets: LinkedWallet[];
   activeWallet: LinkedWallet | null;
   selectActiveWallet: (address: string) => void;
@@ -106,6 +105,7 @@ export interface UseSolanaResult {
   detailedBalances: Record<
     string,
     {
+      address: string;
       balance: number;
       usdValue: number;
       lastUpdated: string;
@@ -149,6 +149,7 @@ export function useSolana(): UseSolanaResult {
     Record<
       string,
       {
+        address: string;
         balance: number;
         usdValue: number;
         lastUpdated: string;
@@ -506,24 +507,6 @@ export function useSolana(): UseSolanaResult {
     [finalizeAuthorization, setPrimaryWalletAddressInStore, startAuthorization],
   );
 
-  const registerPrimaryWalletAutoDetect = useCallback(async () => {
-    try {
-      await requireBiometricApproval("Authenticate to connect wallet", {
-        allowSessionReuse: true,
-      });
-      const preview =
-        await walletService.startWalletAuthorizationWithAutoDetect();
-      const accounts = await finalizeAuthorization(preview);
-      if (accounts.length > 0) {
-        setPrimaryWalletAddressInStore(accounts[0].address);
-      }
-      return accounts;
-    } catch (error) {
-      console.error("Auto-detect wallet registration failed:", error);
-      throw error;
-    }
-  }, [finalizeAuthorization, setPrimaryWalletAddressInStore]);
-
   const silentRefreshAuthorization = useCallback(
     async (address?: string) => {
       const targetAddress = address ?? activeWallet?.address;
@@ -862,13 +845,13 @@ export function useSolana(): UseSolanaResult {
       });
 
       if (refreshedAccount) {
-        const typedAccount = refreshedAccount as LinkedWallet;
+        const account = refreshedAccount as LinkedWallet;
         authorizationApi
           .recordSilentReauthorization({
-            walletAddress: typedAccount.address,
-            walletAppId: typedAccount.walletAppId ?? walletEntry.walletAppId,
-            walletName: typedAccount.walletName ?? walletEntry.walletName,
-            authToken: typedAccount.authToken,
+            walletAddress: account.address,
+            walletAppId: account.walletAppId ?? walletEntry.walletAppId,
+            walletName: account.walletName ?? walletEntry.walletName,
+            authToken: account.authToken,
             method: reauthMethod,
             capabilities: capabilityReport,
           })
@@ -882,12 +865,12 @@ export function useSolana(): UseSolanaResult {
         authorizationApi
           .recordTransactionAudit({
             signature: submittedSignature,
-            sourceWalletAddress: typedAccount.address,
+            sourceWalletAddress: account.address,
             destinationAddress: recipientAddress,
             amountLamports: lamports,
             authorizationPrimitive: "silent-reauthorization",
             metadata: {
-              walletAppId: typedAccount.walletAppId ?? "unknown",
+              walletAppId: account.walletAppId ?? "unknown",
               reauthorizationMethod: reauthMethod,
               capabilities: (capabilityReport.featureFlags || []).join(","),
             },
@@ -913,7 +896,6 @@ export function useSolana(): UseSolanaResult {
     disconnect,
     sendSol,
     registerPrimaryWallet,
-    registerPrimaryWalletAutoDetect,
     linkedWallets,
     activeWallet,
     selectActiveWallet,
