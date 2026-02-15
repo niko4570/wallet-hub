@@ -29,11 +29,11 @@ packages/
      - `SOLANA_RPC_URL` (optional override; falls back to `https://mainnet.helius-rpc.com/?api-key=HELIUS_API_KEY` or `https://api.mainnet-beta.solana.com`).
      - `SOLANA_PRIORITY_RPC_URL` (optional, defaults to the main RPC endpoint).
      - `HELIUS_API_KEY` (optional, used to derive the managed Helius RPC URL when no explicit RPC is provided).
-    - Mobile:
-      - `EXPO_PUBLIC_API_URL` to point at the running backend (e.g. `http://localhost:3000` or your LAN IP).
-      - `EXPO_PUBLIC_HELIUS_API_KEY` for on-device Solana RPC access.
-      - `EXPO_PUBLIC_JUPITER_API_KEY` is **required** for Jupiter portfolio/price/token APIs (`/portfolio/v1/wallet`, `/price/v3/price`, `/tokens/v2`). Request a key from [Jupiter’s developer portal](https://dev.jup.ag/) and keep it scoped per environment.
-      - `JUPITER_API_KEY` (API service) falls back to the Expo key if unset; set it when deploying the Nest backend so `/wallets` endpoints can hydrate data directly from Jupiter without hitting the client.
+   - Mobile:
+     - `EXPO_PUBLIC_API_URL` to point at the running backend (e.g. `http://localhost:3000` or your LAN IP).
+     - `EXPO_PUBLIC_HELIUS_API_KEY` for on-device Solana RPC access.
+     - `EXPO_PUBLIC_JUPITER_API_KEY` is **required** for Jupiter portfolio/price/token APIs (`/portfolio/v1/wallet`, `/price/v3/price`, `/tokens/v2`). Request a key from [Jupiter’s developer portal](https://dev.jup.ag/) and keep it scoped per environment.
+     - `JUPITER_API_KEY` (API service) falls back to the Expo key if unset; set it when deploying the Nest backend so `/wallets` endpoints can hydrate data directly from Jupiter without hitting the client.
 
 3. **Run services**
 
@@ -91,7 +91,7 @@ The container only needs database/RPC credentials via environment variables; hea
 
 `POST /session/issue` requires a biometric attestation payload (`biometricProof`) alongside `walletAddress`, `devicePublicKey`, scopes, and expiry data. The API currently accepts base64-encoded JSON proofs (method, deviceId, confidence) while remaining agnostic to future MPC/attestation providers, and now routes every issuance through an MPC/multi-sig signer abstraction that enforces policy limits before returning a signature identifier.
 
-The backend currently uses in-memory stores plus sample Helius-style balances, enabling fast hackathon iterations. The shared contracts (`@wallethub/contracts`) define wallet, session, and policy interfaces consumed by both the API and mobile UI.
+The backend currently uses in-memory stores, enabling fast hackathon iterations. The shared contracts (`@wallethub/contracts`) define wallet, session, and policy interfaces consumed by both the API and mobile UI.
 
 ## Testing & Build
 
@@ -101,6 +101,5 @@ The backend currently uses in-memory stores plus sample Helius-style balances, e
 
 ## Next Steps
 
-- Replace mock wallet data with live Solana RPC aggregation (Helius/QuickNode).
-- Swap the mocked MPC signer abstraction with a real provider integration once credentials are provisioned.
+- Swap the MPC signer abstraction with a real provider integration once credentials are provisioned.
 - Extend Expo UI with onboarding, activity feed, and device trust center.

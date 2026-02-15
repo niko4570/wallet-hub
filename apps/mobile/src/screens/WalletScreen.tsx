@@ -84,12 +84,8 @@ const QuickActionButton: React.FC<QuickActionButtonProps> = ({
 );
 
 const WalletScreen = () => {
-  const {
-    refreshBalance,
-    startAuthorization,
-    finalizeAuthorization,
-    sendSol,
-  } = useSolana();
+  const { refreshBalance, startAuthorization, finalizeAuthorization, sendSol } =
+    useSolana();
 
   // Use wallet store for state management
   const {
@@ -311,27 +307,24 @@ const WalletScreen = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, [activeWallet, linkedWallets, openAccountModal, setActiveWallet]);
 
-  const handleStartConnect = useCallback(
-    async () => {
-      try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        const preview = await startAuthorization();
-        const accounts = await finalizeAuthorization(preview);
-        await Promise.all(
-          accounts.map((account: LinkedWallet) =>
-            refreshBalance(account.address).catch((err: any) =>
-              console.warn("Balance refresh failed post-connect", err),
-            ),
+  const handleStartConnect = useCallback(async () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const preview = await startAuthorization();
+      const accounts = await finalizeAuthorization(preview);
+      await Promise.all(
+        accounts.map((account: LinkedWallet) =>
+          refreshBalance(account.address).catch((err: any) =>
+            console.warn("Balance refresh failed post-connect", err),
           ),
-        );
-        setConnectModalVisible(false);
-      } catch (err: any) {
-        console.warn("Connect flow failed", err);
-        Alert.alert("Connect failed", "Please try again.");
-      }
-    },
-    [finalizeAuthorization, refreshBalance, startAuthorization],
-  );
+        ),
+      );
+      setConnectModalVisible(false);
+    } catch (err: any) {
+      console.warn("Connect flow failed", err);
+      Alert.alert("Connect failed", "Please try again.");
+    }
+  }, [finalizeAuthorization, refreshBalance, startAuthorization]);
 
   const handleSelectLinkedWallet = useCallback(
     (wallet: LinkedWallet) => {
@@ -674,30 +667,10 @@ const WalletScreen = () => {
       });
     });
 
-    // Add mock tokens if none exist
-    if (tokenMap.size === 0) {
-      tokenMap.set("So11111111111111111111111111111111111111112", {
-        mint: "So11111111111111111111111111111111111111112",
-        symbol: "SOL",
-        name: "Solana",
-        balance: totalBalance,
-        usdValue: totalUsdValue,
-        decimals: 9,
-      });
-      tokenMap.set("EPjFWdd5AufqSSqeM2qZp9wWk9Ez8vgXHxmK9f9kJr1", {
-        mint: "EPjFWdd5AufqSSqeM2qZp9wWk9Ez8vgXHxmK9f9kJr1",
-        symbol: "USDC",
-        name: "USD Coin",
-        balance: 100,
-        usdValue: 100,
-        decimals: 6,
-      });
-    }
-
     return Array.from(tokenMap.values()).sort(
       (a, b) => b.usdValue - a.usdValue,
     );
-  }, [detailedBalances, linkedWallets, totalBalance, totalUsdValue]);
+  }, [detailedBalances, linkedWallets]);
 
   // Get real balance history data from wallet store
   const balanceHistoryData = useMemo(() => {
@@ -721,21 +694,8 @@ const WalletScreen = () => {
       }
     }
 
-    // Generate mock data if no real data exists
-    const data: Array<{ timestamp: number; usd: number; sol: number }> = [];
-    const now = Date.now();
-    const baseUsd = totalUsdValue || 1000;
-    const baseSol = totalBalance || 10;
-
-    for (let i = 23; i >= 0; i--) {
-      const timestamp = now - i * 60 * 60 * 1000; // Last 24 hours
-      const variation = (Math.random() - 0.5) * 100;
-      const usd = Math.max(0, baseUsd + variation);
-      const sol = Math.max(0, baseSol + variation / 100);
-      data.push({ timestamp, usd, sol });
-    }
-    return data;
-  }, [primaryWalletAddress, activeWallet, totalUsdValue, totalBalance]);
+    return [];
+  }, [primaryWalletAddress, activeWallet]);
 
   // Get combined activity data
   const combinedActivity = useMemo(() => {
@@ -745,40 +705,6 @@ const WalletScreen = () => {
     Object.values(watchOnlyActivity).forEach((activity) => {
       allActivity = [...allActivity, ...activity];
     });
-
-    // Add mock activity if none exists
-    if (allActivity.length === 0) {
-      const now = Date.now();
-      allActivity = [
-        {
-          signature: "mock1",
-          timestamp: now - 30 * 60 * 1000,
-          type: "transfer",
-          description: "Received SOL",
-          amount: 0.5,
-          direction: "in",
-          source: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
-        },
-        {
-          signature: "mock2",
-          timestamp: now - 2 * 60 * 60 * 1000,
-          type: "swap",
-          description: "Swapped SOL for USDC",
-          amount: 2,
-          direction: "out",
-          fee: 0.0002,
-        },
-        {
-          signature: "mock3",
-          timestamp: now - 5 * 60 * 60 * 1000,
-          type: "transfer",
-          description: "Sent SOL",
-          amount: 1,
-          direction: "out",
-          fee: 0.0002,
-        },
-      ];
-    }
 
     return allActivity.sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
   }, [watchOnlyActivity]);
@@ -1181,10 +1107,7 @@ const WalletScreen = () => {
                             </View>
                           )}
                           <View
-                            style={[
-                              styles.sheetBadge,
-                              styles.sheetBadgeActive,
-                            ]}
+                            style={[styles.sheetBadge, styles.sheetBadgeActive]}
                           >
                             <Text style={styles.sheetBadgeText}>Current</Text>
                           </View>
@@ -1199,10 +1122,14 @@ const WalletScreen = () => {
                         <QuickActionButton
                           icon="star"
                           label={
-                            isActivePrimary ? "Already Primary" : "Set as Primary"
+                            isActivePrimary
+                              ? "Already Primary"
+                              : "Set as Primary"
                           }
                           onPress={
-                            !isActivePrimary ? handleSetPrimaryWallet : undefined
+                            !isActivePrimary
+                              ? handleSetPrimaryWallet
+                              : undefined
                           }
                           disabled={isActivePrimary}
                         />
@@ -1248,9 +1175,7 @@ const WalletScreen = () => {
                   {linkedWallets.length === 0 ? (
                     <View style={styles.sheetEmptyState}>
                       <Feather name="link-2" size={18} color="#9CFFDA" />
-                      <Text style={styles.sheetEmptyTitle}>
-                        暂无已连接钱包
-                      </Text>
+                      <Text style={styles.sheetEmptyTitle}>暂无已连接钱包</Text>
                       <Text style={styles.sheetEmptySubtitle}>
                         使用上方按钮连接新钱包
                       </Text>
@@ -1270,7 +1195,10 @@ const WalletScreen = () => {
                           wallet.walletName ||
                           formatAddress(wallet.address);
                         return (
-                          <View key={wallet.address} style={styles.sheetWalletRow}>
+                          <View
+                            key={wallet.address}
+                            style={styles.sheetWalletRow}
+                          >
                             <TouchableOpacity
                               style={styles.sheetWalletInfo}
                               onPress={() => handleSelectLinkedWallet(wallet)}
@@ -1327,7 +1255,11 @@ const WalletScreen = () => {
                               style={styles.sheetWalletRemove}
                               onPress={() => handleRemoveLinkedWallet(wallet)}
                             >
-                              <Feather name="trash-2" size={16} color="#FF8BA7" />
+                              <Feather
+                                name="trash-2"
+                                size={16}
+                                color="#FF8BA7"
+                              />
                             </TouchableOpacity>
                           </View>
                         );

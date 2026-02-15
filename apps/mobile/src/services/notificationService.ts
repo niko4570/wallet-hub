@@ -123,14 +123,6 @@ export const notificationService = {
           firebaseError,
         );
 
-        // For development purposes, return a mock token
-        // This allows the app to continue working without push notifications
-        if (__DEV__) {
-          console.log("Using mock push token for development");
-          cachedPushToken = `mock-token-${Date.now()}`;
-          return cachedPushToken;
-        }
-
         return null;
       }
     } catch (error) {
