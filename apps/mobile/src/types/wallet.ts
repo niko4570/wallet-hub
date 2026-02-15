@@ -1,18 +1,3 @@
-export interface WalletCatalogEntry {
-  id: string;
-  name: string;
-  icon: string;
-  scheme?: string;
-  baseUri?: string;
-  publisher?: string;
-  subtitle?: string;
-}
-
-export interface DetectedWalletApp extends WalletCatalogEntry {
-  installed: boolean;
-  detectionMethod: "scheme" | "fallback" | "error";
-}
-
 export interface AccountMeta {
   address: string;
   label?: string;
@@ -36,7 +21,6 @@ export interface WalletGroup {
 }
 
 export interface AuthorizationPreview {
-  walletApp?: DetectedWalletApp;
   accounts: LinkedWallet[];
 }
 

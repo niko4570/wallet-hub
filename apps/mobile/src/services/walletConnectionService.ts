@@ -8,12 +8,11 @@ import {
   SolanaMobileWalletAdapterProtocolError,
 } from "@solana-mobile/mobile-wallet-adapter-protocol";
 import type { AuthorizationResult } from "@solana-mobile/mobile-wallet-adapter-protocol";
-import { PublicKey } from "@solana/web3.js";
 import { walletService } from "./walletService";
 import { SecureStorageService } from "./secureStorageService";
 import { decodeWalletAddress } from "../utils/solanaAddress";
 import { SOLANA_CLUSTER } from "../config/env";
-import { DetectedWalletApp, LinkedWallet } from "../types/wallet";
+import { LinkedWallet } from "../types/wallet";
 
 const APP_IDENTITY = {
   name: "WalletHub",
@@ -35,13 +34,10 @@ class WalletConnectionService {
 
   /**
    * Connect to a wallet using MWA with proper error handling
-   * @param walletApp Optional wallet app to connect to
-   * @returns Array of linked wallets
    */
-  async connectWallet(walletApp?: DetectedWalletApp): Promise<LinkedWallet[]> {
+  async connectWallet(): Promise<LinkedWallet[]> {
     try {
-      // Use existing walletService to start authorization
-      const preview = await walletService.startWalletAuthorization(walletApp);
+      const preview = await walletService.startWalletAuthorization();
       const accounts = await walletService.finalizeWalletAuthorization(preview);
 
       // Store auth tokens securely

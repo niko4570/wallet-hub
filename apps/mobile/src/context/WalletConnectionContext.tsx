@@ -7,19 +7,17 @@ import React, {
 } from "react";
 import { useSolana } from "../hooks/useSolana";
 import { useWalletStore } from "../store/walletStore";
-import { DetectedWalletApp, LinkedWallet } from "../types/wallet";
+import { LinkedWallet } from "../types/wallet";
 
 interface WalletConnectionContextType {
   isConnecting: boolean;
   isConnected: boolean;
   connectedWallets: LinkedWallet[];
   activeWallet: LinkedWallet | null;
-  availableWallets: DetectedWalletApp[];
   error: string | null;
-  connectWallet: (walletApp?: DetectedWalletApp) => Promise<LinkedWallet[]>;
+  connectWallet: () => Promise<LinkedWallet[]>;
   disconnectWallet: (address?: string) => Promise<void>;
   disconnectAllWallets: () => void;
-  refreshWalletList: () => Promise<DetectedWalletApp[]>;
   switchWallet: (address: string) => void;
 }
 
@@ -48,16 +46,14 @@ export const WalletConnectionProvider: React.FC<
   const {
     linkedWallets,
     activeWallet,
-    availableWallets,
     registerPrimaryWallet,
     disconnect,
     selectActiveWallet,
-    refreshWalletDetection,
   } = useSolana();
   const walletStore = useWalletStore();
 
   const connectWallet = useCallback(
-    async (walletApp?: DetectedWalletApp): Promise<LinkedWallet[]> => {
+    async (): Promise<LinkedWallet[]> => {
       if (isConnecting) {
         throw new Error("Already connecting to wallet");
       }
@@ -66,7 +62,7 @@ export const WalletConnectionProvider: React.FC<
       walletStore.setError(null);
 
       try {
-        const connectedWallets = await registerPrimaryWallet(walletApp);
+        const connectedWallets = await registerPrimaryWallet();
         return connectedWallets;
       } catch (error: any) {
         console.error("Wallet connection error:", error);
@@ -95,15 +91,6 @@ export const WalletConnectionProvider: React.FC<
     walletStore.clearAllWallets();
   }, [walletStore]);
 
-  const refreshWalletList = useCallback(async () => {
-    try {
-      return await refreshWalletDetection();
-    } catch (error) {
-      console.error("Wallet detection error:", error);
-      throw error;
-    }
-  }, [refreshWalletDetection]);
-
   const switchWallet = useCallback(
     (address: string) => {
       selectActiveWallet(address);
@@ -116,12 +103,10 @@ export const WalletConnectionProvider: React.FC<
     isConnected: linkedWallets.length > 0,
     connectedWallets: linkedWallets,
     activeWallet,
-    availableWallets,
     error: walletStore.error,
     connectWallet,
     disconnectWallet,
     disconnectAllWallets,
-    refreshWalletList,
     switchWallet,
   };
 

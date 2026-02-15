@@ -18,7 +18,6 @@ import type {
 } from "@wallethub/contracts";
 import { walletService } from "../services/walletService";
 import { authorizationApi } from "../services/authorizationService";
-import { iconService } from "../services/iconService";
 import { rpcService } from "../services/rpcService";
 import { priceService } from "../services/priceService";
 import { tokenMetadataService } from "../services/tokenMetadataService";
@@ -26,11 +25,7 @@ import { HELIUS_RPC_URL, SOLANA_CLUSTER } from "../config/env";
 import { requireBiometricApproval } from "../security/biometrics";
 import { decodeWalletAddress } from "../utils/solanaAddress";
 import { useWalletStore } from "../store/walletStore";
-import {
-  LinkedWallet,
-  DetectedWalletApp,
-  AuthorizationPreview,
-} from "../types/wallet";
+import { LinkedWallet, AuthorizationPreview } from "../types/wallet";
 
 const APP_IDENTITY = {
   name: "WalletHub",
@@ -42,6 +37,8 @@ const DEFAULT_CAPABILITIES: WalletCapabilityReport = {
   supportsSignAndSendTransactions: true,
   supportsSignTransactions: true,
   supportsSignMessages: false,
+  maxTransactionsPerRequest: 10,
+  maxMessagesPerRequest: 10,
   supportedTransactionVersions: [],
   featureFlags: [],
 };
@@ -93,9 +90,7 @@ export interface UseSolanaResult {
     amountSol: number,
     options?: { fromAddress?: string },
   ) => Promise<string>;
-  registerPrimaryWallet: (
-    wallet?: DetectedWalletApp,
-  ) => Promise<LinkedWallet[]>;
+  registerPrimaryWallet: () => Promise<LinkedWallet[]>;
   linkedWallets: LinkedWallet[];
   activeWallet: LinkedWallet | null;
   selectActiveWallet: (address: string) => void;
@@ -120,12 +115,7 @@ export interface UseSolanaResult {
     }
   >;
   refreshBalance: (address?: string) => Promise<number | null>;
-  availableWallets: DetectedWalletApp[];
-  detectingWallets: boolean;
-  refreshWalletDetection: () => Promise<DetectedWalletApp[]>;
-  startAuthorization: (
-    wallet?: DetectedWalletApp,
-  ) => Promise<AuthorizationPreview>;
+  startAuthorization: () => Promise<AuthorizationPreview>;
   finalizeAuthorization: (
     preview: AuthorizationPreview,
     selectedAddresses?: string[],
@@ -164,46 +154,21 @@ export function useSolana(): UseSolanaResult {
       }
     >
   >({});
-  const [availableWallets, setAvailableWallets] = useState<DetectedWalletApp[]>(
-    [],
-  );
-  const [detectingWallets, setDetectingWallets] = useState(false);
   const setMissingTokenPrices = useWalletStore(
     (state) => state.setMissingTokenPrices,
   );
   const setPrimaryWalletAddressInStore = useWalletStore(
     (state) => state.setPrimaryWalletAddress,
   );
+  const removeWalletFromStore = useWalletStore((state) => state.removeWallet);
+  const primaryWalletAddress = useWalletStore(
+    (state) => state.primaryWalletAddress,
+  );
 
   const connection = useMemo(
     () => new Connection(HELIUS_RPC_URL, "confirmed"),
     [HELIUS_RPC_URL],
   );
-
-  const refreshWalletDetection = useCallback(async () => {
-    setDetectingWallets(true);
-    try {
-      const detectedWallets = await walletService.detectWallets();
-      setAvailableWallets(detectedWallets);
-
-      // Prefetch icons for detected wallets
-      const walletIds = detectedWallets.map((wallet) => wallet.id);
-      await iconService.prefetchWalletIcons(walletIds);
-
-      return detectedWallets;
-    } catch (error) {
-      console.error("Error refreshing wallet detection:", error);
-      return [];
-    } finally {
-      setDetectingWallets(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refreshWalletDetection().catch((error) => {
-      console.warn("Wallet detection failed", error);
-    });
-  }, [refreshWalletDetection]);
 
   const activeWallet = useMemo(() => {
     if (!activeWalletAddress) {
@@ -393,20 +358,21 @@ export function useSolana(): UseSolanaResult {
   );
 
   const normalizeAuthorization = useCallback(
-    (
-      authorization: AuthorizationResult,
-      walletApp?: DetectedWalletApp,
-    ): LinkedWallet[] => {
+    (authorization: AuthorizationResult): LinkedWallet[] => {
+      const walletUriBase =
+        authorization.wallet_uri_base &&
+        authorization.wallet_uri_base.startsWith("https://")
+          ? authorization.wallet_uri_base
+          : null;
+
       return authorization.accounts.map(
         (accountFromWallet: { address: string; label?: string }) => ({
           address: decodeWalletAddress(accountFromWallet.address),
           label: accountFromWallet.label,
           authToken: authorization.auth_token,
-          walletUriBase:
-            authorization.wallet_uri_base ?? walletApp?.baseUri ?? null,
-          walletAppId: walletApp?.id,
-          walletName: walletApp?.name ?? accountFromWallet.label,
-          icon: walletApp?.icon,
+          walletUriBase,
+          walletName: accountFromWallet.label,
+          icon: (authorization as any).wallet_icon,
         }),
       );
     },
@@ -445,17 +411,43 @@ export function useSolana(): UseSolanaResult {
     }
   }, [activeWallet?.address, refreshBalance]);
 
-  const startAuthorization = useCallback(
-    async (wallet?: DetectedWalletApp): Promise<AuthorizationPreview> => {
-      try {
-        return await walletService.startWalletAuthorization(wallet);
-      } catch (error) {
-        console.error("Wallet authorization failed", error);
-        throw error;
+  // Common error handling function for wallet authorization errors
+  const handleAuthorizationError = useCallback(
+    (error: unknown, context: string): never => {
+      console.error(`${context} failed`, error);
+
+      if (error instanceof Error) {
+        if (error.message.includes("wallet not found")) {
+          throw new Error(
+            "No compatible wallet found. Please install a Solana wallet app.",
+          );
+        } else if (error.message.includes("timeout")) {
+          throw new Error("Wallet connection timed out. Please try again.");
+        } else if (error.message.includes("secure context")) {
+          throw new Error("HTTPS is required for wallet connection.");
+        } else if (error.message.includes("authorization failed")) {
+          throw new Error("Authorization denied by user.");
+        } else if (error.message.includes("chain not supported")) {
+          throw new Error("Wallet does not support the requested network.");
+        } else {
+          throw new Error(`Wallet connection error: ${error.message}`);
+        }
       }
+
+      throw error;
     },
     [],
   );
+
+  const startAuthorization =
+    useCallback(async (): Promise<AuthorizationPreview> => {
+      try {
+        return await walletService.startWalletAuthorization();
+      } catch (error) {
+        handleAuthorizationError(error, "Wallet authorization");
+        throw new Error("Unexpected error in authorization");
+      }
+    }, [handleAuthorizationError]);
 
   const finalizeAuthorization = useCallback(
     async (preview: AuthorizationPreview, selectedAddresses?: string[]) => {
@@ -492,23 +484,24 @@ export function useSolana(): UseSolanaResult {
     [refreshBalance, upsertWallets],
   );
 
-  const registerPrimaryWallet = useCallback(
-    async (walletChoice?: DetectedWalletApp) => {
-      await requireBiometricApproval("Authenticate to register wallet", {
-        allowSessionReuse: true,
-      });
-      const preview = await startAuthorization(walletChoice);
-      const accounts = await finalizeAuthorization(preview);
-      if (accounts.length > 0) {
-        setPrimaryWalletAddressInStore(accounts[0].address);
-      }
-      return accounts;
-    },
-    [finalizeAuthorization, setPrimaryWalletAddressInStore, startAuthorization],
-  );
+  const registerPrimaryWallet = useCallback(async () => {
+    await requireBiometricApproval("Authenticate to register wallet", {
+      allowSessionReuse: true,
+    });
+    const preview = await startAuthorization();
+    const accounts = await finalizeAuthorization(preview);
+    if (accounts.length > 0) {
+      setPrimaryWalletAddressInStore(accounts[0].address);
+    }
+    return accounts;
+  }, [
+    finalizeAuthorization,
+    setPrimaryWalletAddressInStore,
+    startAuthorization,
+  ]);
 
   const silentRefreshAuthorization = useCallback(
-    async (address?: string) => {
+    async (address?: string): Promise<SilentReauthorizationRecord | null> => {
       const targetAddress = address ?? activeWallet?.address;
       if (!targetAddress) {
         throw new Error("Select a wallet to refresh authorization");
@@ -520,12 +513,6 @@ export function useSolana(): UseSolanaResult {
       if (!walletEntry) {
         throw new Error("Wallet not linked");
       }
-
-      const walletMetadata = walletEntry.walletAppId
-        ? availableWallets.find(
-            (wallet) => wallet.id === walletEntry.walletAppId,
-          )
-        : undefined;
 
       let reauthMethod: "silent" | "prompted" = "silent";
 
@@ -548,6 +535,11 @@ export function useSolana(): UseSolanaResult {
               authorization = await wallet.authorize({
                 identity: APP_IDENTITY,
                 chain: SOLANA_CLUSTER,
+                features: [
+                  "solana:signAndSendTransactions",
+                  "solana:signTransactions",
+                  "solana:signMessages",
+                ],
               });
             }
 
@@ -558,10 +550,7 @@ export function useSolana(): UseSolanaResult {
             : undefined,
         );
 
-        const normalizedAccounts = normalizeAuthorization(
-          result.authorization,
-          walletMetadata,
-        );
+        const normalizedAccounts = normalizeAuthorization(result.authorization);
         upsertWallets(normalizedAccounts);
 
         const refreshedAccount =
@@ -606,12 +595,15 @@ export function useSolana(): UseSolanaResult {
             persistError,
           );
         }
-        throw error;
+
+        handleAuthorizationError(error, "Silent re-authorization");
+        // This line should never be reached since handleAuthorizationError always throws
+        return null;
       }
     },
     [
       activeWallet?.address,
-      availableWallets,
+      handleAuthorizationError,
       linkedWallets,
       normalizeAuthorization,
       upsertWallets,
@@ -664,8 +656,32 @@ export function useSolana(): UseSolanaResult {
         const { [targetAddress]: _removed, ...rest } = prev;
         return rest;
       });
+
+      setDetailedBalances((prev) => {
+        const { [targetAddress]: _removed, ...rest } = prev;
+        return rest;
+      });
+
+      removeWalletFromStore(targetAddress);
+
+      if (primaryWalletAddress === targetAddress) {
+        const remainingWallets = linkedWallets.filter(
+          (wallet) => wallet.address !== targetAddress,
+        );
+        if (remainingWallets.length > 0) {
+          setPrimaryWalletAddressInStore(remainingWallets[0].address);
+        } else {
+          setPrimaryWalletAddressInStore(null);
+        }
+      }
     },
-    [activeWallet?.address, linkedWallets],
+    [
+      activeWallet?.address,
+      linkedWallets,
+      removeWalletFromStore,
+      primaryWalletAddress,
+      setPrimaryWalletAddressInStore,
+    ],
   );
 
   const sendSol = useCallback(
@@ -708,12 +724,6 @@ export function useSolana(): UseSolanaResult {
       } catch (error) {
         throw new Error("Invalid recipient address");
       }
-
-      const walletMetadata = walletEntry.walletAppId
-        ? availableWallets.find(
-            (wallet) => wallet.id === walletEntry.walletAppId,
-          )
-        : undefined;
 
       let reauthMethod: "silent" | "prompted" = "silent";
       let capabilityReport: WalletCapabilityReport = {
@@ -760,13 +770,14 @@ export function useSolana(): UseSolanaResult {
             authorization = await wallet.authorize({
               identity: APP_IDENTITY,
               chain: SOLANA_CLUSTER,
+              features: [
+                "solana:signAndSendTransactions",
+                "solana:signTransactions",
+              ],
             });
           }
 
-          const normalizedAccounts = normalizeAuthorization(
-            authorization,
-            walletMetadata,
-          );
+          const normalizedAccounts = normalizeAuthorization(authorization);
           upsertWallets(normalizedAccounts);
 
           const primaryAccount: LinkedWallet | undefined =
@@ -884,7 +895,6 @@ export function useSolana(): UseSolanaResult {
     },
     [
       activeWallet?.address,
-      availableWallets,
       connection,
       linkedWallets,
       refreshBalance,
@@ -904,9 +914,6 @@ export function useSolana(): UseSolanaResult {
     balances,
     detailedBalances,
     refreshBalance,
-    availableWallets,
-    detectingWallets,
-    refreshWalletDetection,
     startAuthorization,
     finalizeAuthorization,
     silentRefreshAuthorization,

@@ -7,7 +7,7 @@ import { Transaction, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { useWalletStore } from "../store/walletStore";
 import { walletService } from "./walletService";
 import { priceService } from "./priceService";
-import { DetectedWalletApp, LinkedWallet } from "../types/wallet";
+import { LinkedWallet } from "../types/wallet";
 import { SOLANA_CLUSTER } from "../config/env";
 
 const APP_IDENTITY = {
@@ -27,12 +27,10 @@ class WalletAdapterService {
     return WalletAdapterService.instance;
   }
 
-  /**
-   * Connect to a wallet using MWA
-   * @param walletApp Optional wallet app to connect to
-   * @returns Array of linked wallets
-   */
-  async connectWallet(walletApp?: DetectedWalletApp): Promise<LinkedWallet[]> {
+   /**
+    * Connect to a wallet using the system wallet chooser.
+    */
+   async connectWallet(): Promise<LinkedWallet[]> {
     const walletStore = useWalletStore.getState();
     walletStore.setLoading(true);
     walletStore.setError(null);
@@ -40,7 +38,7 @@ class WalletAdapterService {
     try {
       // Use existing walletService to start authorization. Passing no wallet lets MWA
       // present its native chooser when multiple wallets are installed.
-      const preview = await walletService.startWalletAuthorization(walletApp);
+       const preview = await walletService.startWalletAuthorization();
       const accounts = await walletService.finalizeWalletAuthorization(preview);
 
       // Update wallet store - add new accounts instead of replacing all
