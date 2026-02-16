@@ -4,7 +4,6 @@ import React, {
   useMemo,
   useState,
   useEffect,
-  useRef,
 } from "react";
 import {
   View,
@@ -18,6 +17,7 @@ import {
   TextInput,
   Alert,
   Share,
+  Linking,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
@@ -25,15 +25,10 @@ import QRCode from "react-native-qrcode-svg";
 import * as Clipboard from "expo-clipboard";
 import { useSolana } from "../context/SolanaContext";
 import { useWalletStore } from "../store/walletStore";
-import { formatUsd, formatAddress } from "../utils/format";
-import {
-  LinkedWallet,
-  WatchOnlyAccount,
-  WalletActivity,
-} from "../types/wallet";
+import { formatUsd, formatAddress, formatAmount } from "../utils/format";
+import { LinkedWallet, WalletActivity } from "../types/wallet";
 import * as Haptics from "expo-haptics";
 import { toast } from "../components/common/ErrorToast";
-import { WatchOnlyForm } from "../components/watchlist/WatchOnlyForm";
 import { fetchAccountSnapshot } from "../services/watchlistDataService";
 import { BalanceChart } from "../components/analytics/BalanceChart";
 import { TokenPie } from "../components/analytics/TokenPie";
@@ -96,15 +91,10 @@ const WalletScreen = () => {
     detailedBalances,
     setActiveWallet,
     removeWallet,
-    watchOnlyAccounts,
-    watchOnlyBalances,
-    watchOnlyActivity,
-    addWatchOnlyAccount,
-    removeWatchOnlyAccount,
-    updateWatchOnlyBalance,
-    updateWatchOnlyActivity,
     primaryWalletAddress,
     setPrimaryWalletAddress,
+    walletActivity,
+    setWalletActivity,
   } = useWalletStore();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -114,13 +104,20 @@ const WalletScreen = () => {
   const [sendRecipient, setSendRecipient] = useState("");
   const [sendAmount, setSendAmount] = useState("");
   const [sending, setSending] = useState(false);
-  const [watchModalVisible, setWatchModalVisible] = useState(false);
-  const [addingWatchOnly, setAddingWatchOnly] = useState(false);
-  const [refreshingWatchMap, setRefreshingWatchMap] = useState<
-    Record<string, boolean>
-  >({});
-  const watchActivityLatestRef = useRef<Record<string, string>>({});
-  const watchActivityBootstrappedRef = useRef(false);
+  const [estimatedFee, setEstimatedFee] = useState<number | null>(null);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityReloadNonce, setActivityReloadNonce] = useState(0);
+  const [selectedActivity, setSelectedActivity] = useState<WalletActivity | null>(null);
+  const [activityDetailModalVisible, setActivityDetailModalVisible] = useState(false);
+
+  const activityTargetAddress = primaryWalletAddress ?? activeWallet?.address ?? null;
+  const portfolioActivity = activityTargetAddress 
+    ? (walletActivity[activityTargetAddress] || [])
+    : [];
+
+  const triggerActivityReload = useCallback(() => {
+    setActivityReloadNonce((prev) => prev + 1);
+  }, []);
 
   // Request notification permissions on load
   useEffect(() => {
@@ -138,13 +135,17 @@ const WalletScreen = () => {
 
   useEffect(() => {
     const addresses = new Set<string>();
-    watchOnlyAccounts.forEach((account) => {
-      if (account.address) {
-        addresses.add(account.address);
+    linkedWallets.forEach((wallet) => {
+      if (wallet.address) {
+        addresses.add(wallet.address);
       }
     });
     if (primaryWalletAddress) {
       addresses.add(primaryWalletAddress);
+    }
+
+    if (addresses.size === 0) {
+      return;
     }
 
     notificationService
@@ -152,81 +153,55 @@ const WalletScreen = () => {
       .catch((err) =>
         console.warn("Failed to sync notification subscriptions", err),
       );
-  }, [watchOnlyAccounts, primaryWalletAddress]);
+  }, [linkedWallets, primaryWalletAddress]);
 
   useEffect(() => {
-    const missingAccounts = watchOnlyAccounts.filter(
-      (account) => !watchOnlyBalances[account.address],
-    );
-    if (missingAccounts.length === 0) {
+    if (!activityTargetAddress) {
       return;
     }
 
-    missingAccounts.forEach((account) => {
-      fetchAccountSnapshot(account.address)
-        .then(({ snapshot, activity }) => {
-          updateWatchOnlyBalance(snapshot);
-          updateWatchOnlyActivity(account.address, activity);
-        })
-        .catch((err) => {
-          console.warn("Failed to load watch-only snapshot", err);
-        });
-    });
-  }, [
-    watchOnlyAccounts,
-    watchOnlyBalances,
-    updateWatchOnlyActivity,
-    updateWatchOnlyBalance,
-  ]);
-
-  useEffect(() => {
-    const activityEntries = Object.entries(watchOnlyActivity);
-
-    activityEntries.forEach(([address, activities]) => {
-      if (!activities || activities.length === 0) {
-        return;
-      }
-
-      const latest = activities[0];
-      const latestSignature =
-        latest.signature ?? `${latest.timestamp ?? Date.now()}`;
-      const previousSignature = watchActivityLatestRef.current[address];
-
-      if (
-        watchActivityBootstrappedRef.current &&
-        previousSignature &&
-        latestSignature &&
-        previousSignature !== latestSignature
-      ) {
-        const eventDirection = latest.direction;
-        const eventAmount = latest.amount ?? 0;
-
-        if (
-          eventDirection &&
-          eventDirection !== "internal" &&
-          eventAmount > 0
-        ) {
-          const notificationType = eventDirection === "in" ? "receive" : "send";
-          notificationService
-            .notifyWalletActivity({
-              type: notificationType,
-              amount: eventAmount,
-              symbol: latest.mint ?? "SOL",
-              address,
-            })
-            .catch((err) =>
-              console.warn("Failed to notify wallet activity", err),
-            );
+    let cancelled = false;
+    setActivityLoading(true);
+    fetchAccountSnapshot(activityTargetAddress)
+      .then(({ activity }) => {
+        if (cancelled) {
+          return;
         }
-      }
+        setWalletActivity(activityTargetAddress, activity.slice(0, 50));
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn("Failed to load activity", err);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setActivityLoading(false);
+        }
+      });
 
-      watchActivityLatestRef.current[address] = latestSignature;
-    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activityTargetAddress, activityReloadNonce, setWalletActivity]);
 
-    if (activityEntries.length > 0) {
-      watchActivityBootstrappedRef.current = true;
+  // Estimate fee when send modal is open and inputs are valid
+  useEffect(() => {
+    if (!sendModalVisible) {
+      setEstimatedFee(null);
+      return;
     }
-  }, [watchOnlyActivity]);
+    
+    const amount = parseFloat(sendAmount);
+    if (!sendRecipient.trim() || Number.isNaN(amount) || amount <= 0) {
+      setEstimatedFee(null);
+      return;
+    }
+
+    // Standard Solana transfer fee is typically 5000 lamports (0.000005 SOL)
+    // For more accurate estimation, we'd need to build and simulate the transaction
+    setEstimatedFee(0.000005);
+  }, [sendModalVisible, sendRecipient, sendAmount]);
 
   const activeWalletBalanceSol = activeWallet
     ? detailedBalances[activeWallet.address]?.balance || 0
@@ -239,8 +214,6 @@ const WalletScreen = () => {
   const isPrimaryWalletSet = Boolean(primaryWalletAddress);
   const isActivePrimary =
     !!activeWallet && activeWallet.address === primaryWalletAddress;
-  const watchOnlyCount = watchOnlyAccounts.length;
-
   const accountStatusText = useMemo(() => {
     if (!isPrimaryWalletSet) {
       return "Select primary wallet to enable sending";
@@ -250,12 +223,6 @@ const WalletScreen = () => {
     }
     return "Connected • Not primary";
   }, [isActivePrimary, isPrimaryWalletSet]);
-
-  const accountMetaFull = useMemo(() => {
-    return watchOnlyCount > 0
-      ? `${accountStatusText} • Monitoring ${watchOnlyCount}`
-      : accountStatusText;
-  }, [accountStatusText, watchOnlyCount]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -268,12 +235,13 @@ const WalletScreen = () => {
       );
 
       await Promise.all(refreshPromises);
+      triggerActivityReload();
     } catch (err: any) {
       console.warn("Refresh failed", err);
     } finally {
       setRefreshing(false);
     }
-  }, [linkedWallets, refreshBalance]);
+  }, [linkedWallets, refreshBalance, triggerActivityReload]);
 
   const openAccountModal = useCallback(() => {
     setConnectModalVisible(true);
@@ -410,114 +378,6 @@ const WalletScreen = () => {
     }
   }, [activeWallet, setPrimaryWalletAddress, toast]);
 
-  const handleAddWatchOnly = useCallback(
-    async ({ address, label }: { address: string; label?: string }) => {
-      setAddingWatchOnly(true);
-      try {
-        addWatchOnlyAccount({
-          address,
-          label,
-        });
-        const { snapshot, activity } = await fetchAccountSnapshot(address);
-        updateWatchOnlyBalance(snapshot);
-        updateWatchOnlyActivity(address, activity);
-        toast.show({ message: "Watch-only account added", type: "success" });
-        setWatchModalVisible(false);
-      } catch (err: any) {
-        console.warn("Add watch-only failed", err);
-        Alert.alert(
-          "Add failed",
-          err?.message ??
-            "Unable to sync this account, please try again later.",
-        );
-      } finally {
-        setAddingWatchOnly(false);
-      }
-    },
-    [addWatchOnlyAccount, updateWatchOnlyActivity, updateWatchOnlyBalance],
-  );
-
-  const handleRefreshWatchOnly = useCallback(
-    async (account: WatchOnlyAccount) => {
-      setRefreshingWatchMap((prev) => ({
-        ...prev,
-        [account.address]: true,
-      }));
-      try {
-        const { snapshot, activity } = await fetchAccountSnapshot(
-          account.address,
-        );
-        updateWatchOnlyBalance(snapshot);
-        updateWatchOnlyActivity(account.address, activity);
-        toast.show({
-          message: `${account.label || "Account"} updated`,
-          type: "success",
-        });
-      } catch (err: any) {
-        console.warn("Refresh watch-only failed", err);
-        Alert.alert(
-          "Refresh failed",
-          err?.message ??
-            "Unable to sync this account, please try again later.",
-        );
-      } finally {
-        setRefreshingWatchMap((prev) => ({
-          ...prev,
-          [account.address]: false,
-        }));
-      }
-    },
-    [updateWatchOnlyActivity, updateWatchOnlyBalance],
-  );
-
-  const handleRemoveWatchOnly = useCallback(
-    async (account: WatchOnlyAccount) => {
-      try {
-        await requireBiometricApproval(
-          "Authenticate to remove this watch-only account",
-        );
-
-        Alert.alert(
-          "Remove watch-only",
-          `Are you sure you want to remove ${account.label || formatAddress(account.address)}?`,
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Remove",
-              style: "destructive",
-              onPress: () => {
-                removeWatchOnlyAccount(account.address);
-                toast.show({
-                  message: "Watch-only account removed",
-                  type: "success",
-                });
-              },
-            },
-          ],
-        );
-      } catch (error) {
-        console.error(
-          "Biometric authentication failed for removing watch-only account:",
-          error,
-        );
-        toast.show({
-          message: "Authentication required to remove accounts",
-          type: "error",
-        });
-      }
-    },
-    [removeWatchOnlyAccount],
-  );
-
-  const openWatchModal = useCallback(() => {
-    setWatchModalVisible(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, []);
-
-  const closeWatchModal = useCallback(() => {
-    setWatchModalVisible(false);
-  }, []);
-
   const handleSend = useCallback(async () => {
     if (!ensurePrimaryWalletReady()) {
       return;
@@ -558,6 +418,7 @@ const WalletScreen = () => {
         symbol: "SOL",
         address: activeWallet.address,
       });
+      triggerActivityReload();
     } catch (err: any) {
       console.warn("Send failed", err);
       toast.show({
@@ -576,6 +437,7 @@ const WalletScreen = () => {
     sendAmount,
     sendRecipient,
     sendSol,
+    triggerActivityReload,
   ]);
 
   const handleReceive = useCallback(() => {
@@ -627,9 +489,12 @@ const WalletScreen = () => {
     if (!activeWallet) {
       return;
     }
-    setSendAmount(activeWalletBalanceSol.toFixed(4));
+    // Reserve fee amount when using max
+    const feeReserve = estimatedFee || 0.000005;
+    const maxSendable = Math.max(0, activeWalletBalanceSol - feeReserve);
+    setSendAmount(maxSendable.toFixed(6));
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [activeWallet, activeWalletBalanceSol]);
+  }, [activeWallet, activeWalletBalanceSol, estimatedFee]);
 
   const handleStub = useCallback((label: string) => {
     Alert.alert(label, "Coming soon");
@@ -698,16 +563,10 @@ const WalletScreen = () => {
   }, [primaryWalletAddress, activeWallet]);
 
   // Get combined activity data
-  const combinedActivity = useMemo(() => {
-    let allActivity: WalletActivity[] = [];
-
-    // Get activity from watch-only accounts
-    Object.values(watchOnlyActivity).forEach((activity) => {
-      allActivity = [...allActivity, ...activity];
-    });
-
-    return allActivity.sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
-  }, [watchOnlyActivity]);
+  const combinedActivity = useMemo(
+    () => portfolioActivity.slice(0, 10),
+    [portfolioActivity],
+  );
 
   return (
     <View style={styles.screen}>
@@ -742,7 +601,7 @@ const WalletScreen = () => {
               />
             </View>
             <Text style={styles.accountMetaText} numberOfLines={1}>
-              {accountMetaFull}
+              {accountStatusText}
             </Text>
           </View>
         </TouchableOpacity>
@@ -967,92 +826,6 @@ const WalletScreen = () => {
           </View>
         )}
 
-        <View style={styles.watchlistCard}>
-          <View style={styles.watchlistHeader}>
-            <View>
-              <Text style={styles.watchlistTitle}>Watch-only Accounts</Text>
-              <Text style={styles.watchlistSubtitle}>
-                {watchOnlyCount > 0
-                  ? `Tracking ${watchOnlyCount} addresses`
-                  : "Manually add public keys to monitor assets in real-time"}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={styles.watchlistAddButton}
-              onPress={openWatchModal}
-            >
-              <Feather name="plus" size={16} color="#050814" />
-              <Text style={styles.watchlistAddText}>Add</Text>
-            </TouchableOpacity>
-          </View>
-          {watchOnlyAccounts.length === 0 ? (
-            <View style={styles.watchlistEmpty}>
-              <Feather name="eye" size={18} color="rgba(255,255,255,0.7)" />
-              <Text style={styles.watchlistEmptyText}>
-                No watch-only accounts yet. Click "Add" to enter any Solana
-                public key.
-              </Text>
-            </View>
-          ) : (
-            watchOnlyAccounts.map((account) => {
-              const snapshot = watchOnlyBalances[account.address];
-              const refreshingWatch = refreshingWatchMap[account.address];
-              const updatedLabel = snapshot?.lastUpdated
-                ? `更新 ${new Date(snapshot.lastUpdated).toLocaleTimeString(
-                    [],
-                    {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    },
-                  )}`
-                : "等待同步";
-
-              return (
-                <View key={account.address} style={styles.watchRow}>
-                  <View style={styles.watchInfo}>
-                    <Text style={styles.watchLabel} numberOfLines={1}>
-                      {account.label || formatAddress(account.address)}
-                    </Text>
-                    <Text style={styles.watchAddress}>
-                      {formatAddress(account.address)}
-                    </Text>
-                  </View>
-                  <View style={styles.watchMetrics}>
-                    <Text style={styles.watchUsd}>
-                      {snapshot ? formatUsd(snapshot.usdValue) : "--"}
-                    </Text>
-                    <Text style={styles.watchSol}>
-                      {snapshot
-                        ? `${snapshot.balance.toFixed(4)} SOL`
-                        : "Pending refresh"}
-                    </Text>
-                    <Text style={styles.watchTimestamp}>{updatedLabel}</Text>
-                  </View>
-                  <View style={styles.watchActions}>
-                    <TouchableOpacity
-                      style={styles.watchActionButton}
-                      onPress={() => handleRefreshWatchOnly(account)}
-                      disabled={refreshingWatch}
-                    >
-                      {refreshingWatch ? (
-                        <ActivityIndicator color="#9CFFDA" size="small" />
-                      ) : (
-                        <Feather name="rotate-ccw" size={16} color="#9CFFDA" />
-                      )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.watchActionButton}
-                      onPress={() => handleRemoveWatchOnly(account)}
-                    >
-                      <Feather name="trash-2" size={16} color="#FF8BA7" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            })
-          )}
-        </View>
-
         {/* Account Manager Modal */}
         <Modal
           animationType="slide"
@@ -1272,25 +1045,6 @@ const WalletScreen = () => {
           </View>
         </Modal>
 
-        {/* Watch-only Modal */}
-        <Modal
-          animationType="slide"
-          transparent
-          visible={watchModalVisible}
-          onRequestClose={closeWatchModal}
-        >
-          <View style={styles.modalBackdrop}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>添加 watch-only 账户</Text>
-              <WatchOnlyForm
-                onSubmit={handleAddWatchOnly}
-                onClose={closeWatchModal}
-                loading={addingWatchOnly}
-              />
-            </View>
-          </View>
-        </Modal>
-
         {/* Send Modal */}
         <Modal
           animationType="slide"
@@ -1328,6 +1082,14 @@ const WalletScreen = () => {
                       Use max ({activeWalletBalanceSol.toFixed(4)} SOL)
                     </Text>
                   </TouchableOpacity>
+                </View>
+              )}
+              {estimatedFee !== null && (
+                <View style={styles.feeEstimateRow}>
+                  <Text style={styles.feeEstimateLabel}>Estimated Network Fee</Text>
+                  <Text style={styles.feeEstimateValue}>
+                    ~{estimatedFee.toFixed(6)} SOL
+                  </Text>
                 </View>
               )}
               <View style={styles.modalActions}>
@@ -1418,6 +1180,115 @@ const WalletScreen = () => {
           </View>
         </Modal>
 
+        {/* Activity Detail Modal */}
+        <Modal
+          animationType="slide"
+          transparent
+          visible={activityDetailModalVisible}
+          onRequestClose={() => setActivityDetailModalVisible(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Transaction Details</Text>
+              {selectedActivity && (
+                <View style={styles.activityDetailContainer}>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Type</Text>
+                    <Text style={styles.detailValue}>
+                      {selectedActivity.description || selectedActivity.type}
+                    </Text>
+                  </View>
+                  
+                  {selectedActivity.amount && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Amount</Text>
+                      <Text style={[
+                        styles.detailValue,
+                        {
+                          color: selectedActivity.direction === 'in' ? '#9CFFDA' :
+                                 selectedActivity.direction === 'out' ? '#F43F5E' : '#6366F1'
+                        }
+                      ]}>
+                        {selectedActivity.direction === 'out' ? '-' : '+'} {formatAmount(selectedActivity.amount)}
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {selectedActivity.fee && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Fee</Text>
+                      <Text style={styles.detailValue}>
+                        {formatAmount(selectedActivity.fee)} SOL
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {selectedActivity.source && (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>Source</Text>
+                      <TouchableOpacity
+                        onPress={async () => {
+                          await Clipboard.setStringAsync(selectedActivity.source!);
+                          toast.show({ message: "Address copied", type: "success" });
+                        }}
+                      >
+                        <Text style={[styles.detailValue, styles.detailAddress]}>
+                          {formatAddress(selectedActivity.source)}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Time</Text>
+                    <Text style={styles.detailValue}>
+                      {new Date(selectedActivity.timestamp).toLocaleString()}
+                    </Text>
+                  </View>
+                  
+                  {selectedActivity.signature && (
+                    <>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Signature</Text>
+                        <TouchableOpacity
+                          onPress={async () => {
+                            await Clipboard.setStringAsync(selectedActivity.signature);
+                            toast.show({ message: "Signature copied", type: "success" });
+                          }}
+                        >
+                          <Text style={[styles.detailValue, styles.detailAddress]}>
+                            {formatAddress(selectedActivity.signature)}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                      
+                      <TouchableOpacity
+                        style={styles.explorerButton}
+                        onPress={() => {
+                          const explorerUrl = `https://solscan.io/tx/${selectedActivity.signature}`;
+                          Linking.openURL(explorerUrl);
+                        }}
+                      >
+                        <Feather name="external-link" size={16} color="#FFFFFF" />
+                        <Text style={styles.explorerButtonText}>View on Solscan</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              )}
+              <TouchableOpacity
+                style={styles.modalClose}
+                onPress={() => {
+                  setActivityDetailModalVisible(false);
+                  setSelectedActivity(null);
+                }}
+              >
+                <Text style={styles.modalCloseText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
         {/* Balance Chart */}
         <BalanceChart
           data={balanceHistoryData}
@@ -1437,16 +1308,14 @@ const WalletScreen = () => {
         {/* Activity List */}
         <ActivityList
           data={combinedActivity}
-          title="Recent Activity"
+          title={
+            activityLoading ? "Recent Activity (updating...)" : "Recent Activity"
+          }
           height={300}
           onActivityPress={(activity) => {
-            Alert.alert(
-              "Activity Details",
-              `Signature: ${activity.signature}\n` +
-                `Type: ${activity.type}\n` +
-                `Amount: ${activity.amount || "N/A"}\n` +
-                `Fee: ${activity.fee || "N/A"} SOL`,
-            );
+            setSelectedActivity(activity);
+            setActivityDetailModalVisible(true);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           }}
         />
       </ScrollView>
@@ -1884,107 +1753,6 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.6)",
     fontSize: 12,
   },
-  watchlistCard: {
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderRadius: 22,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    gap: 12,
-  },
-  watchlistHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-  },
-  watchlistTitle: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-    fontSize: 16,
-  },
-  watchlistSubtitle: {
-    color: "rgba(255,255,255,0.6)",
-    fontSize: 12,
-    marginTop: 4,
-  },
-  watchlistAddButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#9CFFDA",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  watchlistAddText: {
-    color: "#050814",
-    fontWeight: "700",
-    fontSize: 13,
-  },
-  watchlistEmpty: {
-    backgroundColor: "rgba(255,255,255,0.02)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    borderRadius: 16,
-    padding: 16,
-    alignItems: "center",
-    gap: 10,
-  },
-  watchlistEmptyText: {
-    color: "rgba(255,255,255,0.6)",
-    fontSize: 12,
-    textAlign: "center",
-  },
-  watchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
-  },
-  watchInfo: {
-    flex: 1,
-    gap: 4,
-  },
-  watchLabel: {
-    color: "#FFFFFF",
-    fontWeight: "600",
-  },
-  watchAddress: {
-    color: "rgba(255,255,255,0.55)",
-    fontSize: 12,
-  },
-  watchMetrics: {
-    alignItems: "flex-end",
-    marginLeft: 12,
-    gap: 2,
-  },
-  watchUsd: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-    fontSize: 13,
-  },
-  watchSol: {
-    color: "rgba(255,255,255,0.7)",
-    fontSize: 12,
-  },
-  watchTimestamp: {
-    color: "rgba(255,255,255,0.45)",
-    fontSize: 11,
-  },
-  watchActions: {
-    flexDirection: "row",
-    gap: 8,
-    marginLeft: 12,
-  },
-  watchActionButton: {
-    padding: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
   tokenRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -2373,6 +2141,27 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 13,
   },
+  feeEstimateRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(155, 140, 255, 0.08)",
+    borderRadius: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "rgba(155, 140, 255, 0.15)",
+  },
+  feeEstimateLabel: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 13,
+  },
+  feeEstimateValue: {
+    color: "#9B8CFF",
+    fontWeight: "600",
+    fontSize: 13,
+  },
   receiveHint: {
     color: "rgba(255,255,255,0.72)",
     marginBottom: 16,
@@ -2431,6 +2220,51 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
     lineHeight: 20,
+  },
+  activityDetailContainer: {
+    gap: 16,
+    width: "100%",
+  },
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.06)",
+  },
+  detailLabel: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  detailValue: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "500",
+    flex: 1,
+    textAlign: "right",
+  },
+  detailAddress: {
+    color: "#9B8CFF",
+    textDecorationLine: "underline",
+  },
+  explorerButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "rgba(155, 140, 255, 0.15)",
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(155, 140, 255, 0.3)",
+    marginTop: 8,
+  },
+  explorerButtonText: {
+    color: "#9B8CFF",
+    fontWeight: "600",
+    fontSize: 14,
   },
 });
 

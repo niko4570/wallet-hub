@@ -4,10 +4,7 @@ import { rpcService } from "./rpcService";
 import { priceService } from "./priceService";
 import { tokenMetadataService } from "./tokenMetadataService";
 import { jupiterPortfolioService } from "./jupiterPortfolioService";
-import {
-  fetchJupiterTransactions,
-  type JupiterTransactionRecord,
-} from "./jupiterTransactionsService";
+
 import { useWalletStore } from "../store/walletStore";
 import type { WalletActivity, WalletBalance } from "../types/wallet";
 
@@ -44,13 +41,11 @@ export async function fetchAccountSnapshot(
     serverResult,
     localResult,
     serverTxResult,
-    jupiterTxResult,
   ] = await Promise.allSettled([
     fetchJupiterSnapshot(normalizedAddress),
     fetchServerSnapshot(normalizedAddress),
     fetchLocalSnapshot(normalizedAddress),
     fetchServerTransactions(normalizedAddress),
-    fetchJupiterTransactions(normalizedAddress, MAX_ACTIVITY_ENTRIES),
   ]);
 
   let snapshot: WalletBalance | null = null;
@@ -65,15 +60,7 @@ export async function fetchAccountSnapshot(
       ? normalizeJupiterActivities(serverTxResult.value)
       : [];
 
-  const fallbackJupiterActivities =
-    jupiterTxResult.status === "fulfilled"
-      ? normalizeJupiterActivities(jupiterTxResult.value)
-      : [];
-
-  const jupiterActivity =
-    serverTransactionActivities.length > 0
-      ? serverTransactionActivities
-      : fallbackJupiterActivities;
+  const jupiterActivity = serverTransactionActivities;
   let activity = mergeActivityTimelines(heliusActivity, jupiterActivity);
 
   if (jupiterResult.status === "fulfilled" && jupiterResult.value) {

@@ -107,16 +107,11 @@ class WalletConnectionService {
     try {
       if (wallet.authToken) {
         try {
-          await transact(
-            async (walletInstance: Web3MobileWallet) => {
-              await walletInstance.deauthorize({
-                auth_token: wallet.authToken,
-              });
-            },
-            wallet.walletUriBase
-              ? { baseUri: wallet.walletUriBase }
-              : undefined,
-          );
+          await transact(async (walletInstance: Web3MobileWallet) => {
+            await walletInstance.deauthorize({
+              auth_token: wallet.authToken,
+            });
+          });
         } catch (error) {
           console.warn("Deauthorization failed (ignored)", error);
         }
@@ -169,7 +164,6 @@ class WalletConnectionService {
       address: decodeWalletAddress(account.address),
       label: account.label,
       authToken: authorization.auth_token,
-      walletUriBase: authorization.wallet_uri_base,
       walletName: account.label,
     };
   }
@@ -235,35 +229,32 @@ class WalletConnectionService {
     wallet: LinkedWallet,
   ): Promise<LinkedWallet | null> {
     try {
-      const result = await transact(
-        async (walletInstance: Web3MobileWallet) => {
-          let authorization: AuthorizationResult | null = null;
+      const result = await transact(async (walletInstance: Web3MobileWallet) => {
+        let authorization: AuthorizationResult | null = null;
 
-          if (wallet.authToken) {
-            try {
-              authorization = await walletInstance.reauthorize({
-                identity: APP_IDENTITY,
-                auth_token: wallet.authToken,
-              });
-            } catch (error) {
-              console.warn(
-                "Reauthorization failed, falling back to authorize",
-                error,
-              );
-            }
-          }
-
-          if (!authorization) {
-            authorization = await walletInstance.authorize({
+        if (wallet.authToken) {
+          try {
+            authorization = await walletInstance.reauthorize({
               identity: APP_IDENTITY,
-              chain: SOLANA_CLUSTER,
+              auth_token: wallet.authToken,
             });
+          } catch (error) {
+            console.warn(
+              "Reauthorization failed, falling back to authorize",
+              error,
+            );
           }
+        }
 
-          return this.normalizeAuthorization(authorization);
-        },
-        wallet.walletUriBase ? { baseUri: wallet.walletUriBase } : undefined,
-      );
+        if (!authorization) {
+          authorization = await walletInstance.authorize({
+            identity: APP_IDENTITY,
+            chain: SOLANA_CLUSTER,
+          });
+        }
+
+        return this.normalizeAuthorization(authorization);
+      });
 
       if (result) {
         // Update stored auth token
@@ -289,12 +280,9 @@ class WalletConnectionService {
    */
   async getWalletCapabilities(wallet: LinkedWallet): Promise<any | null> {
     try {
-      const result = await transact(
-        async (walletInstance: Web3MobileWallet) => {
-          return await walletInstance.getCapabilities();
-        },
-        wallet.walletUriBase ? { baseUri: wallet.walletUriBase } : undefined,
-      );
+      const result = await transact(async (walletInstance: Web3MobileWallet) => {
+        return await walletInstance.getCapabilities();
+      });
 
       return result;
     } catch (error) {

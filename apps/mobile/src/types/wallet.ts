@@ -5,7 +5,6 @@ export interface AccountMeta {
 
 export interface LinkedWallet extends AccountMeta {
   authToken: string;
-  walletUriBase?: string | null;
   walletAppId?: string;
   walletName?: string;
   icon?: string;
@@ -51,13 +50,6 @@ export interface WalletActivity {
   mint?: string;
   amount?: number;
   direction?: "in" | "out" | "internal";
-}
-
-export interface WatchOnlyAccount {
-  address: string;
-  label?: string;
-  color?: string;
-  createdAt?: string;
 }
 
 export interface WalletState {

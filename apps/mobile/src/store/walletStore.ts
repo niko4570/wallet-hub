@@ -4,10 +4,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   LinkedWallet,
   TokenBalance,
+  WalletActivity,
   WalletBalance,
   WalletGroup,
-  WatchOnlyAccount,
-  WalletActivity,
 } from "../types/wallet";
 
 interface WalletState {
@@ -21,13 +20,10 @@ interface WalletState {
   missingTokenPrices: Record<string, string[]>;
   totalBalance: number;
   totalUsdValue: number;
-  transactions: Record<string, any[]>;
+  walletActivity: Record<string, WalletActivity[]>;
   isLoading: boolean;
   error: string | null;
   primaryWalletAddress: string | null;
-  watchOnlyAccounts: WatchOnlyAccount[];
-  watchOnlyBalances: Record<string, WalletBalance>;
-  watchOnlyActivity: Record<string, WalletActivity[]>;
   historicalBalances: Record<string, Array<{ timestamp: number; usd: number; sol: number }>>;
 
   // Actions
@@ -41,20 +37,13 @@ interface WalletState {
   updateDetailedBalance: (balance: WalletBalance) => void;
   setMissingTokenPrices: (address: string, mints: string[]) => void;
   updateTotalBalance: () => void;
-  addTransaction: (address: string, transaction: any) => void;
-  setTransactions: (address: string, transactions: any[]) => void;
-  clearTransactions: (address: string) => void;
+  setWalletActivity: (address: string, activity: WalletActivity[]) => void;
+  clearWalletActivity: (address?: string) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   addWallet: (wallet: LinkedWallet) => void;
   removeWallet: (address: string) => void;
   clearAllWallets: () => void;
-  addWatchOnlyAccount: (account: WatchOnlyAccount) => void;
-  removeWatchOnlyAccount: (address: string) => void;
-  setWatchOnlyAccounts: (accounts: WatchOnlyAccount[]) => void;
-  updateWatchOnlyBalance: (balance: WalletBalance) => void;
-  updateWatchOnlyActivity: (address: string, activity: WalletActivity[]) => void;
-  clearWatchOnlyData: () => void;
 
   // Wallet group actions
   createWalletGroup: (name: string, walletAddresses: string[]) => void;
@@ -85,12 +74,9 @@ export const useWalletStore = create<WalletState>()(
        missingTokenPrices: {},
        totalBalance: 0,
        totalUsdValue: 0,
-       transactions: {},
+       walletActivity: {},
        isLoading: false,
        error: null,
-       watchOnlyAccounts: [],
-       watchOnlyBalances: {},
-       watchOnlyActivity: {},
        historicalBalances: {},
 
       // Actions
@@ -163,8 +149,8 @@ export const useWalletStore = create<WalletState>()(
               ([addr]) => addr !== address,
             ),
           );
-          const updatedTransactions = { ...state.transactions };
-          delete updatedTransactions[address];
+          const updatedActivity = { ...state.walletActivity };
+          delete updatedActivity[address];
 
           return {
             linkedWallets: updatedWallets,
@@ -182,7 +168,7 @@ export const useWalletStore = create<WalletState>()(
                 : state.primaryWalletAddress,
             balances: updatedBalances,
             detailedBalances: updatedDetailedBalances,
-            transactions: updatedTransactions,
+            walletActivity: updatedActivity,
           };
         });
         // Update total balance after removing wallet
@@ -235,160 +221,48 @@ export const useWalletStore = create<WalletState>()(
         set({ totalBalance, totalUsdValue });
       },
 
-      addTransaction: (address, transaction) => {
-        set((state) => {
-          const walletTransactions = state.transactions[address] || [];
-          return {
-            transactions: {
-              ...state.transactions,
-              [address]: [transaction, ...walletTransactions],
-            },
-          };
-        });
-      },
-
-      setTransactions: (address, transactions) => {
+      setWalletActivity: (address, activity) => {
+        const normalizedAddress = address.trim();
+        const normalizedActivity = Array.isArray(activity)
+          ? activity.slice(0, 50)
+          : [];
         set((state) => ({
-          transactions: {
-            ...state.transactions,
-            [address]: transactions,
+          walletActivity: {
+            ...state.walletActivity,
+            [normalizedAddress]: normalizedActivity,
           },
         }));
       },
 
-      clearTransactions: (address) => {
+      clearWalletActivity: (address) => {
+        if (!address) {
+          set({ walletActivity: {} });
+          return;
+        }
+        const normalizedAddress = address.trim();
         set((state) => {
-          const newTransactions = { ...state.transactions };
-          delete newTransactions[address];
-          return { transactions: newTransactions };
+          const next = { ...state.walletActivity };
+          delete next[normalizedAddress];
+          return { walletActivity: next };
         });
       },
 
-        clearAllWallets: () => {
-          set({
-            linkedWallets: [],
-            activeWallet: null,
-            activeWalletAddress: null,
-           primaryWalletAddress: null,
-           walletGroups: [],
-           balances: {},
-           detailedBalances: {},
-           missingTokenPrices: {},
-           totalBalance: 0,
-           totalUsdValue: 0,
-            transactions: {},
-            error: null,
-            watchOnlyAccounts: [],
-            watchOnlyBalances: {},
-            watchOnlyActivity: {},
-          });
-        },
-
-       addWatchOnlyAccount: (account) =>
-         set((state) => {
-           const normalizedAddress = account.address.trim();
-           const existingIndex = state.watchOnlyAccounts.findIndex(
-             (entry) => entry.address === normalizedAddress,
-           );
-
-          const fallbackLabel =
-            account.label ??
-            state.watchOnlyAccounts[existingIndex]?.label ??
-            `Watch ${
-              existingIndex >= 0
-                ? existingIndex + 1
-                : state.watchOnlyAccounts.length + 1
-            }`;
-
-           const nextAccount: WatchOnlyAccount = {
-             address: normalizedAddress,
-             label: fallbackLabel,
-             color:
-               account.color ??
-               state.watchOnlyAccounts[existingIndex]?.color,
-             createdAt:
-               account.createdAt ??
-               state.watchOnlyAccounts[existingIndex]?.createdAt ??
-               new Date().toISOString(),
-           };
-
-           if (existingIndex >= 0) {
-             const nextAccounts = [...state.watchOnlyAccounts];
-             nextAccounts[existingIndex] = {
-               ...nextAccounts[existingIndex],
-               ...nextAccount,
-             };
-             return { watchOnlyAccounts: nextAccounts };
-           }
-
-           return {
-             watchOnlyAccounts: [...state.watchOnlyAccounts, nextAccount],
-           };
-         }),
-
-       setWatchOnlyAccounts: (accounts) =>
-         set({
-           watchOnlyAccounts: accounts,
-         }),
-
-        removeWatchOnlyAccount: (address) =>
-          set((state) => {
-            const normalizedAddress = address.trim();
-            const filtered = state.watchOnlyAccounts.filter(
-              (entry) => entry.address !== normalizedAddress,
-            );
-            if (filtered.length === state.watchOnlyAccounts.length) {
-              return state;
-            }
-            const { [normalizedAddress]: _removed, ...rest } =
-              state.watchOnlyBalances;
-            const { [normalizedAddress]: _activity, ...activityRest } =
-              state.watchOnlyActivity;
-            return {
-              watchOnlyAccounts: filtered,
-              watchOnlyBalances: rest,
-              watchOnlyActivity: activityRest,
-            };
-          }),
-
-        updateWatchOnlyBalance: (balance) => {
-          const tokens = Array.isArray(balance.tokens) ? balance.tokens : [];
-          const normalizedTokens: TokenBalance[] = tokens.map((token) => ({
-            mint: token.mint,
-            symbol: token.symbol,
-           name: token.name,
-           balance: token.balance,
-           usdValue: token.usdValue,
-           decimals: token.decimals,
-         }));
-
-         set((state) => ({
-           watchOnlyBalances: {
-             ...state.watchOnlyBalances,
-             [balance.address]: {
-               ...balance,
-               tokens: normalizedTokens,
-             },
-           },
-          }));
-        },
-
-        updateWatchOnlyActivity: (address, activity) => {
-          const normalizedAddress = address.trim();
-          set((state) => ({
-            watchOnlyActivity: {
-              ...state.watchOnlyActivity,
-              [normalizedAddress]: activity,
-            },
-          }));
-        },
-
-        clearWatchOnlyData: () =>
-          set({
-            watchOnlyAccounts: [],
-            watchOnlyBalances: {},
-            watchOnlyActivity: {},
-          }),
+      clearAllWallets: () => {
+        set({
+          linkedWallets: [],
+          activeWallet: null,
+          activeWalletAddress: null,
+          primaryWalletAddress: null,
+          walletGroups: [],
+          balances: {},
+          detailedBalances: {},
+          missingTokenPrices: {},
+          totalBalance: 0,
+          totalUsdValue: 0,
+          walletActivity: {},
+          error: null,
+        });
+      },
 
         updateHistoricalBalance: (address, balance) =>
           set((state) => {
@@ -585,43 +459,58 @@ export const useWalletStore = create<WalletState>()(
     {
       name: "wallet-storage",
       storage: createJSONStorage(() => AsyncStorage),
-       partialize: (state) => ({
-         linkedWallets: state.linkedWallets,
-         activeWallet: state.activeWallet,
-         activeWalletAddress: state.activeWalletAddress,
-         primaryWalletAddress: state.primaryWalletAddress,
-         walletGroups: state.walletGroups,
-         watchOnlyAccounts: state.watchOnlyAccounts,
-         watchOnlyBalances: state.watchOnlyBalances,
-         watchOnlyActivity: state.watchOnlyActivity,
-         historicalBalances: state.historicalBalances,
+        partialize: (state) => ({
+          linkedWallets: state.linkedWallets,
+          activeWallet: state.activeWallet,
+          activeWalletAddress: state.activeWalletAddress,
+          primaryWalletAddress: state.primaryWalletAddress,
+          walletGroups: state.walletGroups,
+          historicalBalances: state.historicalBalances,
+          walletActivity: state.walletActivity,
         }),
-        version: 4,
+        version: 5,
         migrate: (persisted: any, version) => {
           if (!persisted) {
             return persisted;
           }
+
+          let next = { ...persisted };
+
           if (version < 2) {
-            return {
-              ...persisted,
-              primaryWalletAddress: persisted.primaryWalletAddress ?? null,
-              watchOnlyAccounts: persisted.watchOnlyAccounts ?? [],
-              watchOnlyBalances: persisted.watchOnlyBalances ?? {},
+            next = {
+              ...next,
+              primaryWalletAddress: next.primaryWalletAddress ?? null,
+              watchOnlyAccounts: next.watchOnlyAccounts ?? [],
+              watchOnlyBalances: next.watchOnlyBalances ?? {},
             };
           }
+
           if (version < 3) {
-            return {
-              ...persisted,
-              watchOnlyActivity: persisted.watchOnlyActivity ?? {},
+            next = {
+              ...next,
+              watchOnlyActivity: next.watchOnlyActivity ?? {},
             };
           }
+
           if (version < 4) {
-            return {
-              ...persisted,
-              historicalBalances: persisted.historicalBalances ?? {},
+            next = {
+              ...next,
+              historicalBalances: next.historicalBalances ?? {},
             };
           }
-          return persisted;
+
+          if (version < 5) {
+            next = {
+              ...next,
+              historicalBalances: next.historicalBalances ?? {},
+            };
+          }
+
+          delete next.watchOnlyAccounts;
+          delete next.watchOnlyBalances;
+          delete next.watchOnlyActivity;
+
+          return next;
         },
       },
     ),

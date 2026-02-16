@@ -186,159 +186,11 @@ export function useSolana(): UseSolanaResult {
       if (!targetAddress) {
         return null;
       }
+
+      let balance: number;
       try {
-        const balance = await rpcService.getBalance(targetAddress);
+        balance = await rpcService.getBalance(targetAddress);
         setBalances((prev) => ({ ...prev, [targetAddress]: balance }));
-
-        const now = new Date().toISOString();
-        const solBalance = balance / LAMPORTS_PER_SOL;
-        let totalUsdValue = 0;
-        let tokenDetails: Array<{
-          mint: string;
-          symbol?: string;
-          name?: string;
-          balance: number;
-          usdValue: number;
-          decimals: number;
-        }> = [];
-
-        try {
-          const [solPrice, tokenAccounts] = await Promise.all([
-            priceService.getSolPriceInUsd(),
-            rpcService.getParsedTokenAccountsByOwner(
-              new PublicKey(targetAddress),
-            ),
-          ]);
-
-          const tokensWithBalance = tokenAccounts.filter(
-            (token) => token.uiAmount > 0,
-          );
-
-          let tokenBalances: Array<{
-            mint: string;
-            balance: number;
-            decimals: number;
-            symbol?: string;
-            name?: string;
-            pricePerToken?: number;
-            usdValue?: number;
-            logoURI?: string;
-          }> = [];
-
-          if (tokensWithBalance.length === 0) {
-            tokenBalances =
-              await tokenMetadataService.getTokenBalancesForWallet(
-                targetAddress,
-              );
-          }
-
-          const isNativeSol = (mint: string, symbol?: string) => {
-            if (symbol === "SOL") return true;
-            return (
-              mint === "So11111111111111111111111111111111111111111" ||
-              mint === "So11111111111111111111111111111111111111112"
-            );
-          };
-
-          const filteredTokenBalances = tokenBalances.filter(
-            (token) => !isNativeSol(token.mint, token.symbol),
-          );
-
-          const mints =
-            tokensWithBalance.length > 0
-              ? tokensWithBalance.map((token) => token.mint)
-              : filteredTokenBalances.map((token) => token.mint);
-
-          const [mintPrices, metadataMap] = await Promise.all([
-            priceService.getTokenPricesInUsd(mints),
-            tokenMetadataService.getMetadataMapForWallet(targetAddress, mints),
-          ]);
-
-          console.log("MINT_PRICES_DEBUG", mintPrices);
-          console.log("METADATA_MAP_DEBUG", metadataMap);
-
-          const missingPrices: string[] = [];
-          tokenDetails =
-            tokensWithBalance.length > 0
-              ? tokensWithBalance.map((token) => {
-                  const price = mintPrices[token.mint];
-                  if (price === undefined) {
-                    missingPrices.push(
-                      metadataMap[token.mint]?.symbol ?? token.mint,
-                    );
-                  }
-
-                  const balance = token.uiAmount;
-                  const usdValue =
-                    typeof price === "number" ? balance * price : 0;
-
-                  return {
-                    mint: token.mint,
-                    symbol: metadataMap[token.mint]?.symbol,
-                    name: metadataMap[token.mint]?.name,
-                    balance,
-                    usdValue,
-                    decimals: token.decimals,
-                  };
-                })
-              : filteredTokenBalances.map((token) => {
-                  const price =
-                    mintPrices[token.mint] ?? token.pricePerToken ?? 0;
-                  if (!price) {
-                    missingPrices.push(token.symbol ?? token.mint);
-                  }
-
-                  const balance = token.balance;
-                  const usdValue =
-                    typeof price === "number"
-                      ? balance * price
-                      : (token.usdValue ?? 0);
-
-                  return {
-                    mint: token.mint,
-                    symbol: token.symbol ?? metadataMap[token.mint]?.symbol,
-                    name: token.name ?? metadataMap[token.mint]?.name,
-                    balance,
-                    usdValue,
-                    decimals: token.decimals,
-                  };
-                });
-
-          const tokenUsdValue = tokenDetails.reduce(
-            (sum, token) => sum + token.usdValue,
-            0,
-          );
-
-          totalUsdValue = solBalance * solPrice + tokenUsdValue;
-          setMissingTokenPrices(targetAddress, missingPrices);
-        } catch (pricingError) {
-          console.warn("Failed to aggregate token prices", pricingError);
-          const solPrice = await priceService.getSolPriceInUsd().catch(() => 0);
-          totalUsdValue = solBalance * solPrice;
-        }
-
-        const walletBalance = {
-          address: targetAddress,
-          balance: solBalance,
-          usdValue: Number(totalUsdValue.toFixed(2)),
-          lastUpdated: now,
-          tokens: tokenDetails,
-        };
-
-        setDetailedBalances((prev) => ({
-          ...prev,
-          [targetAddress]: walletBalance,
-        }));
-
-        // 使用 getState() 避免无限循环
-        const walletStore = useWalletStore.getState();
-        walletStore.updateDetailedBalance(walletBalance);
-        walletStore.updateHistoricalBalance(targetAddress, {
-          timestamp: Date.now(),
-          usd: walletBalance.usdValue,
-          sol: walletBalance.balance,
-        });
-        return balance;
       } catch (error) {
         console.warn("Error refreshing balance", error);
         setBalances((prev) => {
@@ -353,29 +205,166 @@ export function useSolana(): UseSolanaResult {
         });
         throw error;
       }
+
+      const now = new Date().toISOString();
+      const solBalance = balance / LAMPORTS_PER_SOL;
+      let totalUsdValue = 0;
+      let tokenDetails: Array<{
+        mint: string;
+        symbol?: string;
+        name?: string;
+        balance: number;
+        usdValue: number;
+        decimals: number;
+      }> = [];
+
+      try {
+        const [solPrice, tokenAccounts] = await Promise.all([
+          priceService.getSolPriceInUsd(),
+          rpcService.getParsedTokenAccountsByOwner(
+            new PublicKey(targetAddress),
+          ),
+        ]);
+
+        const tokensWithBalance = tokenAccounts.filter(
+          (token) => token.uiAmount > 0,
+        );
+
+        let tokenBalances: Array<{
+          mint: string;
+          balance: number;
+          decimals: number;
+          symbol?: string;
+          name?: string;
+          pricePerToken?: number;
+          usdValue?: number;
+          logoURI?: string;
+        }> = [];
+
+        if (tokensWithBalance.length === 0) {
+          tokenBalances =
+            await tokenMetadataService.getTokenBalancesForWallet(targetAddress);
+        }
+
+        const isNativeSol = (mint: string, symbol?: string) => {
+          if (symbol === "SOL") return true;
+          return (
+            mint === "So11111111111111111111111111111111111111111" ||
+            mint === "So11111111111111111111111111111111111111112"
+          );
+        };
+
+        const filteredTokenBalances = tokenBalances.filter(
+          (token) => !isNativeSol(token.mint, token.symbol),
+        );
+
+        const mints =
+          tokensWithBalance.length > 0
+            ? tokensWithBalance.map((token) => token.mint)
+            : filteredTokenBalances.map((token) => token.mint);
+
+        const [mintPrices, metadataMap] = await Promise.all([
+          priceService.getTokenPricesInUsd(mints),
+          tokenMetadataService.getMetadataMapForWallet(targetAddress, mints),
+        ]);
+
+        const missingPrices: string[] = [];
+        tokenDetails =
+          tokensWithBalance.length > 0
+            ? tokensWithBalance.map((token) => {
+                const price = mintPrices[token.mint];
+                if (price === undefined) {
+                  missingPrices.push(
+                    metadataMap[token.mint]?.symbol ?? token.mint,
+                  );
+                }
+
+                const balance = token.uiAmount;
+                const usdValue =
+                  typeof price === "number" ? balance * price : 0;
+
+                return {
+                  mint: token.mint,
+                  symbol: metadataMap[token.mint]?.symbol,
+                  name: metadataMap[token.mint]?.name,
+                  balance,
+                  usdValue,
+                  decimals: token.decimals,
+                };
+              })
+            : filteredTokenBalances.map((token) => {
+                const price =
+                  mintPrices[token.mint] ?? token.pricePerToken ?? 0;
+                if (!price) {
+                  missingPrices.push(token.symbol ?? token.mint);
+                }
+
+                const balance = token.balance;
+                const usdValue =
+                  typeof price === "number"
+                    ? balance * price
+                    : (token.usdValue ?? 0);
+
+                return {
+                  mint: token.mint,
+                  symbol: token.symbol ?? metadataMap[token.mint]?.symbol,
+                  name: token.name ?? metadataMap[token.mint]?.name,
+                  balance,
+                  usdValue,
+                  decimals: token.decimals,
+                };
+              });
+
+        const tokenUsdValue = tokenDetails.reduce(
+          (sum, token) => sum + token.usdValue,
+          0,
+        );
+
+        totalUsdValue = solBalance * solPrice + tokenUsdValue;
+        setMissingTokenPrices(targetAddress, missingPrices);
+      } catch (pricingError) {
+        console.warn("Failed to aggregate token prices", pricingError);
+        const solPrice = await priceService.getSolPriceInUsd().catch(() => 0);
+        totalUsdValue = solBalance * solPrice;
+      }
+
+      const walletBalance = {
+        address: targetAddress,
+        balance: solBalance,
+        usdValue: Number(totalUsdValue.toFixed(2)),
+        lastUpdated: now,
+        tokens: tokenDetails,
+      };
+
+      setDetailedBalances((prev) => ({
+        ...prev,
+        [targetAddress]: walletBalance,
+      }));
+
+      // 使用 getState() 避免无限循环
+      const walletStore = useWalletStore.getState();
+      walletStore.updateDetailedBalance(walletBalance);
+      walletStore.updateHistoricalBalance(targetAddress, {
+        timestamp: Date.now(),
+        usd: walletBalance.usdValue,
+        sol: walletBalance.balance,
+      });
+      return balance;
     },
     [activeWallet?.address, setMissingTokenPrices],
   );
 
   const normalizeAuthorization = useCallback(
-    (authorization: AuthorizationResult): LinkedWallet[] => {
-      const walletUriBase =
-        authorization.wallet_uri_base &&
-        authorization.wallet_uri_base.startsWith("https://")
-          ? authorization.wallet_uri_base
-          : null;
-
-      return authorization.accounts.map(
+    (authorization: AuthorizationResult): LinkedWallet[] =>
+      authorization.accounts.map(
         (accountFromWallet: { address: string; label?: string }) => ({
           address: decodeWalletAddress(accountFromWallet.address),
           label: accountFromWallet.label,
           authToken: authorization.auth_token,
-          walletUriBase,
           walletName: accountFromWallet.label,
           icon: (authorization as any).wallet_icon,
         }),
-      );
-    },
+      ),
     [],
   );
 
@@ -444,8 +433,7 @@ export function useSolana(): UseSolanaResult {
       try {
         return await walletService.startWalletAuthorization();
       } catch (error) {
-        handleAuthorizationError(error, "Wallet authorization");
-        throw new Error("Unexpected error in authorization");
+        return handleAuthorizationError(error, "Wallet authorization");
       }
     }, [handleAuthorizationError]);
 
@@ -517,38 +505,33 @@ export function useSolana(): UseSolanaResult {
       let reauthMethod: "silent" | "prompted" = "silent";
 
       try {
-        const result = await transact(
-          async (wallet: Web3MobileWallet) => {
-            const capabilities = await wallet.getCapabilities().catch((err) => {
-              console.warn("Capability probe failed", err);
-              return null;
+        const result = await transact(async (wallet: Web3MobileWallet) => {
+          const capabilities = await wallet.getCapabilities().catch((err) => {
+            console.warn("Capability probe failed", err);
+            return null;
+          });
+
+          let authorization: AuthorizationResult;
+          try {
+            authorization = await wallet.reauthorize({
+              identity: APP_IDENTITY,
+              auth_token: walletEntry.authToken,
             });
+          } catch (error) {
+            reauthMethod = "prompted";
+            authorization = await wallet.authorize({
+              identity: APP_IDENTITY,
+              chain: SOLANA_CLUSTER,
+              features: [
+                "solana:signAndSendTransactions",
+                "solana:signTransactions",
+                "solana:signMessages",
+              ],
+            });
+          }
 
-            let authorization: AuthorizationResult;
-            try {
-              authorization = await wallet.reauthorize({
-                identity: APP_IDENTITY,
-                auth_token: walletEntry.authToken,
-              });
-            } catch (error) {
-              reauthMethod = "prompted";
-              authorization = await wallet.authorize({
-                identity: APP_IDENTITY,
-                chain: SOLANA_CLUSTER,
-                features: [
-                  "solana:signAndSendTransactions",
-                  "solana:signTransactions",
-                  "solana:signMessages",
-                ],
-              });
-            }
-
-            return { authorization, capabilities };
-          },
-          walletEntry.walletUriBase
-            ? { baseUri: walletEntry.walletUriBase }
-            : undefined,
-        );
+          return { authorization, capabilities };
+        });
 
         const normalizedAccounts = normalizeAuthorization(result.authorization);
         upsertWallets(normalizedAccounts);
@@ -627,14 +610,9 @@ export function useSolana(): UseSolanaResult {
         );
         if (remainingWithToken.length === 0) {
           try {
-            await transact(
-              async (wallet) => {
-                await wallet.deauthorize({ auth_token: walletEntry.authToken });
-              },
-              walletEntry.walletUriBase
-                ? { baseUri: walletEntry.walletUriBase }
-                : undefined,
-            );
+            await transact(async (wallet) => {
+              await wallet.deauthorize({ auth_token: walletEntry.authToken });
+            });
           } catch (error) {
             console.warn("Deauthorize failed (ignored)", error);
           }
@@ -696,10 +674,17 @@ export function useSolana(): UseSolanaResult {
       if (amountSol <= 0) {
         throw new Error("Amount must be greater than zero");
       }
+      if (amountSol > 100000) {
+        throw new Error("Amount exceeds maximum allowed value");
+      }
 
       const sourceAddress = options?.fromAddress ?? activeWallet?.address;
       if (!sourceAddress) {
         throw new Error("Select a wallet before sending");
+      }
+
+      if (sourceAddress === recipientAddress) {
+        throw new Error("Cannot send SOL to the same address");
       }
 
       const walletEntry = linkedWallets.find(
@@ -707,6 +692,12 @@ export function useSolana(): UseSolanaResult {
       );
       if (!walletEntry) {
         throw new Error("Wallet not linked");
+      }
+
+      // Check if balance is sufficient
+      const currentBalance = balances[sourceAddress];
+      if (currentBalance && currentBalance < amountSol * LAMPORTS_PER_SOL) {
+        throw new Error("Insufficient balance");
       }
 
       await requireBiometricApproval("Authenticate to send SOL");
@@ -747,8 +738,7 @@ export function useSolana(): UseSolanaResult {
       let fallbackSignedTransaction: Transaction | null = null;
       let submittedSignature: string | null = null;
 
-      await transact(
-        async (wallet: Web3MobileWallet) => {
+      await transact(async (wallet: Web3MobileWallet) => {
           let authorization: AuthorizationResult;
           const capabilities = await wallet.getCapabilities().catch((err) => {
             console.warn("Capability probe failed", err);
@@ -815,11 +805,7 @@ export function useSolana(): UseSolanaResult {
             transactions: [transaction],
           });
           fallbackSignedTransaction = signedTransactions[0] ?? null;
-        },
-        walletEntry.walletUriBase
-          ? { baseUri: walletEntry.walletUriBase }
-          : undefined,
-      );
+        });
 
       if (!submittedSignature) {
         if (!fallbackSignedTransaction) {

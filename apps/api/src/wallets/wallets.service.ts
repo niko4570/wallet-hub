@@ -9,34 +9,14 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { LinkWalletDto } from './dto/link-wallet.dto';
 
 const JUPITER_PORTFOLIO_ENDPOINT =
-  'https://api.jup.ag/portfolio/v1/wallet' as const;
+  'https://api.jup.ag/portfolio/v1/positions' as const;
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
 const PORTFOLIO_CACHE_TTL_MS = 60 * 1000;
 const TRANSACTION_CACHE_TTL_MS = 30 * 1000;
-const JUPITER_TRANSACTIONS_ENDPOINT =
-  'https://api.jup.ag/portfolio/v1/transactions';
-const JUPITER_TRANSACTIONS_LIMIT = 50;
 
 interface PortfolioCacheEntry {
   wallet: WalletAccount;
   expiresAt: number;
-}
-
-interface TransactionCacheEntry {
-  records: JupiterTransaction[];
-  expiresAt: number;
-}
-
-export interface JupiterTransaction {
-  signature: string;
-  timestamp: number;
-  type: string;
-  description?: string;
-  source?: string;
-  pnlUsd?: number;
-  amountUsd?: number;
-  feeUsd?: number;
-  raw: Record<string, any>;
 }
 
 @Injectable()
@@ -47,7 +27,6 @@ export class WalletsService {
     process.env.EXPO_PUBLIC_JUPITER_API_KEY?.trim() ||
     '';
   private readonly portfolioCache = new Map<string, PortfolioCacheEntry>();
-  private readonly transactionCache = new Map<string, TransactionCacheEntry>();
 
   private readonly pendingActions: PendingAction[] = [
     {
@@ -133,23 +112,6 @@ export class WalletsService {
     return fallback;
   }
 
-  async getWalletTransactions(address: string): Promise<JupiterTransaction[]> {
-    const normalized = address.trim();
-    const cached = this.getCachedTransactions(normalized);
-    if (cached) {
-      return cached;
-    }
-
-    const fetched = await this.fetchTransactionsFromJupiter(normalized);
-    if (fetched.length > 0) {
-      this.transactionCache.set(normalized, {
-        records: fetched,
-        expiresAt: Date.now() + TRANSACTION_CACHE_TTL_MS,
-      });
-    }
-    return fetched;
-  }
-
   linkWallet(payload: LinkWalletDto): WalletAccount {
     const normalizedAddress = payload.address.trim();
     const existing = this.wallets.find(
@@ -220,18 +182,6 @@ export class WalletsService {
     return entry.wallet;
   }
 
-  private getCachedTransactions(address: string): JupiterTransaction[] | null {
-    const entry = this.transactionCache.get(address);
-    if (!entry) {
-      return null;
-    }
-    if (entry.expiresAt < Date.now()) {
-      this.transactionCache.delete(address);
-      return null;
-    }
-    return entry.records;
-  }
-
   private upsertWallet(nextWallet: WalletAccount) {
     const existingIndex = this.wallets.findIndex(
       (wallet) => wallet.address === nextWallet.address,
@@ -296,24 +246,19 @@ export class WalletsService {
     if (Array.isArray(payload?.data?.wallet?.tokens)) {
       return payload.data.wallet.tokens;
     }
-    return [];
-  }
-
-  private extractTransactions(payload: any): any[] {
-    if (!payload) {
-      return [];
-    }
-    if (Array.isArray(payload)) {
-      return payload;
-    }
-    if (Array.isArray(payload?.transactions)) {
-      return payload.transactions;
-    }
-    if (Array.isArray(payload?.data?.transactions)) {
-      return payload.data.transactions;
-    }
-    if (Array.isArray(payload?.data)) {
-      return payload.data;
+    if (Array.isArray(payload?.elements)) {
+      return payload.elements
+        .filter((element: any) => element.type === 'token')
+        .map((element: any) => ({
+          mint: element.data?.mint,
+          symbol: element.data?.symbol,
+          name: element.data?.name,
+          amount: element.data?.amount,
+          decimals: element.data?.decimals,
+          usdValue: element.value,
+          pricePerToken: element.data?.price,
+          logoURI: element.data?.logoURI,
+        }));
     }
     return [];
   }
@@ -381,6 +326,13 @@ export class WalletsService {
           payload?.totalValueUsd ??
           payload?.wallet?.totalValueUsd ??
           payload?.data?.totalValueUsd ??
+          (Array.isArray(payload?.elements)
+            ? payload.elements.reduce(
+                (sum: number, element: { value?: number }) =>
+                  sum + (element.value || 0),
+                0,
+              )
+            : 0) ??
           tokens.reduce((sum, balance) => sum + balance.usdValue, 0)
         ).toFixed(2),
       );
@@ -402,74 +354,5 @@ export class WalletsService {
       );
       return null;
     }
-  }
-
-  private async fetchTransactionsFromJupiter(
-    address: string,
-  ): Promise<JupiterTransaction[]> {
-    if (!this.jupiterApiKey) {
-      this.logger.warn(
-        'Jupiter API key missing; cannot fetch transaction history',
-      );
-      return [];
-    }
-
-    try {
-      const response = await fetch(JUPITER_TRANSACTIONS_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          'x-api-key': this.jupiterApiKey,
-        },
-        body: JSON.stringify({
-          wallet: address,
-          limit: JUPITER_TRANSACTIONS_LIMIT,
-        }),
-      });
-
-      if (!response.ok) {
-        const body = await response.text().catch(() => '');
-        this.logger.warn(
-          `Jupiter transactions API error ${response.status} for ${address}: ${body}`,
-        );
-        return [];
-      }
-
-      const payload = await response.json();
-      return this.extractTransactions(payload)
-        .map((entry) => this.normalizeTransaction(entry))
-        .filter(Boolean) as JupiterTransaction[];
-    } catch (error) {
-      this.logger.error(
-        `Failed to fetch Jupiter transactions for ${address}`,
-        error instanceof Error ? error.stack : String(error),
-      );
-      return [];
-    }
-  }
-
-  private normalizeTransaction(entry: any): JupiterTransaction | null {
-    const signature =
-      entry?.signature ??
-      entry?.txSignature ??
-      entry?.transactionSignature ??
-      null;
-    if (!signature) {
-      return null;
-    }
-
-    return {
-      signature,
-      timestamp: this.toTimestamp(entry?.timestamp ?? entry?.blockTime),
-      type: String(entry?.type ?? entry?.action ?? 'unknown').toLowerCase(),
-      description: entry?.description ?? entry?.label,
-      source: entry?.platform ?? entry?.dex ?? entry?.programId ?? 'jupiter',
-      pnlUsd: this.toNumber(entry?.pnlUsd),
-      amountUsd:
-        this.toNumber(entry?.amountUsd) ?? this.toNumber(entry?.volumeUsd),
-      feeUsd: this.toNumber(entry?.feeUsd ?? entry?.feesUsd),
-      raw: entry,
-    };
   }
 }

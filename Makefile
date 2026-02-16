@@ -14,7 +14,7 @@ ENV_EXPORT := EXPO_PUBLIC_API_URL=$(EXPO_PUBLIC_API_URL) \
 	EXPO_PUBLIC_COINGECKO_API_KEY=$(EXPO_PUBLIC_COINGECKO_API_KEY) \
 	EXPO_PUBLIC_HELIUS_API_BASE=$(EXPO_PUBLIC_HELIUS_API_BASE)
 
-.PHONY: help install dev-api dev-mobile dev-app dev-all build build-api build-contracts lint test-api android adb-reverse web clean-mobile clean-app ios check-env-mobile print-env-mobile export-env setup
+.PHONY: help install dev-api dev-mobile dev-app dev-all build build-api build-contracts lint test-api android adb-reverse web clean-mobile clean-app ios check-env-mobile print-env-mobile export-env setup eas-build-dev eas-build-preview eas-build-prod eas-submit typecheck-mobile
 
 help:
 	@echo "WalletHub shortcuts:"
@@ -37,6 +37,11 @@ help:
 	@echo "  make check-env-mobile # warn if mobile env vars are missing"
 	@echo "  make print-env-mobile # print mobile env vars"
 	@echo "  make export-env     # export environment variables"
+	@echo "  make typecheck-mobile # run mobile TypeScript check"
+	@echo "  make eas-build-dev  # build development APK with EAS"
+	@echo "  make eas-build-preview # build preview APK with EAS"
+	@echo "  make eas-build-prod # build production AAB with EAS"
+	@echo "  make eas-submit     # submit to Google Play"
 
 install:
 	npm install
@@ -129,3 +134,21 @@ export-env:
 	@echo "EXPO_PUBLIC_COINGECKO_API_KEY=$(EXPO_PUBLIC_COINGECKO_API_KEY)"
 	@echo "EXPO_PUBLIC_HELIUS_API_BASE=$(EXPO_PUBLIC_HELIUS_API_BASE)"
 	@echo "\nAdd these to your .env file if not already set."
+
+# Type check mobile app
+typecheck-mobile:
+	npx tsc -p apps/mobile/tsconfig.json --noEmit
+
+# EAS build commands
+eas-build-dev:
+	cd apps/mobile && eas build --profile development --platform android
+
+eas-build-preview:
+	cd apps/mobile && eas build --profile preview --platform android
+
+eas-build-prod:
+	cd apps/mobile && eas build --profile production --platform android
+
+eas-submit:
+	cd apps/mobile && eas submit --platform android --latest
+

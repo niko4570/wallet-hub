@@ -9,7 +9,7 @@ module.exports = function (api) {
           include: ["EXPO_ROUTER_APP_ROOT"],
         },
       ],
-      "react-native-reanimated/plugin",
+      "react-native-worklets/plugin",
     ],
   };
 };

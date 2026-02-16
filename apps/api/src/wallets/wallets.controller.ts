@@ -20,10 +20,7 @@ export class WalletsController {
     return this.walletsService.getWallet(address);
   }
 
-  @Get(':address/transactions')
-  getWalletTransactions(@Param('address') address: string) {
-    return this.walletsService.getWalletTransactions(address);
-  }
+
 
   @Get(':address/activity')
   getActivity(@Param('address') address: string) {

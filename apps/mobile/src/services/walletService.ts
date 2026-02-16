@@ -113,7 +113,6 @@ class WalletService {
             auth_token: wallet.authToken,
           } as any);
         },
-        wallet.walletUriBase ? { baseUri: wallet.walletUriBase } : undefined,
       );
 
       const [signature] = signedPayloads ?? [];
@@ -142,19 +141,10 @@ class WalletService {
   private normalizeAuthorization(
     authorization: AuthorizationResult,
   ): LinkedWallet[] {
-    let walletUriBase: string | null = null;
-    if (
-      authorization.wallet_uri_base &&
-      authorization.wallet_uri_base.startsWith("https://")
-    ) {
-      walletUriBase = authorization.wallet_uri_base;
-    }
-
     return authorization.accounts.map((accountFromWallet) => ({
       address: decodeWalletAddress(accountFromWallet.address),
       label: accountFromWallet.label,
       authToken: authorization.auth_token,
-      walletUriBase,
       walletName: accountFromWallet.label,
       icon: (authorization as any).wallet_icon,
     }));

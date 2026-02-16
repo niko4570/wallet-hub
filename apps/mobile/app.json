@@ -1,31 +1,63 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "WalletHub",
+    "slug": "wallethub",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
+    "scheme": "wallethub",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#050814"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.karlyo3o.wallethub",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "WalletHub uses Face ID to secure wallet operations and transactions.",
+        "NSCameraUsageDescription": "WalletHub needs camera access to scan QR codes for wallet addresses."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#050814"
       },
+      "permissions": [
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "CAMERA",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.karlyo3o.mobile"
+      "package": "com.karlyo3o.wallethub"
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-local-authentication",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#9B8CFF"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "wallethub-monolith"
+      }
     }
   }
 }

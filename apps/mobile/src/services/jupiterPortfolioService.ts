@@ -1,6 +1,6 @@
 import { jupiterService } from "./jupiterService";
 
-const PORTFOLIO_ENDPOINT = "/v6/portfolio/wallet";
+const PORTFOLIO_ENDPOINT = "/portfolio/v1/positions";
 
 export interface JupiterPortfolioToken {
   address?: string;
@@ -51,6 +51,20 @@ const extractTokensArray = (payload: any): JupiterPortfolioToken[] => {
   if (Array.isArray(payload?.data?.wallet?.tokens)) {
     return payload.data.wallet.tokens;
   }
+  if (Array.isArray(payload.elements)) {
+    return payload.elements
+      .filter((element: any) => element.type === "token")
+      .map((element: any) => ({
+        mint: element.data?.mint,
+        symbol: element.data?.symbol,
+        name: element.data?.name,
+        balance: element.data?.amount,
+        decimals: element.data?.decimals,
+        usdValue: element.value,
+        pricePerToken: element.data?.price,
+        logoURI: element.data?.logoURI,
+      }));
+  }
   return [];
 };
 
@@ -68,6 +82,12 @@ const extractTotalValue = (payload: any): number => {
     if (typeof candidate === "number" && Number.isFinite(candidate)) {
       return candidate;
     }
+  }
+  if (Array.isArray(payload.elements)) {
+    return payload.elements.reduce(
+      (sum: number, element: { value?: number }) => sum + (element.value || 0),
+      0,
+    );
   }
   return 0;
 };

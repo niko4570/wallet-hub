@@ -145,7 +145,6 @@ class WalletAdapterService {
 
           return signedSignature;
         },
-        wallet.walletUriBase ? { baseUri: wallet.walletUriBase } : undefined,
       );
 
       return signature;
