@@ -1,5 +1,10 @@
 {
   "android": {
     "package": "com.karlyo3o.wallethub"
+  },
+  "extra": {
+    "eas": {
+      "projectId": "4d546a84-45b7-45b7-9393-053919c054c9"
+    }
   }
 }
