@@ -38,7 +38,9 @@ yarn-error.*
 
 # generated native folders
 /ios
-/android
 
-# exception for Firebase config
+# android folder - ignore most but keep Firebase config
+android/
+!android/app/
+android/app/*
 !android/app/google-services.json
