@@ -26,13 +26,12 @@ import * as Clipboard from "expo-clipboard";
 import { useSolana } from "../context/SolanaContext";
 import { useWalletStore } from "../store/walletStore";
 import { formatUsd, formatAddress, formatAmount } from "../utils/format";
-import { LinkedWallet, WalletActivity } from "../types/wallet";
+import { LinkedWallet } from "../types/wallet";
 import * as Haptics from "expo-haptics";
 import { toast } from "../components/common/ErrorToast";
 import { fetchAccountSnapshot } from "../services/watchlistDataService";
 import { BalanceChart } from "../components/analytics/BalanceChart";
 import { TokenPie } from "../components/analytics/TokenPie";
-import { ActivityList } from "../components/analytics/ActivityList";
 import { notificationService } from "../services/notificationService";
 import { requireBiometricApproval } from "../security/biometrics";
 
@@ -93,8 +92,6 @@ const WalletScreen = () => {
     removeWallet,
     primaryWalletAddress,
     setPrimaryWalletAddress,
-    walletActivity,
-    setWalletActivity,
   } = useWalletStore();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -105,19 +102,8 @@ const WalletScreen = () => {
   const [sendAmount, setSendAmount] = useState("");
   const [sending, setSending] = useState(false);
   const [estimatedFee, setEstimatedFee] = useState<number | null>(null);
-  const [activityLoading, setActivityLoading] = useState(false);
-  const [activityReloadNonce, setActivityReloadNonce] = useState(0);
-  const [selectedActivity, setSelectedActivity] = useState<WalletActivity | null>(null);
-  const [activityDetailModalVisible, setActivityDetailModalVisible] = useState(false);
 
-  const activityTargetAddress = primaryWalletAddress ?? activeWallet?.address ?? null;
-  const portfolioActivity = activityTargetAddress 
-    ? (walletActivity[activityTargetAddress] || [])
-    : [];
 
-  const triggerActivityReload = useCallback(() => {
-    setActivityReloadNonce((prev) => prev + 1);
-  }, []);
 
   // Request notification permissions on load
   useEffect(() => {
@@ -155,35 +141,7 @@ const WalletScreen = () => {
       );
   }, [linkedWallets, primaryWalletAddress]);
 
-  useEffect(() => {
-    if (!activityTargetAddress) {
-      return;
-    }
 
-    let cancelled = false;
-    setActivityLoading(true);
-    fetchAccountSnapshot(activityTargetAddress)
-      .then(({ activity }) => {
-        if (cancelled) {
-          return;
-        }
-        setWalletActivity(activityTargetAddress, activity.slice(0, 50));
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          console.warn("Failed to load activity", err);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setActivityLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activityTargetAddress, activityReloadNonce, setWalletActivity]);
 
   // Estimate fee when send modal is open and inputs are valid
   useEffect(() => {
@@ -235,13 +193,12 @@ const WalletScreen = () => {
       );
 
       await Promise.all(refreshPromises);
-      triggerActivityReload();
     } catch (err: any) {
       console.warn("Refresh failed", err);
     } finally {
       setRefreshing(false);
     }
-  }, [linkedWallets, refreshBalance, triggerActivityReload]);
+  }, [linkedWallets, refreshBalance]);
 
   const openAccountModal = useCallback(() => {
     setConnectModalVisible(true);
@@ -418,7 +375,7 @@ const WalletScreen = () => {
         symbol: "SOL",
         address: activeWallet.address,
       });
-      triggerActivityReload();
+
     } catch (err: any) {
       console.warn("Send failed", err);
       toast.show({
@@ -437,7 +394,6 @@ const WalletScreen = () => {
     sendAmount,
     sendRecipient,
     sendSol,
-    triggerActivityReload,
   ]);
 
   const handleReceive = useCallback(() => {
@@ -562,11 +518,7 @@ const WalletScreen = () => {
     return [];
   }, [primaryWalletAddress, activeWallet]);
 
-  // Get combined activity data
-  const combinedActivity = useMemo(
-    () => portfolioActivity.slice(0, 10),
-    [portfolioActivity],
-  );
+
 
   return (
     <View style={styles.screen}>
@@ -1180,114 +1132,7 @@ const WalletScreen = () => {
           </View>
         </Modal>
 
-        {/* Activity Detail Modal */}
-        <Modal
-          animationType="slide"
-          transparent
-          visible={activityDetailModalVisible}
-          onRequestClose={() => setActivityDetailModalVisible(false)}
-        >
-          <View style={styles.modalBackdrop}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Transaction Details</Text>
-              {selectedActivity && (
-                <View style={styles.activityDetailContainer}>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Type</Text>
-                    <Text style={styles.detailValue}>
-                      {selectedActivity.description || selectedActivity.type}
-                    </Text>
-                  </View>
-                  
-                  {selectedActivity.amount && (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Amount</Text>
-                      <Text style={[
-                        styles.detailValue,
-                        {
-                          color: selectedActivity.direction === 'in' ? '#9CFFDA' :
-                                 selectedActivity.direction === 'out' ? '#F43F5E' : '#6366F1'
-                        }
-                      ]}>
-                        {selectedActivity.direction === 'out' ? '-' : '+'} {formatAmount(selectedActivity.amount)}
-                      </Text>
-                    </View>
-                  )}
-                  
-                  {selectedActivity.fee && (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Fee</Text>
-                      <Text style={styles.detailValue}>
-                        {formatAmount(selectedActivity.fee)} SOL
-                      </Text>
-                    </View>
-                  )}
-                  
-                  {selectedActivity.source && (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Source</Text>
-                      <TouchableOpacity
-                        onPress={async () => {
-                          await Clipboard.setStringAsync(selectedActivity.source!);
-                          toast.show({ message: "Address copied", type: "success" });
-                        }}
-                      >
-                        <Text style={[styles.detailValue, styles.detailAddress]}>
-                          {formatAddress(selectedActivity.source)}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                  
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Time</Text>
-                    <Text style={styles.detailValue}>
-                      {new Date(selectedActivity.timestamp).toLocaleString()}
-                    </Text>
-                  </View>
-                  
-                  {selectedActivity.signature && (
-                    <>
-                      <View style={styles.detailRow}>
-                        <Text style={styles.detailLabel}>Signature</Text>
-                        <TouchableOpacity
-                          onPress={async () => {
-                            await Clipboard.setStringAsync(selectedActivity.signature);
-                            toast.show({ message: "Signature copied", type: "success" });
-                          }}
-                        >
-                          <Text style={[styles.detailValue, styles.detailAddress]}>
-                            {formatAddress(selectedActivity.signature)}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                      
-                      <TouchableOpacity
-                        style={styles.explorerButton}
-                        onPress={() => {
-                          const explorerUrl = `https://solscan.io/tx/${selectedActivity.signature}`;
-                          Linking.openURL(explorerUrl);
-                        }}
-                      >
-                        <Feather name="external-link" size={16} color="#FFFFFF" />
-                        <Text style={styles.explorerButtonText}>View on Solscan</Text>
-                      </TouchableOpacity>
-                    </>
-                  )}
-                </View>
-              )}
-              <TouchableOpacity
-                style={styles.modalClose}
-                onPress={() => {
-                  setActivityDetailModalVisible(false);
-                  setSelectedActivity(null);
-                }}
-              >
-                <Text style={styles.modalCloseText}>Close</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
+
 
         {/* Balance Chart */}
         <BalanceChart
@@ -1305,19 +1150,7 @@ const WalletScreen = () => {
           showPercentage={true}
         />
 
-        {/* Activity List */}
-        <ActivityList
-          data={combinedActivity}
-          title={
-            activityLoading ? "Recent Activity (updating...)" : "Recent Activity"
-          }
-          height={300}
-          onActivityPress={(activity) => {
-            setSelectedActivity(activity);
-            setActivityDetailModalVisible(true);
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          }}
-        />
+
       </ScrollView>
     </View>
   );
