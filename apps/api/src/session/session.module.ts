@@ -5,6 +5,7 @@ import { BiometricVerificationService } from '../security/biometric-verification
 import { MpcSignerService } from '../security/mpc-signer.service';
 import { SilentReauthorizationService } from './silent-reauthorization.service';
 import { TransactionAuditService } from './transaction-audit.service';
+import { InfrastructureConfigService } from '../config/infrastructure-config.service';
 
 @Module({
   controllers: [SessionController],
@@ -14,6 +15,7 @@ import { TransactionAuditService } from './transaction-audit.service';
     MpcSignerService,
     SilentReauthorizationService,
     TransactionAuditService,
+    InfrastructureConfigService,
   ],
   exports: [SessionService],
 })

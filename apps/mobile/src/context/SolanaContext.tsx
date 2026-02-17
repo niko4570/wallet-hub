@@ -1,7 +1,13 @@
 import React, { createContext, useContext, ReactNode, useMemo } from "react";
 import { useSolana as useSolanaHook } from "../hooks/useSolana";
 import type { UseSolanaResult } from "../hooks/useSolana";
-import { useWalletStore } from "../store/walletStore";
+import { 
+  useWalletBaseStore, 
+  useWalletBalanceStore, 
+  useWalletActivityStore, 
+  useWalletHistoricalStore,
+  useWalletStatusStore
+} from "../store/walletStore";
 
 interface SolanaContextType {
   solana: UseSolanaResult;
@@ -13,28 +19,34 @@ export const SolanaProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
   const solana = useSolanaHook();
+  
+  // Use split stores
   const {
     linkedWallets,
     activeWallet,
     activeWalletAddress,
-    balances,
-    detailedBalances,
     setLinkedWallets,
     setActiveWallet,
     setActiveWalletAddress,
+  } = useWalletBaseStore();
+  
+  const {
+    balances,
+    detailedBalances,
     updateBalance,
     updateDetailedBalance,
-  } = useWalletStore();
+  } = useWalletBalanceStore();
+  
   const [hasHydrated, setHasHydrated] = React.useState(
-    useWalletStore.persist?.hasHydrated?.() ?? true,
+    useWalletBaseStore.persist?.hasHydrated?.() ?? true,
   );
 
   React.useEffect(() => {
-    const unsubscribe = useWalletStore.persist?.onFinishHydration?.(() => {
+    const unsubscribe = useWalletBaseStore.persist?.onFinishHydration?.(() => {
       setHasHydrated(true);
     });
 
-    if (useWalletStore.persist?.hasHydrated?.()) {
+    if (useWalletBaseStore.persist?.hasHydrated?.()) {
       setHasHydrated(true);
     }
 
@@ -161,5 +173,11 @@ export const useSolana = (): UseSolanaResult => {
   return context.solana;
 };
 
-// Also export the wallet store directly for components that need more control
-export { useWalletStore };
+// Also export the wallet stores directly for components that need more control
+export { 
+  useWalletBaseStore, 
+  useWalletBalanceStore, 
+  useWalletActivityStore, 
+  useWalletHistoricalStore,
+  useWalletStatusStore
+ };

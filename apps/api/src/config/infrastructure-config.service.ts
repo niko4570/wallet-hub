@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 export interface EndpointDescriptor {
   host: string;
@@ -19,36 +20,31 @@ export interface InfrastructureDescriptor {
   priorityRpc: EndpointDescriptor;
 }
 
-const LOCAL_DATABASE_FALLBACK =
-  'postgresql://postgres:postgres@localhost:5432/wallethub';
-
 @Injectable()
 export class InfrastructureConfigService {
-  readonly databaseUrl: string;
-  readonly solanaRpcUrl: string;
-  readonly priorityRpcUrl: string;
-  readonly heliusApiKey?: string;
+  constructor(private readonly configService: ConfigService) {}
 
-  constructor() {
-    const dbEnv = process.env.DATABASE_URL?.trim();
-    this.databaseUrl =
-      dbEnv && dbEnv.length > 0 ? dbEnv : LOCAL_DATABASE_FALLBACK;
+  get databaseUrl(): string {
+    return this.configService.get<string>('database.url')!;
+  }
 
-    const heliusKey = process.env.HELIUS_API_KEY?.trim();
-    this.heliusApiKey =
-      heliusKey && heliusKey.length > 0 ? heliusKey : undefined;
+  get solanaRpcUrl(): string {
+    return this.configService.get<string>('solana.rpcUrl')!;
+  }
 
-    const rpcOverride = process.env.SOLANA_RPC_URL?.trim();
-    this.solanaRpcUrl =
-      rpcOverride && rpcOverride.length > 0
-        ? rpcOverride
-        : this.buildHeliusRpcUrl();
+  get priorityRpcUrl(): string {
+    return (
+      this.configService.get<string>('solana.priorityRpcUrl') ||
+      this.solanaRpcUrl
+    );
+  }
 
-    const priorityOverride = process.env.SOLANA_PRIORITY_RPC_URL?.trim();
-    this.priorityRpcUrl =
-      priorityOverride && priorityOverride.length > 0
-        ? priorityOverride
-        : this.solanaRpcUrl;
+  get heliusApiKey(): string | undefined {
+    return this.configService.get<string>('helius.apiKey');
+  }
+
+  get sessionKeysEnabled(): boolean {
+    return this.configService.get<boolean>('session.enabled')!;
   }
 
   describe(): InfrastructureDescriptor {
@@ -59,12 +55,7 @@ export class InfrastructureConfigService {
     };
   }
 
-  private buildHeliusRpcUrl(): string {
-    if (this.heliusApiKey) {
-      return `https://mainnet.helius-rpc.com/?api-key=${this.heliusApiKey}`;
-    }
-    return 'https://api.mainnet-beta.solana.com';
-  }
+
 
   private describeDatabase(): DatabaseDescriptor {
     const vendor = this.databaseUrl.startsWith('postgres')

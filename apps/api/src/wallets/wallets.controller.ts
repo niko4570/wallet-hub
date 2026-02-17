@@ -20,8 +20,6 @@ export class WalletsController {
     return this.walletsService.getWallet(address);
   }
 
-
-
   @Get(':address/activity')
   getActivity(@Param('address') address: string) {
     return this.heliusService.getActivity(address);

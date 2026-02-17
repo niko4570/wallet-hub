@@ -13,15 +13,18 @@ import { IssueSessionKeyDto } from './dto/issue-session-key.dto';
 import { RevokeSessionKeyDto } from './dto/revoke-session-key.dto';
 import { BiometricVerificationService } from '../security/biometric-verification.service';
 import { MpcSignerService } from '../security/mpc-signer.service';
+import { InfrastructureConfigService } from '../config/infrastructure-config.service';
 
 @Injectable()
 export class SessionService {
   constructor(
     private readonly biometricVerifier: BiometricVerificationService,
     private readonly mpcSigner: MpcSignerService,
+    private readonly infrastructureConfig: InfrastructureConfigService,
   ) {}
-  private readonly sessionKeysEnabled =
-    (process.env.SESSION_KEYS_ENABLED ?? '').toLowerCase() === 'true';
+  private get sessionKeysEnabled(): boolean {
+    return this.infrastructureConfig.sessionKeysEnabled;
+  }
   private readonly policies: SessionPolicy[] = [
     {
       id: 'policy-primary',
