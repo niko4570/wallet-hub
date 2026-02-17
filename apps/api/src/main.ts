@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
+import { LoggingInterceptor } from './interceptors/logging.interceptor';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { cors: true });
   const maxBodyBytes = Number(process.env.SESSION_MAX_BODY_BYTES ?? 65536);
@@ -14,6 +15,8 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
+
+  app.useGlobalInterceptors(new LoggingInterceptor());
 
   const port = process.env.PORT ? Number(process.env.PORT) : 3000;
   await app.listen(port);

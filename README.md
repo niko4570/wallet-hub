@@ -103,3 +103,47 @@ The backend currently uses in-memory stores, enabling fast hackathon iterations.
 
 - Swap the MPC signer abstraction with a real provider integration once credentials are provisioned.
 - Extend Expo UI with onboarding, activity feed, and device trust center.
+
+## Optimizations
+
+### API Service Optimizations
+
+1. **Configuration Management**
+   - Integrated NestJS Config module for structured configuration
+   - Implemented environment variable validation using Joi
+   - Created centralized configuration in `app.config.ts`
+   - Added type-safe configuration access via `InfrastructureConfigService`
+
+2. **Performance Monitoring**
+   - Implemented global logging interceptor to track request/response times
+   - Added detailed logger middleware for comprehensive request tracking
+   - Enhanced logging with timestamps, IP addresses, and user agents
+
+3. **Security**
+   - Improved error handling and logging
+   - Added input validation for all API endpoints
+
+### Mobile App Optimizations
+
+1. **State Management**
+   - Implemented Zustand state splitting for better performance
+   - Created multiple specialized stores:
+     - `useWalletBaseStore`: Manages wallet basic information and groups
+     - `useWalletBalanceStore`: Handles balance data and calculations
+     - `useWalletActivityStore`: Manages transaction history
+     - `useWalletHistoricalStore`: Tracks historical balance data
+     - `useWalletStatusStore`: Manages loading states and errors
+   - Created optimized selectors for render performance
+
+2. **Secure Storage**
+   - Implemented `SecureStorageService` using Expo Secure Store
+   - Added support for storing sensitive data with optional biometric authentication
+   - Created methods for handling both simple values and complex data structures
+   - Defined common keys for consistent storage access
+
+3. **Code Quality**
+   - Improved type safety across the codebase
+   - Enhanced error handling and logging
+   - Optimized component rendering performance
+
+These optimizations have significantly improved the maintainability, performance, and security of the WalletHub project, making it more scalable and user-friendly.
