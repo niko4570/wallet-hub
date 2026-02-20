@@ -9,7 +9,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSolana } from '../../context/SolanaContext';
-import { useWalletStore } from '../../store/walletStore';
+import { useWalletStore, useWalletStatusStore } from '../../navigation/walletStore';
 import * as Haptics from 'expo-haptics';
 
 interface ConnectButtonProps {
@@ -25,14 +25,14 @@ export const ConnectButton: React.FC<ConnectButtonProps> = ({
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const { startAuthorization, finalizeAuthorization, refreshBalance } = useSolana();
-  const walletStore = useWalletStore();
-  const { linkedWallets } = walletStore;
+  const { linkedWallets } = useWalletStore();
+  const { setError } = useWalletStatusStore();
 
   const handleConnect = useCallback(async () => {
     if (isLoading) return;
 
     setIsLoading(true);
-    walletStore.setError(null);
+    setError(null);
 
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -52,7 +52,7 @@ export const ConnectButton: React.FC<ConnectButtonProps> = ({
       }
     } catch (error: any) {
       console.error('Wallet connection error:', error);
-      walletStore.setError(error.message || 'Failed to connect wallet');
+      setError(error.message || 'Failed to connect wallet');
       
       if (onError) {
         onError(error);
@@ -60,7 +60,7 @@ export const ConnectButton: React.FC<ConnectButtonProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, startAuthorization, finalizeAuthorization, refreshBalance, onConnect, onError, walletStore]);
+  }, [isLoading, startAuthorization, finalizeAuthorization, refreshBalance, onConnect, onError, setError]);
 
   const isConnected = linkedWallets.length > 0;
 

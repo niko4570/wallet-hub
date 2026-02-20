@@ -5,8 +5,8 @@ import React, {
   useState,
   ReactNode,
 } from "react";
-import { useSolana } from "../hooks/useSolana";
-import { useWalletStore } from "../store/walletStore";
+import { useSolana } from "./SolanaContext";
+import { useWalletStatusStore, useWalletBaseStore } from "../navigation/walletStore";
 import { LinkedWallet } from "../types/wallet";
 
 interface WalletConnectionContextType {
@@ -50,7 +50,7 @@ export const WalletConnectionProvider: React.FC<
     disconnect,
     selectActiveWallet,
   } = useSolana();
-  const walletStore = useWalletStore();
+  const walletStatusStore = useWalletStatusStore();
 
   const connectWallet = useCallback(
     async (): Promise<LinkedWallet[]> => {
@@ -59,20 +59,20 @@ export const WalletConnectionProvider: React.FC<
       }
 
       setIsConnecting(true);
-      walletStore.setError(null);
+      walletStatusStore.setError(null);
 
       try {
         const connectedWallets = await registerPrimaryWallet();
         return connectedWallets;
       } catch (error: any) {
         console.error("Wallet connection error:", error);
-        walletStore.setError(error.message || "Failed to connect wallet");
+        walletStatusStore.setError(error.message || "Failed to connect wallet");
         throw error;
       } finally {
         setIsConnecting(false);
       }
     },
-    [isConnecting, registerPrimaryWallet, walletStore],
+    [isConnecting, registerPrimaryWallet, walletStatusStore],
   );
 
   const disconnectWallet = useCallback(
@@ -87,9 +87,11 @@ export const WalletConnectionProvider: React.FC<
     [disconnect],
   );
 
+  const walletBaseStore = useWalletBaseStore();
+  
   const disconnectAllWallets = useCallback(() => {
-    walletStore.clearAllWallets();
-  }, [walletStore]);
+    walletBaseStore.clearAllWallets();
+  }, [walletBaseStore]);
 
   const switchWallet = useCallback(
     (address: string) => {
@@ -103,7 +105,7 @@ export const WalletConnectionProvider: React.FC<
     isConnected: linkedWallets.length > 0,
     connectedWallets: linkedWallets,
     activeWallet,
-    error: walletStore.error,
+    error: walletStatusStore.error,
     connectWallet,
     disconnectWallet,
     disconnectAllWallets,

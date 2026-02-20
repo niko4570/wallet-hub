@@ -24,7 +24,11 @@ import { tokenMetadataService } from "../services/tokenMetadataService";
 import { HELIUS_RPC_URL, SOLANA_CLUSTER } from "../config/env";
 import { requireBiometricApproval } from "../security/biometrics";
 import { decodeWalletAddress } from "../utils/solanaAddress";
-import { useWalletStore, useWalletBalanceStore, useWalletHistoricalStore } from "../store/walletStore";
+import {
+  useWalletStore,
+  useWalletBalanceStore,
+  useWalletHistoricalStore,
+} from "../navigation/walletStore";
 import { LinkedWallet, AuthorizationPreview } from "../types/wallet";
 
 const APP_IDENTITY = {
@@ -155,14 +159,16 @@ export function useSolana(): UseSolanaResult {
     >
   >({});
   const setMissingTokenPrices = useWalletBalanceStore(
-    (state) => state.setMissingTokenPrices,
+    (state: any) => state.setMissingTokenPrices,
   );
   const setPrimaryWalletAddressInStore = useWalletStore(
-    (state) => state.setPrimaryWalletAddress,
+    (state: any) => state.setPrimaryWalletAddress,
   );
-  const removeWalletFromStore = useWalletStore((state) => state.removeWallet);
+  const removeWalletFromStore = useWalletStore(
+    (state: any) => state.removeWallet,
+  );
   const primaryWalletAddress = useWalletStore(
-    (state) => state.primaryWalletAddress,
+    (state: any) => state.primaryWalletAddress,
   );
 
   const connection = useMemo(
@@ -740,73 +746,73 @@ export function useSolana(): UseSolanaResult {
       let submittedSignature: string | null = null;
 
       await transact(async (wallet: Web3MobileWallet) => {
-          let authorization: AuthorizationResult;
-          const capabilities = await wallet.getCapabilities().catch((err) => {
-            console.warn("Capability probe failed", err);
-            return null;
+        let authorization: AuthorizationResult;
+        const capabilities = await wallet.getCapabilities().catch((err) => {
+          console.warn("Capability probe failed", err);
+          return null;
+        });
+        capabilityReport = mapCapabilities(capabilities);
+
+        try {
+          authorization = await wallet.reauthorize({
+            identity: APP_IDENTITY,
+            auth_token: walletEntry.authToken,
           });
-          capabilityReport = mapCapabilities(capabilities);
+        } catch (error) {
+          console.warn(
+            "Reauthorize failed, requesting fresh authorization",
+            error,
+          );
+          reauthMethod = "prompted";
+          authorization = await wallet.authorize({
+            identity: APP_IDENTITY,
+            chain: SOLANA_CLUSTER,
+            features: [
+              "solana:signAndSendTransactions",
+              "solana:signTransactions",
+            ],
+          });
+        }
 
-          try {
-            authorization = await wallet.reauthorize({
-              identity: APP_IDENTITY,
-              auth_token: walletEntry.authToken,
-            });
-          } catch (error) {
-            console.warn(
-              "Reauthorize failed, requesting fresh authorization",
-              error,
-            );
-            reauthMethod = "prompted";
-            authorization = await wallet.authorize({
-              identity: APP_IDENTITY,
-              chain: SOLANA_CLUSTER,
-              features: [
-                "solana:signAndSendTransactions",
-                "solana:signTransactions",
-              ],
-            });
-          }
+        const normalizedAccounts = normalizeAuthorization(authorization);
+        upsertWallets(normalizedAccounts);
 
-          const normalizedAccounts = normalizeAuthorization(authorization);
-          upsertWallets(normalizedAccounts);
+        const primaryAccount: LinkedWallet | undefined =
+          normalizedAccounts.find(
+            (account: LinkedWallet) => account.address === sourceAddress,
+          ) ?? normalizedAccounts[0];
 
-          const primaryAccount: LinkedWallet | undefined =
-            normalizedAccounts.find(
-              (account: LinkedWallet) => account.address === sourceAddress,
-            ) ?? normalizedAccounts[0];
+        if (primaryAccount) {
+          refreshedAccount = primaryAccount;
+        }
 
-          if (primaryAccount) {
-            refreshedAccount = primaryAccount;
-          }
+        if (!primaryAccount) {
+          throw new Error("Wallet did not return the requested account");
+        }
 
-          if (!primaryAccount) {
-            throw new Error("Wallet did not return the requested account");
-          }
+        const canSignAndSend =
+          capabilityReport.supportsSignAndSendTransactions !== false;
+        const canSign =
+          capabilityReport.supportsSignTransactions ??
+          DEFAULT_CAPABILITIES.supportsSignTransactions;
 
-          const canSignAndSend =
-            capabilityReport.supportsSignAndSendTransactions !== false;
-          const canSign =
-            capabilityReport.supportsSignTransactions ??
-            DEFAULT_CAPABILITIES.supportsSignTransactions;
-
-          if (canSignAndSend) {
-            const [signature] = await wallet.signAndSendTransactions({
-              transactions: [transaction],
-            });
-            submittedSignature = signature;
-            return;
-          }
-
-          if (!canSign) {
-            throw new Error("Wallet cannot sign transactions");
-          }
-
-          const signedTransactions = await wallet.signTransactions({
+        if (canSignAndSend) {
+          const [signature] = await wallet.signAndSendTransactions({
             transactions: [transaction],
           });
-          fallbackSignedTransaction = signedTransactions[0] ?? null;
+          submittedSignature = signature;
+          return;
+        }
+
+        if (!canSign) {
+          throw new Error("Wallet cannot sign transactions");
+        }
+
+        const signedTransactions = await wallet.signTransactions({
+          transactions: [transaction],
         });
+        fallbackSignedTransaction = signedTransactions[0] ?? null;
+      });
 
       if (!submittedSignature) {
         if (!fallbackSignedTransaction) {

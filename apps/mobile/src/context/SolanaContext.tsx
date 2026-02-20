@@ -7,7 +7,7 @@ import {
   useWalletActivityStore, 
   useWalletHistoricalStore,
   useWalletStatusStore
-} from "../store/walletStore";
+} from "../navigation/walletStore";
 
 interface SolanaContextType {
   solana: UseSolanaResult;
