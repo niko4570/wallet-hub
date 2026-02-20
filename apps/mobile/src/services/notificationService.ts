@@ -7,21 +7,19 @@ import { handleApiError } from "../utils/errorHandler";
 
 const MAX_TRACKED_ADDRESSES = 32;
 
+// UUID validation regex
+const isValidUUID = (uuid: string): boolean => {
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(uuid);
+};
+
 const normalizeAddress = (address?: string | null) => {
   if (!address || typeof address !== "string") {
     return null;
   }
   const trimmed = address.trim();
   return trimmed.length > 0 ? trimmed : null;
-};
-
-const resolveProjectId = (): string | undefined => {
-  return (
-    Constants?.expoConfig?.extra?.eas?.projectId ??
-    Constants?.easConfig?.projectId ??
-    process.env?.EXPO_PUBLIC_EAS_PROJECT_ID ??
-    process.env?.EXPO_PROJECT_ID
-  );
 };
 
 let cachedPushToken: string | null = null;
@@ -108,13 +106,21 @@ export const notificationService = {
       if (cachedPushToken) {
         return cachedPushToken;
       }
-      const projectId = resolveProjectId();
 
-      // Try to get push token with project ID if available
-      try {
-        const response = await Notifications.getExpoPushTokenAsync(
-          projectId ? { projectId } : undefined,
+      // Check if projectId is a valid UUID format
+      const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+      if (!projectId || !isValidUUID(projectId)) {
+        console.log(
+          "Skipping push token retrieval: invalid or missing project ID. This is expected in development.",
         );
+        return null;
+      }
+
+      // Try to get push token with valid project ID
+      try {
+        const response = await Notifications.getExpoPushTokenAsync({
+          projectId,
+        });
         cachedPushToken = response.data;
         return cachedPushToken;
       } catch (firebaseError) {
