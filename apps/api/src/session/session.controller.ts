@@ -27,8 +27,8 @@ export class SessionController {
   ) {}
 
   @Get()
-  listSessionKeys() {
-    return this.sessionService.listSessionKeys();
+  async listSessionKeys() {
+    return await this.sessionService.listSessionKeys();
   }
 
   @Get('status')
@@ -37,23 +37,28 @@ export class SessionController {
   }
 
   @Get('policies')
-  listPolicies() {
-    return this.sessionService.listPolicies();
+  async listPolicies() {
+    return await this.sessionService.listPolicies();
   }
 
   @Post('issue')
-  issueSessionKey(@Body() dto: IssueSessionKeyDto) {
-    return this.sessionService.issueSessionKey(dto);
+  async issueSessionKey(@Body() dto: IssueSessionKeyDto) {
+    return await this.sessionService.issueSessionKey(dto);
   }
 
   @Patch(':id/revoke')
-  revokeSessionKey(@Param('id') id: string, @Body() dto: RevokeSessionKeyDto) {
-    return this.sessionService.revokeSessionKey(id, dto);
+  async revokeSessionKey(
+    @Param('id') id: string,
+    @Body() dto: RevokeSessionKeyDto,
+  ) {
+    return await this.sessionService.revokeSessionKey(id, dto);
   }
 
   @Delete(':id')
-  deleteSessionKey(@Param('id') id: string) {
-    return this.sessionService.revokeSessionKey(id, { reason: 'api_delete' });
+  async deleteSessionKey(@Param('id') id: string) {
+    return await this.sessionService.revokeSessionKey(id, {
+      reason: 'api_delete',
+    });
   }
 
   @Get('silent')
