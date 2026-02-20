@@ -391,6 +391,8 @@ export const useWalletHistoricalStore = create<{
   getHistoricalBalances: (
     address: string,
   ) => Array<{ timestamp: number; usd: number; sol: number }>;
+  cleanupHistoricalBalances: () => void;
+  cleanupWalletBalances: (address: string) => void;
 }>()(
   persist(
     (set, get) => ({
@@ -414,11 +416,16 @@ export const useWalletHistoricalStore = create<{
             updatedBalances = [...existingBalances, balance];
             // Sort by timestamp in ascending order
             updatedBalances.sort((a, b) => a.timestamp - b.timestamp);
-            // Keep only the last 24 hours of data (1 hour intervals)
+            // Keep only the last 24 hours of data
             const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
             updatedBalances = updatedBalances.filter(
               (item) => item.timestamp >= oneDayAgo,
             );
+            // Limit to maximum 24 data points (1 per hour)
+            const MAX_DATA_POINTS = 24;
+            if (updatedBalances.length > MAX_DATA_POINTS) {
+              updatedBalances = updatedBalances.slice(-MAX_DATA_POINTS);
+            }
           }
 
           return {
@@ -432,6 +439,61 @@ export const useWalletHistoricalStore = create<{
         const state = get();
         return state.historicalBalances[address] || [];
       },
+      cleanupHistoricalBalances: () => {
+        set((state) => {
+          const now = Date.now();
+          const oneDayAgo = now - 24 * 60 * 60 * 1000;
+          const MAX_DATA_POINTS = 24;
+
+          const cleanedBalances: Record<
+            string,
+            Array<{ timestamp: number; usd: number; sol: number }>
+          > = {};
+
+          Object.entries(state.historicalBalances).forEach(
+            ([address, balances]) => {
+              const cleaned = balances
+                .filter((item) => item.timestamp >= oneDayAgo)
+                .sort((a, b) => a.timestamp - b.timestamp);
+
+              if (cleaned.length > MAX_DATA_POINTS) {
+                cleanedBalances[address] = cleaned.slice(-MAX_DATA_POINTS);
+              } else if (cleaned.length > 0) {
+                cleanedBalances[address] = cleaned;
+              }
+              // Skip empty arrays
+            },
+          );
+
+          return {
+            historicalBalances: cleanedBalances,
+          };
+        });
+      },
+      cleanupWalletBalances: (address) => {
+        set((state) => {
+          const now = Date.now();
+          const oneDayAgo = now - 24 * 60 * 60 * 1000;
+          const MAX_DATA_POINTS = 24;
+
+          const balances = state.historicalBalances[address] || [];
+          const cleaned = balances
+            .filter((item) => item.timestamp >= oneDayAgo)
+            .sort((a, b) => a.timestamp - b.timestamp);
+
+          let updatedBalances = cleaned;
+          if (cleaned.length > MAX_DATA_POINTS) {
+            updatedBalances = cleaned.slice(-MAX_DATA_POINTS);
+          }
+
+          return {
+            historicalBalances: {
+              ...state.historicalBalances,
+              [address]: updatedBalances,
+            },
+          };
+        });
+      },
     }),
     {
       name: "wallet-historical-storage",
@@ -439,6 +501,18 @@ export const useWalletHistoricalStore = create<{
       partialize: (state) => ({
         historicalBalances: state.historicalBalances,
       }),
+      onRehydrateStorage: () => {
+        // Cleanup old data when store is rehydrated
+        return (state) => {
+          if (state) {
+            const cleanupAction =
+              useWalletHistoricalStore.getState().cleanupHistoricalBalances;
+            if (typeof cleanupAction === "function") {
+              cleanupAction();
+            }
+          }
+        };
+      },
     },
   ),
 );
@@ -458,6 +532,54 @@ export const useWalletStatusStore = create<{
 
 // Alias for backward compatibility
 export const useWalletStore = useWalletBaseStore;
+
+// Create selector hooks for better performance
+
+// Wallet base store selectors
+export const useWalletBaseSelectors = () => {
+  const linkedWallets = useWalletBaseStore((state) => state.linkedWallets);
+  const activeWallet = useWalletBaseStore((state) => state.activeWallet);
+  const primaryWalletAddress = useWalletBaseStore(
+    (state) => state.primaryWalletAddress,
+  );
+
+  return {
+    linkedWallets,
+    activeWallet,
+    primaryWalletAddress,
+    hasActiveWallet: !!activeWallet,
+    hasPrimaryWallet: !!primaryWalletAddress,
+    walletCount: linkedWallets.length,
+  };
+};
+
+// Wallet balance store selectors
+export const useWalletBalanceSelectors = () => {
+  const totalBalance = useWalletBalanceStore((state) => state.totalBalance);
+  const totalUsdValue = useWalletBalanceStore((state) => state.totalUsdValue);
+  const detailedBalances = useWalletBalanceStore(
+    (state) => state.detailedBalances,
+  );
+
+  return {
+    totalBalance,
+    totalUsdValue,
+    detailedBalances,
+    hasBalances: Object.keys(detailedBalances).length > 0,
+  };
+};
+
+// Wallet historical store selectors
+export const useWalletHistoricalSelectors = () => {
+  const historicalBalances = useWalletHistoricalStore(
+    (state) => state.historicalBalances,
+  );
+
+  return {
+    historicalBalances,
+    hasHistoricalData: Object.keys(historicalBalances).length > 0,
+  };
+};
 
 // Cross-wallet transfer function
 export const transferBetweenWallets = async (

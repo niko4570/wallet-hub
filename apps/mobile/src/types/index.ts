@@ -14,7 +14,7 @@ export interface Transaction {
   amountUnit?: string;
   status: "success" | "pending" | "failed";
   timestamp: string;
-  type: "transfer" | "swap" | "nft" | "program";
+  type: "transfer" | "token_transfer" | "stake_delegate" | "stake_withdraw" | "nft_transfer" | "swap";
   fee?: number;
   slot?: number;
   memo?: string;

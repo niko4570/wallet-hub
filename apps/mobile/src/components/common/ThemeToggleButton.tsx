@@ -12,7 +12,7 @@ const ThemeToggleButton: React.FC = () => {
         styles.button,
         {
           backgroundColor: theme.colors.surface,
-          borderColor: theme.colors.border,
+          borderColor: theme.colors.surfaceVariant,
         },
       ]}
       onPress={toggleThemeMode}

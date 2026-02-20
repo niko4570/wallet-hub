@@ -26,7 +26,7 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 // Tab Navigator component
 function MainTabs() {
   const { navigationTheme, theme } = useTheme();
-  
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -34,7 +34,7 @@ function MainTabs() {
         tabBarInactiveTintColor: theme.colors.disabled,
         tabBarStyle: {
           backgroundColor: theme.colors.surface,
-          borderTopColor: theme.colors.border,
+          borderTopColor: theme.colors.surfaceVariant,
           borderTopWidth: 1,
           paddingBottom: 6,
           paddingTop: 6,
@@ -46,7 +46,7 @@ function MainTabs() {
         },
         headerStyle: {
           backgroundColor: theme.colors.surface,
-          borderBottomColor: theme.colors.border,
+          borderBottomColor: theme.colors.surfaceVariant,
           borderBottomWidth: 1,
         },
         headerTintColor: theme.colors.text,
@@ -83,14 +83,14 @@ function MainTabs() {
 // Root Stack Navigator
 function AppNavigator() {
   const { navigationTheme, theme } = useTheme();
-  
+
   return (
     <NavigationContainer theme={navigationTheme}>
       <Stack.Navigator
         screenOptions={{
           headerStyle: {
             backgroundColor: theme.colors.surface,
-            borderBottomColor: theme.colors.border,
+            borderBottomColor: theme.colors.surfaceVariant,
             borderBottomWidth: 1,
           },
           headerTintColor: theme.colors.text,
