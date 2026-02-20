@@ -7,9 +7,8 @@ import { heliusService } from "./heliusService";
 
 // Import new services
 import { walletAdapterService } from "./walletAdapterService";
-import { walletConnectionService } from "./walletConnectionService";
 import { rpcService } from "./rpcService";
-import { SecureStorageService } from "./secureStorageService";
+import { SecureStorageService } from "./secureStorage.service";
 import { jupiterService } from "./jupiterService";
 
 // Service registry interface
@@ -19,7 +18,6 @@ interface ServiceRegistry {
   icon: typeof iconService;
   wallet: typeof walletService;
   walletAdapter: typeof walletAdapterService;
-  walletConnection: typeof walletConnectionService;
   rpc: typeof rpcService;
   helius: typeof heliusService;
   secureStorage: typeof SecureStorageService;
@@ -33,7 +31,6 @@ export const services: ServiceRegistry = {
   icon: iconService,
   wallet: walletService,
   walletAdapter: walletAdapterService,
-  walletConnection: walletConnectionService,
   rpc: rpcService,
   helius: heliusService,
   secureStorage: SecureStorageService,
@@ -47,7 +44,6 @@ export {
   iconService,
   walletService,
   walletAdapterService,
-  walletConnectionService,
   rpcService,
   heliusService,
   SecureStorageService,

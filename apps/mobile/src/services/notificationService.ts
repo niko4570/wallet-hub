@@ -3,6 +3,7 @@ import { Platform } from "react-native";
 import * as Haptics from "expo-haptics";
 import Constants from "expo-constants";
 import { API_URL } from "../config/env";
+import { handleApiError } from "../utils/errorHandler";
 
 const MAX_TRACKED_ADDRESSES = 32;
 
@@ -66,7 +67,7 @@ export const notificationService = {
 
       return true;
     } catch (error) {
-      console.error("Error requesting notification permissions:", error);
+      handleApiError(error, "Error requesting notification permissions");
       return false;
     }
   },
@@ -97,7 +98,7 @@ export const notificationService = {
 
       return id;
     } catch (error) {
-      console.error("Error scheduling notification:", error);
+      handleApiError(error, "Error scheduling notification");
       throw error;
     }
   },
@@ -126,7 +127,7 @@ export const notificationService = {
         return null;
       }
     } catch (error) {
-      console.error("Error fetching Expo push token:", error);
+      handleApiError(error, "Error fetching Expo push token");
       return null;
     }
   },
@@ -185,7 +186,7 @@ export const notificationService = {
         `Registered push token for ${normalizedAddresses.length} address(es)`,
       );
     } catch (error) {
-      console.warn("Failed to register notification subscriptions:", error);
+      handleApiError(error, "Failed to register notification subscriptions");
     }
   },
 
@@ -217,7 +218,7 @@ export const notificationService = {
 
       return id;
     } catch (error) {
-      console.error("Error scheduling delayed notification:", error);
+      handleApiError(error, "Error scheduling delayed notification");
       throw error;
     }
   },
@@ -227,7 +228,7 @@ export const notificationService = {
     try {
       await Notifications.cancelScheduledNotificationAsync(notificationId);
     } catch (error) {
-      console.error("Error canceling notification:", error);
+      handleApiError(error, "Error canceling notification");
     }
   },
 
@@ -236,7 +237,7 @@ export const notificationService = {
     try {
       await Notifications.cancelAllScheduledNotificationsAsync();
     } catch (error) {
-      console.error("Error canceling all notifications:", error);
+      handleApiError(error, "Error canceling all notifications");
     }
   },
 
@@ -247,7 +248,7 @@ export const notificationService = {
     try {
       return await Notifications.getAllScheduledNotificationsAsync();
     } catch (error) {
-      console.error("Error getting scheduled notifications:", error);
+      handleApiError(error, "Error getting scheduled notifications");
       return [];
     }
   },
@@ -270,7 +271,7 @@ export const notificationService = {
 
       await this.scheduleNotification({ title, body, data: activity });
     } catch (error) {
-      console.error("Error notifying wallet activity:", error);
+      handleApiError(error, "Error notifying wallet activity");
     }
   },
 
@@ -297,7 +298,7 @@ export const notificationService = {
         data: { symbol, oldPrice, newPrice, change },
       });
     } catch (error) {
-      console.error("Error notifying price change:", error);
+      handleApiError(error, "Error notifying price change");
     }
   },
 
@@ -326,7 +327,7 @@ export const notificationService = {
         data: { address, oldBalance, newBalance, symbol, change },
       });
     } catch (error) {
-      console.error("Error notifying balance update:", error);
+      handleApiError(error, "Error notifying balance update");
     }
   },
 };

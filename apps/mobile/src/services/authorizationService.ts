@@ -8,8 +8,10 @@ import type {
   TransactionAuditEntry,
 } from "@wallethub/contracts";
 import { API_URL } from "../config/env";
-import { useWalletStore } from "../store/walletStore";
+import { useWalletBaseStore } from "../store/walletStore";
 import { walletService } from "./walletService";
+import { Buffer } from "buffer";
+import { LinkedWallet } from "../types/wallet";
 
 const BASE_URL = API_URL.replace(/\/$/, "");
 const SIGNABLE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -17,7 +19,11 @@ const SIGNABLE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? "GET").toUpperCase();
   const bodyString =
-    typeof init?.body === "string" ? init.body : init?.body ? String(init.body) : undefined;
+    typeof init?.body === "string"
+      ? init.body
+      : init?.body
+        ? String(init.body)
+        : undefined;
   const signatureHeaders =
     SIGNABLE_METHODS.has(method) && method !== "OPTIONS"
       ? await buildSignatureHeaders(method, path, bodyString)
@@ -63,7 +69,7 @@ async function buildSignatureHeaders(
     return {};
   }
 
-  const walletStore = useWalletStore.getState();
+  const walletStore = useWalletBaseStore.getState();
   const candidateAddress =
     walletStore.primaryWalletAddress ??
     walletStore.activeWalletAddress ??
@@ -74,7 +80,7 @@ async function buildSignatureHeaders(
   }
 
   const walletEntry = walletStore.linkedWallets.find(
-    (wallet) => wallet.address === candidateAddress,
+    (wallet: LinkedWallet) => wallet.address === candidateAddress,
   );
 
   if (!walletEntry) {
@@ -111,8 +117,7 @@ export const authorizationApi = {
     get<SilentReauthorizationRecord[]>("/session/silent"),
   recordSilentReauthorization: (payload: RecordSilentReauthorizationPayload) =>
     post<SilentReauthorizationRecord>("/session/silent", payload),
-  fetchTransactionAudits: () =>
-    get<TransactionAuditEntry[]>("/session/audits"),
+  fetchTransactionAudits: () => get<TransactionAuditEntry[]>("/session/audits"),
   recordTransactionAudit: (payload: RecordTransactionAuditPayload) =>
     post<TransactionAuditEntry>("/session/audits", payload),
 };

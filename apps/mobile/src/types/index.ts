@@ -46,13 +46,14 @@ export interface RpcResponse<T> {
 // Service related types
 export interface ServiceRegistry {
   price: any;
-  telemetry: any;
   authorization: any;
   icon: any;
   wallet: any;
   walletAdapter: any;
   rpc: any;
   helius: any;
+  secureStorage: any;
+  jupiter: any;
 }
 
 // Store related types

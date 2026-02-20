@@ -5,8 +5,33 @@ import { priceService } from "./priceService";
 import { tokenMetadataService } from "./tokenMetadataService";
 import { jupiterPortfolioService } from "./jupiterPortfolioService";
 
-import { useWalletStore } from "../store/walletStore";
+import { useWalletHistoricalStore } from "../store/walletStore";
 import type { WalletActivity, WalletBalance } from "../types/wallet";
+
+// Define JupiterTransactionRecord type
+export interface JupiterTransactionRecord {
+  signature?: string;
+  txSignature?: string;
+  transactionSignature?: string;
+  timestamp?: number;
+  blockTime?: number;
+  type?: string;
+  action?: string;
+  description?: string;
+  label?: string;
+  fee?: number;
+  platform?: string;
+  dex?: string;
+  pnlUsd?: number;
+  inputMint?: string;
+  inputSymbol?: string;
+  outputMint?: string;
+  outputSymbol?: string;
+  data?: {
+    inputSymbol?: string;
+    outputSymbol?: string;
+  };
+}
 
 const NATIVE_SOL_MINTS = new Set([
   "So11111111111111111111111111111111111111111",
@@ -36,17 +61,13 @@ export async function fetchAccountSnapshot(
   address: string,
 ): Promise<AccountSnapshotResult> {
   const normalizedAddress = new PublicKey(address).toBase58();
-  const [
-    jupiterResult,
-    serverResult,
-    localResult,
-    serverTxResult,
-  ] = await Promise.allSettled([
-    fetchJupiterSnapshot(normalizedAddress),
-    fetchServerSnapshot(normalizedAddress),
-    fetchLocalSnapshot(normalizedAddress),
-    fetchServerTransactions(normalizedAddress),
-  ]);
+  const [jupiterResult, serverResult, localResult, serverTxResult] =
+    await Promise.allSettled([
+      fetchJupiterSnapshot(normalizedAddress),
+      fetchServerSnapshot(normalizedAddress),
+      fetchLocalSnapshot(normalizedAddress),
+      fetchServerTransactions(normalizedAddress),
+    ]);
 
   let snapshot: WalletBalance | null = null;
   const serverSnapshot =
@@ -101,8 +122,8 @@ export async function fetchAccountSnapshot(
   }
 
   // Update historical balance data
-  const walletStore = useWalletStore.getState();
-  walletStore.updateHistoricalBalance(normalizedAddress, {
+  const walletHistoricalStore = useWalletHistoricalStore.getState();
+  walletHistoricalStore.updateHistoricalBalance(normalizedAddress, {
     timestamp: Date.now(),
     usd: snapshot.usdValue,
     sol: snapshot.balance,
@@ -122,7 +143,9 @@ async function fetchServerSnapshot(
     console.debug("Helius track registration failed", err);
   }
 
-  const response = await fetch(`${API_URL}/helius/accounts/${address}/snapshot`);
+  const response = await fetch(
+    `${API_URL}/helius/accounts/${address}/snapshot`,
+  );
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(
@@ -157,9 +180,7 @@ async function fetchLocalSnapshot(address: string): Promise<WalletBalance> {
     rpcService.getParsedTokenAccountsByOwner(new PublicKey(address)),
   ]);
 
-  const tokensWithBalance = tokenAccounts.filter(
-    (token) => token.uiAmount > 0,
-  );
+  const tokensWithBalance = tokenAccounts.filter((token) => token.uiAmount > 0);
 
   const fallbackBalances =
     tokensWithBalance.length === 0
@@ -200,7 +221,7 @@ async function fetchLocalSnapshot(address: string): Promise<WalletBalance> {
           .map((token) => {
             const price = mintPrices[token.mint] ?? token.pricePerToken ?? 0;
             const usdValue =
-              price > 0 ? token.balance * price : token.usdValue ?? 0;
+              price > 0 ? token.balance * price : (token.usdValue ?? 0);
             return {
               mint: token.mint,
               symbol: token.symbol ?? metadataMap[token.mint]?.symbol,
@@ -279,7 +300,10 @@ function normalizeServerActivity(
         entry?.txSignature ??
         entry?.transactionSignature ??
         `helius-${timestamp}`;
-      const changeSummary = summarizeBalanceChange(address, entry?.balanceChanges);
+      const changeSummary = summarizeBalanceChange(
+        address,
+        entry?.balanceChanges,
+      );
 
       return {
         signature,
@@ -315,7 +339,9 @@ function normalizeJupiterActivities(
         entry?.txSignature ??
         entry?.transactionSignature ??
         `jupiter-${timestamp}`;
-      const type = String(entry?.type ?? entry?.action ?? "jupiter").toLowerCase();
+      const type = String(
+        entry?.type ?? entry?.action ?? "jupiter",
+      ).toLowerCase();
       const description = buildJupiterDescription(entry);
       const direction: "in" | "out" | "internal" =
         typeof entry?.pnlUsd === "number"
@@ -388,8 +414,7 @@ function summarizeBalanceChange(
           : 0;
 
   const divisor = decimals > 0 ? Math.pow(10, decimals) : 1;
-  const normalizedAmount =
-    divisor !== 0 ? rawAmount / divisor : rawAmount;
+  const normalizedAmount = divisor !== 0 ? rawAmount / divisor : rawAmount;
 
   if (!normalizedAmount) {
     return null;

@@ -4,7 +4,7 @@ import {
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import type { AuthorizationResult } from "@solana-mobile/mobile-wallet-adapter-protocol";
 import { Transaction, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { useWalletStore } from "../store/walletStore";
+import { useWalletBaseStore, useWalletBalanceStore, useWalletStatusStore } from "../store/walletStore";
 import { walletService } from "./walletService";
 import { priceService } from "./priceService";
 import { LinkedWallet } from "../types/wallet";
@@ -31,9 +31,10 @@ class WalletAdapterService {
     * Connect to a wallet using the system wallet chooser.
     */
    async connectWallet(): Promise<LinkedWallet[]> {
-    const walletStore = useWalletStore.getState();
-    walletStore.setLoading(true);
-    walletStore.setError(null);
+    const walletBaseStore = useWalletBaseStore.getState();
+    const walletStatusStore = useWalletStatusStore.getState();
+    walletStatusStore.setLoading(true);
+    walletStatusStore.setError(null);
 
     try {
       // Use existing walletService to start authorization. Passing no wallet lets MWA
@@ -42,7 +43,7 @@ class WalletAdapterService {
       const accounts = await walletService.finalizeWalletAuthorization(preview);
 
       // Update wallet store - add new accounts instead of replacing all
-      const existingWallets = walletStore.linkedWallets;
+      const existingWallets = walletBaseStore.linkedWallets;
       const combinedWallets = [...existingWallets];
       
       // Add new accounts that don't already exist
@@ -59,12 +60,12 @@ class WalletAdapterService {
         }
       });
       
-      walletStore.setLinkedWallets(combinedWallets);
+      walletBaseStore.setLinkedWallets(combinedWallets);
       
       // Set active wallet to the first new account if not already set
-      if (!walletStore.activeWallet && accounts.length > 0) {
-        walletStore.setActiveWallet(accounts[0]);
-        walletStore.setActiveWalletAddress(accounts[0].address);
+      if (!walletBaseStore.activeWallet && accounts.length > 0) {
+        walletBaseStore.setActiveWallet(accounts[0]);
+        walletBaseStore.setActiveWalletAddress(accounts[0].address);
       }
 
       // Refresh balances for new wallets
@@ -73,10 +74,10 @@ class WalletAdapterService {
       return accounts;
     } catch (error) {
       console.error("Wallet connection failed:", error);
-      walletStore.setError("Failed to connect wallet. Please try again.");
+      walletStatusStore.setError("Failed to connect wallet. Please try again.");
       throw error;
     } finally {
-      walletStore.setLoading(false);
+      walletStatusStore.setLoading(false);
     }
   }
 
@@ -85,18 +86,19 @@ class WalletAdapterService {
    * @param address Address of the wallet to disconnect
    */
   async disconnectWallet(address: string): Promise<void> {
-    const walletStore = useWalletStore.getState();
-    walletStore.setLoading(true);
+    const walletBaseStore = useWalletBaseStore.getState();
+    const walletStatusStore = useWalletStatusStore.getState();
+    walletStatusStore.setLoading(true);
 
     try {
       // Remove wallet from store
-      walletStore.removeWallet(address);
+      walletBaseStore.removeWallet(address);
     } catch (error) {
       console.error("Wallet disconnection failed:", error);
-      walletStore.setError("Failed to disconnect wallet. Please try again.");
+      walletStatusStore.setError("Failed to disconnect wallet. Please try again.");
       throw error;
     } finally {
-      walletStore.setLoading(false);
+      walletStatusStore.setLoading(false);
     }
   }
 
@@ -159,7 +161,7 @@ class WalletAdapterService {
    * @param addresses Array of wallet addresses
    */
   async refreshBalances(addresses: string[]): Promise<void> {
-    const walletStore = useWalletStore.getState();
+    const walletBalanceStore = useWalletBalanceStore.getState();
 
     try {
       const price = await priceService.getSolPriceInUsd();
@@ -168,9 +170,9 @@ class WalletAdapterService {
         addresses.map(async (address) => {
           try {
             const balance = await walletService.getWalletBalance(address);
-            walletStore.updateBalance(address, balance);
+            walletBalanceStore.updateBalance(address, balance);
             const solBalance = balance / LAMPORTS_PER_SOL;
-            walletStore.updateDetailedBalance({
+            walletBalanceStore.updateDetailedBalance({
               address,
               balance: solBalance,
               usdValue: solBalance * price,
@@ -193,15 +195,15 @@ class WalletAdapterService {
    * @returns Balance in lamports
    */
   async refreshBalance(address: string): Promise<number | null> {
-    const walletStore = useWalletStore.getState();
+    const walletBalanceStore = useWalletBalanceStore.getState();
 
     try {
       const price = await priceService.getSolPriceInUsd();
       const timestamp = new Date().toISOString();
       const balance = await walletService.getWalletBalance(address);
-      walletStore.updateBalance(address, balance);
+      walletBalanceStore.updateBalance(address, balance);
       const solBalance = balance / LAMPORTS_PER_SOL;
-      walletStore.updateDetailedBalance({
+      walletBalanceStore.updateDetailedBalance({
         address,
         balance: solBalance,
         usdValue: solBalance * price,
@@ -220,16 +222,16 @@ class WalletAdapterService {
    * @param address Address of the wallet to switch to
    */
   switchActiveWallet(address: string): void {
-    const walletStore = useWalletStore.getState();
-    walletStore.setActiveWalletAddress(address);
+    const walletBaseStore = useWalletBaseStore.getState();
+    walletBaseStore.setActiveWalletAddress(address);
   }
 
   /**
    * Clear all wallets
    */
   clearAllWallets(): void {
-    const walletStore = useWalletStore.getState();
-    walletStore.clearAllWallets();
+    const walletBaseStore = useWalletBaseStore.getState();
+    walletBaseStore.clearAllWallets();
   }
 }
 
