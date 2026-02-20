@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String?  @unique
+  name      String?
+  deviceId  String?  @unique
+  lastSeen  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  wallets        WalletAccount[]
+  sessions       Session[]
+  pushTokens     PushToken[]
+}
+
+model WalletAccount {
+  id                String   @id @default(cuid())
+  userId            String
+  address           String   @unique
+  name              String?
+  label             String?
+  isActive          Boolean  @default(true)
+  lastBalance       Decimal?
+  lastBalanceUsd    Decimal?
+  lastBalanceUpdate DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions   Transaction[]
+}
+
+model Session {
+  id          String   @id @default(cuid())
+  userId      String
+  isRevoked   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Transaction {
+  id            String   @id @default(cuid())
+  signature     String   @unique
+  walletAccountId String
+  type          String
+  status        String
+  amount        Decimal?
+  amountUsd     Decimal?
+  fee           Decimal?
+  feeUsd        Decimal?
+  timestamp     DateTime
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  walletAccount WalletAccount @relation(fields: [walletAccountId], references: [id], onDelete: Cascade)
+}

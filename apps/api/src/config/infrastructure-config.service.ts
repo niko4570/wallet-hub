@@ -55,8 +55,6 @@ export class InfrastructureConfigService {
     };
   }
 
-
-
   private describeDatabase(): DatabaseDescriptor {
     const vendor = this.databaseUrl.startsWith('postgres')
       ? 'postgresql'

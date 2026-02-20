@@ -11,6 +11,7 @@ import { validationSchema, validationOptions } from './env.validation';
       load: [appConfig],
       validationSchema,
       validationOptions,
+      envFilePath: '../../.env',
     }),
   ],
   providers: [InfrastructureConfigService],
