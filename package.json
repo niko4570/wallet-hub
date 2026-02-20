@@ -10,13 +10,13 @@
     "packages/contracts"
   ],
   "scripts": {
-    "dev:mobile": "pnpm run start --workspace apps/mobile",
-    "web": "pnpm run web --workspace apps/mobile",
-    "dev:api": "pnpm run start:dev --workspace apps/api",
-    "build:contracts": "pnpm run build --workspace packages/contracts",
-    "build:api": "pnpm run build --workspace apps/api",
+    "dev:mobile": "pnpm --filter mobile run start",
+    "web": "pnpm --filter mobile run web",
+    "dev:api": "pnpm --filter api run start:dev",
+    "build:contracts": "pnpm --filter contracts run build",
+    "build:api": "pnpm --filter api run build",
     "build": "pnpm run build:contracts && pnpm run build:api",
-    "lint": "pnpm run lint --workspace apps/api",
+    "lint": "pnpm --filter api run lint",
     "postinstall": "pnpm run build:contracts"
   },
   "repository": {
@@ -46,6 +46,8 @@
   },
   "type": "commonjs",
   "pnpm": {
-    "onlyBuiltDependencies": ["@shopify/react-native-skia"]
+    "onlyBuiltDependencies": [
+      "@shopify/react-native-skia"
+    ]
   }
 }
