@@ -15,7 +15,7 @@ import { Buffer } from "buffer";
 const APP_IDENTITY = {
   name: "WalletHub",
   uri: "https://wallethub.app",
-  icon: "https://wallethub.app/favicon.ico",
+  icon: "/favicon.ico",
 };
 
 const DEFAULT_FEATURES = [

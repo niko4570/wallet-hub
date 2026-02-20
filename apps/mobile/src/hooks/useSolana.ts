@@ -24,7 +24,7 @@ import { tokenMetadataService } from "../services/tokenMetadataService";
 import { HELIUS_RPC_URL, SOLANA_CLUSTER } from "../config/env";
 import { requireBiometricApproval } from "../security/biometrics";
 import { decodeWalletAddress } from "../utils/solanaAddress";
-import { useWalletStore } from "../store/walletStore";
+import { useWalletStore, useWalletBalanceStore, useWalletHistoricalStore } from "../store/walletStore";
 import { LinkedWallet, AuthorizationPreview } from "../types/wallet";
 
 const APP_IDENTITY = {
@@ -154,7 +154,7 @@ export function useSolana(): UseSolanaResult {
       }
     >
   >({});
-  const setMissingTokenPrices = useWalletStore(
+  const setMissingTokenPrices = useWalletBalanceStore(
     (state) => state.setMissingTokenPrices,
   );
   const setPrimaryWalletAddressInStore = useWalletStore(
@@ -342,9 +342,10 @@ export function useSolana(): UseSolanaResult {
       }));
 
       // 使用 getState() 避免无限循环
-      const walletStore = useWalletStore.getState();
-      walletStore.updateDetailedBalance(walletBalance);
-      walletStore.updateHistoricalBalance(targetAddress, {
+      const walletBalanceStore = useWalletBalanceStore.getState();
+      const walletHistoricalStore = useWalletHistoricalStore.getState();
+      walletBalanceStore.updateDetailedBalance(walletBalance);
+      walletHistoricalStore.updateHistoricalBalance(targetAddress, {
         timestamp: Date.now(),
         usd: walletBalance.usdValue,
         sol: walletBalance.balance,

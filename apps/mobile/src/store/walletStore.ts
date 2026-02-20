@@ -247,8 +247,8 @@ export const useWalletBaseStore = create<{
         primaryWalletAddress: state.primaryWalletAddress,
         walletGroups: state.walletGroups,
       }),
-    }
-  )
+    },
+  ),
 );
 
 // Wallet balance state store
@@ -330,8 +330,8 @@ export const useWalletBalanceStore = create<{
         detailedBalances: state.detailedBalances,
         missingTokenPrices: state.missingTokenPrices,
       }),
-    }
-  )
+    },
+  ),
 );
 
 // Wallet activity state store
@@ -374,15 +374,23 @@ export const useWalletActivityStore = create<{
       partialize: (state) => ({
         walletActivity: state.walletActivity,
       }),
-    }
-  )
+    },
+  ),
 );
 
 // Wallet historical balance state store
 export const useWalletHistoricalStore = create<{
-  historicalBalances: Record<string, Array<{ timestamp: number; usd: number; sol: number }>>;
-  updateHistoricalBalance: (address: string, balance: { timestamp: number; usd: number; sol: number }) => void;
-  getHistoricalBalances: (address: string) => Array<{ timestamp: number; usd: number; sol: number }>;
+  historicalBalances: Record<
+    string,
+    Array<{ timestamp: number; usd: number; sol: number }>
+  >;
+  updateHistoricalBalance: (
+    address: string,
+    balance: { timestamp: number; usd: number; sol: number },
+  ) => void;
+  getHistoricalBalances: (
+    address: string,
+  ) => Array<{ timestamp: number; usd: number; sol: number }>;
 }>()(
   persist(
     (set, get) => ({
@@ -390,10 +398,10 @@ export const useWalletHistoricalStore = create<{
       updateHistoricalBalance: (address, balance) =>
         set((state) => {
           const existingBalances = state.historicalBalances[address] || [];
-          
+
           // Check if we already have data for this timestamp
           const existingIndex = existingBalances.findIndex(
-            (item) => item.timestamp === balance.timestamp
+            (item) => item.timestamp === balance.timestamp,
           );
 
           let updatedBalances;
@@ -409,7 +417,7 @@ export const useWalletHistoricalStore = create<{
             // Keep only the last 24 hours of data (1 hour intervals)
             const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
             updatedBalances = updatedBalances.filter(
-              (item) => item.timestamp >= oneDayAgo
+              (item) => item.timestamp >= oneDayAgo,
             );
           }
 
@@ -431,8 +439,8 @@ export const useWalletHistoricalStore = create<{
       partialize: (state) => ({
         historicalBalances: state.historicalBalances,
       }),
-    }
-  )
+    },
+  ),
 );
 
 // Wallet status state store (not persisted)
@@ -441,20 +449,21 @@ export const useWalletStatusStore = create<{
   error: string | null;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
-}>()(
-  (set) => ({
-    isLoading: false,
-    error: null,
-    setLoading: (loading) => set({ isLoading: loading }),
-    setError: (error) => set({ error }),
-  })
-);
+}>()((set) => ({
+  isLoading: false,
+  error: null,
+  setLoading: (loading) => set({ isLoading: loading }),
+  setError: (error) => set({ error }),
+}));
+
+// Alias for backward compatibility
+export const useWalletStore = useWalletBaseStore;
 
 // Cross-wallet transfer function
 export const transferBetweenWallets = async (
   fromAddress: string,
   toAddress: string,
-  amount: number
+  amount: number,
 ): Promise<string> => {
   // This is a placeholder implementation
   // In a real app, you would use the wallet adapter to sign and send the transaction
@@ -465,9 +474,9 @@ export const transferBetweenWallets = async (
     // TODO: Implement real cross-wallet transfer using wallet adapter
     throw new Error("Cross-wallet transfer not implemented yet");
   } catch (error) {
-    useWalletStatusStore.getState().setError(
-      error instanceof Error ? error.message : "Transfer failed"
-    );
+    useWalletStatusStore
+      .getState()
+      .setError(error instanceof Error ? error.message : "Transfer failed");
     useWalletStatusStore.getState().setLoading(false);
     throw error;
   }
