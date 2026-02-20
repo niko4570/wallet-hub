@@ -456,16 +456,16 @@ const ActivityScreen = () => {
 
     const isOutbound = selectedTransaction.source === activeWallet?.address;
     const amountUnit = selectedTransaction.amountUnit ?? "SOL";
-    const formattedDate = new Date(
-      selectedTransaction.timestamp,
-    ).toLocaleString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
+    const formattedDate = selectedTransaction.timestamp
+      ? new Date(selectedTransaction.timestamp).toLocaleString("en-US", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        })
+      : "N/A";
 
     return (
       <View style={styles.transactionDetailContainer}>

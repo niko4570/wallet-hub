@@ -4,6 +4,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
 import { Feather } from "@expo/vector-icons";
 import { customCardStyleInterpolator } from "./CustomTransition";
+import { useTheme } from "../theme/ThemeContext";
 
 // Import screens
 import WalletScreen from "../screens/WalletScreen";
@@ -24,14 +25,16 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 
 // Tab Navigator component
 function MainTabs() {
+  const { navigationTheme, theme } = useTheme();
+  
   return (
     <Tab.Navigator
       screenOptions={{
-        tabBarActiveTintColor: "#C7B5FF",
-        tabBarInactiveTintColor: "rgba(255, 255, 255, 0.5)",
+        tabBarActiveTintColor: theme.colors.secondary,
+        tabBarInactiveTintColor: theme.colors.disabled,
         tabBarStyle: {
-          backgroundColor: "rgba(7, 10, 20, 0.9)",
-          borderTopColor: "rgba(255, 255, 255, 0.06)",
+          backgroundColor: theme.colors.surface,
+          borderTopColor: theme.colors.border,
           borderTopWidth: 1,
           paddingBottom: 6,
           paddingTop: 6,
@@ -42,11 +45,11 @@ function MainTabs() {
           fontWeight: "600",
         },
         headerStyle: {
-          backgroundColor: "#0B1221",
-          borderBottomColor: "rgba(255, 255, 255, 0.1)",
+          backgroundColor: theme.colors.surface,
+          borderBottomColor: theme.colors.border,
           borderBottomWidth: 1,
         },
-        headerTintColor: "#FFFFFF",
+        headerTintColor: theme.colors.text,
         headerTitleStyle: {
           fontWeight: "700",
           fontSize: 18,
@@ -79,16 +82,18 @@ function MainTabs() {
 
 // Root Stack Navigator
 function AppNavigator() {
+  const { navigationTheme, theme } = useTheme();
+  
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={navigationTheme}>
       <Stack.Navigator
         screenOptions={{
           headerStyle: {
-            backgroundColor: "#0B1221",
-            borderBottomColor: "rgba(255, 255, 255, 0.1)",
+            backgroundColor: theme.colors.surface,
+            borderBottomColor: theme.colors.border,
             borderBottomWidth: 1,
           },
-          headerTintColor: "#FFFFFF",
+          headerTintColor: theme.colors.text,
           headerTitleStyle: {
             fontWeight: "700",
             fontSize: 18,

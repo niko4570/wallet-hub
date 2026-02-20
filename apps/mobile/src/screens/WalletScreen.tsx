@@ -24,7 +24,7 @@ import { Feather } from "@expo/vector-icons";
 import QRCode from "react-native-qrcode-svg";
 import * as Clipboard from "expo-clipboard";
 import { useSolana } from "../context/SolanaContext";
-import { useWalletStore } from "../store/walletStore";
+import { useWalletStore, useWalletBalanceStore, useWalletHistoricalStore } from "../store/walletStore";
 import { formatUsd, formatAddress, formatAmount } from "../utils/format";
 import { LinkedWallet } from "../types/wallet";
 import * as Haptics from "expo-haptics";
@@ -34,6 +34,8 @@ import { BalanceChart } from "../components/analytics/BalanceChart";
 import { TokenPie } from "../components/analytics/TokenPie";
 import { notificationService } from "../services/notificationService";
 import { requireBiometricApproval } from "../security/biometrics";
+import { useTheme } from "../theme/ThemeContext";
+import ThemeToggleButton from "../components/common/ThemeToggleButton";
 
 const HEADER_HEIGHT = 78;
 
@@ -80,19 +82,24 @@ const QuickActionButton: React.FC<QuickActionButtonProps> = ({
 const WalletScreen = () => {
   const { refreshBalance, startAuthorization, finalizeAuthorization, sendSol } =
     useSolana();
+  const { theme } = useTheme();
 
   // Use wallet store for state management
   const {
     linkedWallets,
     activeWallet,
-    totalBalance,
-    totalUsdValue,
-    detailedBalances,
     setActiveWallet,
     removeWallet,
     primaryWalletAddress,
     setPrimaryWalletAddress,
   } = useWalletStore();
+  
+  // Use balance store for balance-related state
+  const {
+    totalBalance,
+    totalUsdValue,
+    detailedBalances,
+  } = useWalletBalanceStore();
 
   const [refreshing, setRefreshing] = useState(false);
   const [connectModalVisible, setConnectModalVisible] = useState(false);
@@ -497,7 +504,7 @@ const WalletScreen = () => {
   const balanceHistoryData = useMemo(() => {
     // First try to get historical data for primary wallet
     if (primaryWalletAddress) {
-      const primaryBalances = useWalletStore
+      const primaryBalances = useWalletHistoricalStore
         .getState()
         .getHistoricalBalances(primaryWalletAddress);
       if (primaryBalances && primaryBalances.length > 0) {
@@ -507,7 +514,7 @@ const WalletScreen = () => {
 
     // Fallback to active wallet
     if (activeWallet) {
-      const activeBalances = useWalletStore
+      const activeBalances = useWalletHistoricalStore
         .getState()
         .getHistoricalBalances(activeWallet.address);
       if (activeBalances && activeBalances.length > 0) {
@@ -569,6 +576,7 @@ const WalletScreen = () => {
           <Text style={styles.headerTotalValue}>
             {formatUsd(totalUsdValue)}
           </Text>
+          <ThemeToggleButton />
         </View>
       </View>
 
