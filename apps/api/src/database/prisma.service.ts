@@ -5,6 +5,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 
 @Injectable()
 export class PrismaService
@@ -14,7 +16,20 @@ export class PrismaService
   private readonly logger = new Logger(PrismaService.name);
 
   constructor() {
+    // 创建数据库连接池
+    const databaseUrl = process.env.DATABASE_URL;
+    if (!databaseUrl) {
+      throw new Error('DATABASE_URL environment variable is not set');
+    }
+    const pool = new Pool({
+      connectionString: databaseUrl,
+    });
+
+    // 创建 PostgreSQL 适配器
+    const adapter = new PrismaPg(pool);
+
     super({
+      adapter,
       log: [
         { emit: 'event', level: 'query' },
         { emit: 'event', level: 'error' },
