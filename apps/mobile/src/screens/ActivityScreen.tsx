@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { formatAddress, formatAmount } from "../utils/format";
-import { useWalletStore } from "../store/walletStore";
+import { useWalletStore } from "../navigation/walletStore";
 import { rpcService } from "../services";
 import { Transaction } from "../types";
 import { SkeletonTransaction } from "../components/common/SkeletonLoader";
@@ -36,6 +36,20 @@ const ActivityScreen = () => {
   const [selectedTransaction, setSelectedTransaction] =
     useState<Transaction | null>(null);
   const [showTransactionDetail, setShowTransactionDetail] = useState(false);
+
+  // Transaction cache state
+  const [transactionCache, setTransactionCache] = useState<
+    Record<
+      string,
+      {
+        transactions: Transaction[];
+        timestamp: number;
+      }
+    >
+  >({});
+
+  // Cache expiration time (5 minutes)
+  const CACHE_EXPIRATION = 5 * 60 * 1000;
 
   // Group transactions by date
   const groupedTransactions = useMemo(() => {
@@ -87,58 +101,138 @@ const ActivityScreen = () => {
           return null;
         }
 
-        const parsedInstruction = instructions.find((instruction: any) => {
+        // Try to find a recognizable instruction
+        let parsedInstruction = null;
+        let transactionType:
+          | "transfer"
+          | "token_transfer"
+          | "stake_delegate"
+          | "stake_withdraw"
+          | "nft_transfer"
+          | "swap" = "transfer";
+        let amount = 0;
+        let amountUnit = "SOL";
+        let source = "";
+        let destination = "";
+
+        // Check for different types of transactions
+        for (const instruction of instructions) {
           const parsed = instruction?.parsed;
           if (!parsed?.info) {
-            return false;
+            continue;
           }
+
           const program = instruction?.program;
           const type = parsed?.type;
+
+          // System transfers
           if (program === "system" && type === "transfer") {
-            return true;
+            parsedInstruction = instruction;
+            transactionType = "transfer";
+            const info = parsed.info;
+            source = info.source || info.from || "";
+            destination = info.destination || info.to || "";
+            const lamports = Number(info.lamports ?? info.amount ?? 0);
+            amount = lamports / LAMPORTS_PER_SOL;
+            amountUnit = "SOL";
+            break;
           }
+
+          // SPL Token transfers
           if (
             program === "spl-token" &&
             (type === "transfer" || type === "transferChecked")
           ) {
-            return true;
+            parsedInstruction = instruction;
+            transactionType = "token_transfer";
+            const info = parsed.info;
+            source =
+              info.source || info.authority || info.owner || info.from || "";
+            destination = info.destination || info.recipient || info.to || "";
+            const uiAmount = info.tokenAmount?.uiAmount;
+            const uiAmountString = info.tokenAmount?.uiAmountString;
+            amount =
+              typeof uiAmount === "number"
+                ? uiAmount
+                : Number(uiAmountString ?? info.amount ?? 0);
+            amountUnit = "TOKEN";
+            break;
           }
-          return false;
-        });
 
-        if (!parsedInstruction?.parsed?.info) {
-          return null;
+          // Staking (delegate stake)
+          if (program === "stake" && type === "delegate") {
+            parsedInstruction = instruction;
+            transactionType = "stake_delegate";
+            const info = parsed.info;
+            source = info.stakeAccount || "";
+            destination = info.voter || info.delegate || "";
+            // For staking, we don't have a direct amount, but we can infer it from the stake account
+            amount = 0; // We'd need to get the stake amount from the stake account
+            amountUnit = "SOL";
+            break;
+          }
+
+          // Staking (withdraw stake)
+          if (program === "stake" && type === "withdraw") {
+            parsedInstruction = instruction;
+            transactionType = "stake_withdraw";
+            const info = parsed.info;
+            source = info.stakeAccount || "";
+            destination = info.destination || "";
+            const lamports = Number(info.lamports ?? info.amount ?? 0);
+            amount = lamports / LAMPORTS_PER_SOL;
+            amountUnit = "SOL";
+            break;
+          }
+
+          // NFT transfers (SPL Token with decimals 0)
+          if (
+            program === "spl-token" &&
+            (type === "transfer" || type === "transferChecked")
+          ) {
+            const info = parsed.info;
+            const decimals = info.tokenAmount?.decimals;
+            if (decimals === 0) {
+              parsedInstruction = instruction;
+              transactionType = "nft_transfer";
+              source =
+                info.source || info.authority || info.owner || info.from || "";
+              destination = info.destination || info.recipient || info.to || "";
+              amount = 1; // NFTs are usually transferred one at a time
+              amountUnit = "NFT";
+              break;
+            }
+          }
+
+          // Swap transactions (detected by multiple token transfers)
+          if (
+            program === "spl-token" &&
+            (type === "transfer" || type === "transferChecked")
+          ) {
+            // This is a simplistic check - real swap detection would be more complex
+            transactionType = "swap";
+            parsedInstruction = instruction;
+            const info = parsed.info;
+            source =
+              info.source || info.authority || info.owner || info.from || "";
+            destination = info.destination || info.recipient || info.to || "";
+            const uiAmount = info.tokenAmount?.uiAmount;
+            const uiAmountString = info.tokenAmount?.uiAmountString;
+            amount =
+              typeof uiAmount === "number"
+                ? uiAmount
+                : Number(uiAmountString ?? info.amount ?? 0);
+            amountUnit = "TOKEN";
+            break;
+          }
         }
 
-        const info = parsedInstruction.parsed.info;
-        const program = parsedInstruction.program;
-        const source =
-          info.source || info.authority || info.owner || info.from || "";
-        const destination =
-          info.destination ||
-          info.newAccount ||
-          info.recipient ||
-          info.to ||
-          "";
+        if (!parsedInstruction) {
+          return null;
+        }
 
         if (!source || !destination) {
           return null;
-        }
-
-        let amount = 0;
-        let amountUnit = "SOL";
-
-        if (program === "system") {
-          const lamports = Number(info.lamports ?? info.amount ?? 0);
-          amount = lamports / LAMPORTS_PER_SOL;
-        } else if (program === "spl-token") {
-          const uiAmount = info.tokenAmount?.uiAmount;
-          const uiAmountString = info.tokenAmount?.uiAmountString;
-          amount =
-            typeof uiAmount === "number"
-              ? uiAmount
-              : Number(uiAmountString ?? info.amount ?? 0);
-          amountUnit = "TOKEN";
         }
 
         const derivedStatus = meta?.err
@@ -162,7 +256,7 @@ const ActivityScreen = () => {
           timestamp: new Date(
             blockTime ? blockTime * 1000 : Date.now(),
           ).toISOString(),
-          type: "transfer",
+          type: transactionType,
           fee,
           slot: typeof slot === "number" ? slot : undefined,
         };
@@ -174,53 +268,54 @@ const ActivityScreen = () => {
     [],
   );
 
-  // Fetch transactions for active wallet
-  const fetchTransactions = useCallback(
-    async (isLoadMore = false, currentLastSignature?: string) => {
-      if (!activeWallet) {
-        if (__DEV__) {
-          console.log("No active wallet, setting transactions to empty");
-        }
-        setTransactions([]);
-        return;
-      }
-
+  // Fetch transactions for a single wallet
+  const fetchWalletTransactions = useCallback(
+    async (
+      walletAddress: string,
+      limit: number = 20,
+      lastSignature?: string,
+    ) => {
       try {
-        if (__DEV__) {
-          console.log(
-            `Fetching transactions for wallet: ${activeWallet.address}`,
-          );
+        // Check if we have cached transactions that are not expired
+        const cachedData = transactionCache[walletAddress];
+        const now = Date.now();
+
+        if (cachedData && now - cachedData.timestamp < CACHE_EXPIRATION) {
+          if (__DEV__) {
+            console.log(
+              `Using cached transactions for wallet: ${walletAddress}`,
+            );
+          }
+          return cachedData.transactions;
         }
-        const limit = 20;
+
         if (__DEV__) {
-          console.log(
-            `Getting signatures with limit: ${limit}, last signature: ${currentLastSignature}`,
-          );
+          console.log(`Fetching transactions for wallet: ${walletAddress}`);
         }
         const signatures = await rpcService.getSignaturesForAddress(
-          activeWallet.address,
+          walletAddress,
           limit,
-          isLoadMore ? currentLastSignature : undefined,
+          lastSignature,
         );
 
         if (__DEV__) {
-          console.log(`Got ${signatures.length} signatures`);
+          console.log(
+            `Got ${signatures.length} signatures for wallet: ${walletAddress}`,
+          );
         }
 
         if (signatures.length === 0) {
-          if (__DEV__) {
-            console.log("No signatures found");
-          }
-          if (!isLoadMore) {
-            setTransactions([]);
-          }
-          setHasMore(false);
-          return;
+          // Cache empty result
+          setTransactionCache((prev) => ({
+            ...prev,
+            [walletAddress]: {
+              transactions: [],
+              timestamp: now,
+            },
+          }));
+          return [];
         }
 
-        if (__DEV__) {
-          console.log(`Processing ${signatures.length} signatures`);
-        }
         const transactionPromises: Array<Promise<Transaction | null>> =
           signatures.map(async (sig) => {
             try {
@@ -257,93 +352,129 @@ const ActivityScreen = () => {
         );
 
         if (__DEV__) {
-          console.log(`Got ${validTransactions.length} valid transactions`);
-        }
-        if (__DEV__) {
-          console.log("Valid transactions count:", validTransactions.length);
-        }
-
-        // Batch update state to reduce re-renders
-        if (isLoadMore) {
-          if (__DEV__) {
-            console.log(`Appending ${validTransactions.length} transactions`);
-          }
-          setTransactions((prev) => {
-            const newTransactions = [...prev, ...validTransactions];
-            if (__DEV__) {
-              console.log(
-                `Total transactions after append: ${newTransactions.length}`,
-              );
-            }
-            return newTransactions;
-          });
-        } else {
-          if (__DEV__) {
-            console.log(`Setting ${validTransactions.length} transactions`);
-          }
-          setTransactions(validTransactions);
+          console.log(
+            `Got ${validTransactions.length} valid transactions for wallet: ${walletAddress}`,
+          );
         }
 
-        if (validTransactions.length > 0) {
-          setLastSignature(signatures[signatures.length - 1].signature);
-        }
+        // Cache the results
+        setTransactionCache((prev) => ({
+          ...prev,
+          [walletAddress]: {
+            transactions: validTransactions,
+            timestamp: now,
+          },
+        }));
 
-        setHasMore(signatures.length === limit);
-        if (__DEV__) {
-          console.log(`Has more: ${signatures.length === limit}`);
-        }
+        return validTransactions;
       } catch (error) {
-        console.error("Failed to fetch transactions:", error);
-        if (!isLoadMore) {
-          setTransactions([]);
-        }
+        console.error(
+          `Failed to fetch transactions for wallet ${walletAddress}:`,
+          error,
+        );
+        return [];
       }
     },
-    [activeWallet, parseTransaction],
+    [parseTransaction, transactionCache, CACHE_EXPIRATION],
   );
 
-  // Load data when active wallet changes or tab changes
+  // Fetch transactions for all linked wallets
+  const fetchTransactions = useCallback(
+    async (isLoadMore = false) => {
+      const wallets = linkedWallets;
+      if (wallets.length === 0) {
+        if (__DEV__) {
+          console.log("No linked wallets, setting transactions to empty");
+        }
+        setTransactions([]);
+        return;
+      }
+
+      try {
+        if (__DEV__) {
+          console.log(`Fetching transactions for ${wallets.length} wallets`);
+        }
+        const limit = 20;
+
+        // Fetch transactions for each wallet in parallel
+        const allTransactionsPromises = wallets.map((wallet: any) =>
+          fetchWalletTransactions(wallet.address, limit),
+        );
+
+        const allTransactionsResults = await Promise.all(
+          allTransactionsPromises,
+        );
+        const allTransactions = allTransactionsResults.flat();
+
+        if (__DEV__) {
+          console.log(
+            `Got ${allTransactions.length} total transactions from all wallets`,
+          );
+        }
+
+        // Sort transactions by timestamp in descending order
+        const sortedTransactions = allTransactions.sort(
+          (a: Transaction, b: Transaction) => {
+            const dateA = new Date(a.timestamp).getTime();
+            const dateB = new Date(b.timestamp).getTime();
+            return dateB - dateA;
+          },
+        );
+
+        // Limit total transactions to avoid overwhelming the UI
+        const MAX_TOTAL_TRANSACTIONS = 100;
+        const limitedTransactions = sortedTransactions.slice(
+          0,
+          MAX_TOTAL_TRANSACTIONS,
+        );
+
+        if (__DEV__) {
+          console.log(
+            `Setting ${limitedTransactions.length} sorted transactions`,
+          );
+        }
+        setTransactions(limitedTransactions);
+        setHasMore(false); // For global view, we'll just load a reasonable amount at once
+      } catch (error) {
+        console.error("Failed to fetch transactions:", error);
+        setTransactions([]);
+      }
+    },
+    [linkedWallets, fetchWalletTransactions],
+  );
+
+  // Load data when linked wallets change
   useEffect(() => {
     if (__DEV__) {
       console.log(
-        `useEffect triggered - activeWallet: ${activeWallet?.address}`,
+        `useEffect triggered - linkedWallets count: ${linkedWallets.length}`,
       );
     }
 
-    if (activeWallet) {
-      const loadData = async () => {
-        setLoading(true);
-        try {
-          setLastSignature(undefined);
-          setHasMore(true);
-          if (__DEV__) {
-            console.log(
-              `Calling fetchTransactions with activeWallet: ${activeWallet.address}`,
-            );
-          }
-          await fetchTransactions(false);
-        } finally {
-          setLoading(false);
-          if (__DEV__) {
-            console.log(`Loading completed`);
-          }
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        setHasMore(true);
+        if (__DEV__) {
+          console.log(
+            `Calling fetchTransactions for ${linkedWallets.length} wallets`,
+          );
         }
-      };
-
-      loadData();
-    } else {
-      if (__DEV__) {
-        console.log(`No active wallet, setting transactions to empty`);
+        await fetchTransactions(false);
+      } finally {
+        setLoading(false);
+        if (__DEV__) {
+          console.log(`Loading completed`);
+        }
       }
-      setTransactions([]);
-      setLoading(false);
-    }
-  }, [activeWallet, fetchTransactions]);
+    };
+
+    loadData();
+  }, [linkedWallets, fetchTransactions]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      setLastSignature(undefined);
       setHasMore(true);
       await fetchTransactions(false);
     } catch (error) {
@@ -354,15 +485,10 @@ const ActivityScreen = () => {
   }, [fetchTransactions]);
 
   const loadMore = useCallback(async () => {
-    if (!loadingMore && hasMore) {
-      setLoadingMore(true);
-      try {
-        await fetchTransactions(true, lastSignature);
-      } finally {
-        setLoadingMore(false);
-      }
-    }
-  }, [loadingMore, hasMore, fetchTransactions, lastSignature]);
+    // For global transaction view, we don't support load more
+    // We load a reasonable amount of transactions at once
+    console.log("Load more not supported for global transaction view");
+  }, []);
 
   const handleTransactionDetail = (transaction: Transaction) => {
     setSelectedTransaction(transaction);
@@ -370,31 +496,116 @@ const ActivityScreen = () => {
   };
 
   const renderTransactionItem = ({ item }: ListRenderItemInfo<Transaction>) => {
-    const isOutbound = item.source === activeWallet?.address;
+    // Get all linked wallet addresses
+    const linkedWalletAddresses = linkedWallets.map(
+      (wallet: any) => wallet.address,
+    );
+
+    // Check if this is an outbound transaction (from any of our wallets)
+    const isOutbound = linkedWalletAddresses.includes(item.source);
+    // Check if this is an inbound transaction (to any of our wallets)
+    const isInbound = linkedWalletAddresses.includes(item.destination);
+
+    // If neither, it's not related to our wallets (shouldn't happen)
+    if (!isOutbound && !isInbound) {
+      return null;
+    }
+
     const amountUnit = item.amountUnit ?? "SOL";
     const counterpartyAddress = isOutbound ? item.destination : item.source;
     const formattedCounterparty = formatAddress(counterpartyAddress);
+
+    // Get transaction title and icon based on transaction type
+    const getTransactionInfo = () => {
+      switch (item.type) {
+        case "transfer":
+          return {
+            title: isOutbound ? "Sent SOL" : "Received SOL",
+            icon: isOutbound ? (
+              <ArrowUpRight size={20} color="#FF4D4D" />
+            ) : (
+              <ArrowDownLeft size={20} color="#00FFB3" />
+            ),
+            iconColor: isOutbound ? "#FF4D4D" : "#00FFB3",
+          };
+        case "token_transfer":
+          return {
+            title: isOutbound ? "Sent Token" : "Received Token",
+            icon: isOutbound ? (
+              <ArrowUpRight size={20} color="#FFA500" />
+            ) : (
+              <ArrowDownLeft size={20} color="#32CD32" />
+            ),
+            iconColor: isOutbound ? "#FFA500" : "#32CD32",
+          };
+        case "stake_delegate":
+          return {
+            title: "Staked SOL",
+            icon: <ArrowUpRight size={20} color="#1E90FF" />,
+            iconColor: "#1E90FF",
+          };
+        case "stake_withdraw":
+          return {
+            title: "Unstaked SOL",
+            icon: <ArrowDownLeft size={20} color="#9370DB" />,
+            iconColor: "#9370DB",
+          };
+        case "nft_transfer":
+          return {
+            title: isOutbound ? "Sent NFT" : "Received NFT",
+            icon: isOutbound ? (
+              <ArrowUpRight size={20} color="#FF69B4" />
+            ) : (
+              <ArrowDownLeft size={20} color="#FF69B4" />
+            ),
+            iconColor: "#FF69B4",
+          };
+        case "swap":
+          return {
+            title: "Swapped Tokens",
+            icon: <ArrowUpRight size={20} color="#FFD700" />,
+            iconColor: "#FFD700",
+          };
+        default:
+          return {
+            title: isOutbound ? "Sent" : "Received",
+            icon: isOutbound ? (
+              <ArrowUpRight size={20} color="#FF4D4D" />
+            ) : (
+              <ArrowDownLeft size={20} color="#00FFB3" />
+            ),
+            iconColor: isOutbound ? "#FF4D4D" : "#00FFB3",
+          };
+      }
+    };
+
+    const transactionInfo = getTransactionInfo();
 
     return (
       <TouchableOpacity
         style={styles.transactionItem}
         onPress={() => handleTransactionDetail(item)}
       >
-        <View style={styles.transactionIcon}>
-          {isOutbound ? (
-            <ArrowUpRight size={20} color="#FF4D4D" />
-          ) : (
-            <ArrowDownLeft size={20} color="#00FFB3" />
-          )}
+        <View
+          style={[
+            styles.transactionIcon,
+            { backgroundColor: `${transactionInfo.iconColor}20` },
+          ]}
+        >
+          {transactionInfo.icon}
         </View>
         <View style={styles.transactionContent}>
-          <Text style={styles.transactionTitle}>
-            {isOutbound ? "Sent" : "Received"}
-          </Text>
+          <Text style={styles.transactionTitle}>{transactionInfo.title}</Text>
           <Text style={styles.transactionAddress}>
             {isOutbound
               ? `To ${formattedCounterparty}`
               : `From ${formattedCounterparty}`}
+          </Text>
+          {/* Show which wallet this transaction is related to */}
+          <Text style={styles.transactionWallet}>
+            {isOutbound
+              ? `From ${formatAddress(item.source)}`
+              : `To ${formatAddress(item.destination)}`}
           </Text>
         </View>
         <View style={styles.transactionAmountContainer}>
@@ -454,7 +665,18 @@ const ActivityScreen = () => {
   const renderTransactionDetail = () => {
     if (!selectedTransaction) return null;
 
-    const isOutbound = selectedTransaction.source === activeWallet?.address;
+    // Get all linked wallet addresses
+    const linkedWalletAddresses = linkedWallets.map((wallet: any) => wallet.address);
+
+    // Check if this is an outbound transaction (from any of our wallets)
+    const isOutbound = linkedWalletAddresses.includes(
+      selectedTransaction.source,
+    );
+    // Check if this is an inbound transaction (to any of our wallets)
+    const isInbound = linkedWalletAddresses.includes(
+      selectedTransaction.destination,
+    );
+
     const amountUnit = selectedTransaction.amountUnit ?? "SOL";
     const formattedDate = selectedTransaction.timestamp
       ? new Date(selectedTransaction.timestamp).toLocaleString("en-US", {
@@ -474,7 +696,7 @@ const ActivityScreen = () => {
             <X size={24} color="#FFFFFF" />
           </TouchableOpacity>
           <Text style={styles.transactionDetailTitle}>
-            {isOutbound ? "Sent" : "Received"}
+            {isOutbound ? "Sent" : isInbound ? "Received" : "Transaction"}
           </Text>
           <View style={{ width: 24 }} />
         </View>
@@ -483,15 +705,19 @@ const ActivityScreen = () => {
           <View style={styles.transactionDetailIcon}>
             {isOutbound ? (
               <ArrowUpRight size={40} color="#FF4D4D" />
-            ) : (
+            ) : isInbound ? (
               <ArrowDownLeft size={40} color="#00FFB3" />
+            ) : (
+              <Info size={40} color="#7F56D9" />
             )}
           </View>
 
           <Text style={styles.transactionDetailAmount}>
             {isOutbound
               ? `- ${formatAmount(selectedTransaction.amount)} ${amountUnit}`
-              : `+ ${formatAmount(selectedTransaction.amount)} ${amountUnit}`}
+              : isInbound
+                ? `+ ${formatAmount(selectedTransaction.amount)} ${amountUnit}`
+                : `${formatAmount(selectedTransaction.amount)} ${amountUnit}`}
           </Text>
 
           <View style={styles.transactionDetailInfo}>
@@ -517,15 +743,16 @@ const ActivityScreen = () => {
             </View>
 
             <View style={styles.transactionDetailRow}>
-              <Text style={styles.transactionDetailLabel}>
-                {isOutbound ? "To" : "From"}
-              </Text>
+              <Text style={styles.transactionDetailLabel}>From</Text>
               <Text style={styles.transactionDetailValue}>
-                {formatAddress(
-                  isOutbound
-                    ? selectedTransaction.destination
-                    : selectedTransaction.source,
-                )}
+                {formatAddress(selectedTransaction.source)}
+              </Text>
+            </View>
+
+            <View style={styles.transactionDetailRow}>
+              <Text style={styles.transactionDetailLabel}>To</Text>
+              <Text style={styles.transactionDetailValue}>
+                {formatAddress(selectedTransaction.destination)}
               </Text>
             </View>
 
@@ -704,6 +931,11 @@ const styles = StyleSheet.create({
   transactionAddress: {
     color: "rgba(255, 255, 255, 0.6)",
     fontSize: 14,
+  },
+  transactionWallet: {
+    color: "rgba(255, 255, 255, 0.4)",
+    fontSize: 12,
+    marginTop: 2,
   },
   transactionAmountContainer: {
     alignItems: "flex-end",

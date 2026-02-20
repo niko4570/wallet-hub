@@ -8,7 +8,7 @@ import type {
   TransactionAuditEntry,
 } from "@wallethub/contracts";
 import { API_URL } from "../config/env";
-import { useWalletBaseStore } from "../store/walletStore";
+import { useWalletStore } from "../navigation/walletStore";
 import { walletService } from "./walletService";
 import { Buffer } from "buffer";
 import { LinkedWallet } from "../types/wallet";
@@ -69,7 +69,7 @@ async function buildSignatureHeaders(
     return {};
   }
 
-  const walletStore = useWalletBaseStore.getState();
+  const walletStore = useWalletStore.getState();
   const candidateAddress =
     walletStore.primaryWalletAddress ??
     walletStore.activeWalletAddress ??

@@ -24,7 +24,11 @@ import { Feather } from "@expo/vector-icons";
 import QRCode from "react-native-qrcode-svg";
 import * as Clipboard from "expo-clipboard";
 import { useSolana } from "../context/SolanaContext";
-import { useWalletStore, useWalletBalanceStore, useWalletHistoricalStore } from "../store/walletStore";
+import {
+  useWalletStore,
+  useWalletBalanceStore,
+  useWalletHistoricalStore,
+} from "../navigation/walletStore";
 import { formatUsd, formatAddress, formatAmount } from "../utils/format";
 import { LinkedWallet } from "../types/wallet";
 import * as Haptics from "expo-haptics";
@@ -93,13 +97,10 @@ const WalletScreen = () => {
     primaryWalletAddress,
     setPrimaryWalletAddress,
   } = useWalletStore();
-  
+
   // Use balance store for balance-related state
-  const {
-    totalBalance,
-    totalUsdValue,
-    detailedBalances,
-  } = useWalletBalanceStore();
+  const { totalBalance, totalUsdValue, detailedBalances } =
+    useWalletBalanceStore();
 
   const [refreshing, setRefreshing] = useState(false);
   const [connectModalVisible, setConnectModalVisible] = useState(false);
@@ -109,8 +110,25 @@ const WalletScreen = () => {
   const [sendAmount, setSendAmount] = useState("");
   const [sending, setSending] = useState(false);
   const [estimatedFee, setEstimatedFee] = useState<number | null>(null);
+  const [balanceHistoryLoading, setBalanceHistoryLoading] = useState(false);
+  const [balanceHistoryError, setBalanceHistoryError] = useState<string | null>(
+    null,
+  );
+  const [timeRange, setTimeRange] = useState<"24h" | "7d" | "30d">("24h");
 
-
+  // Get time range in milliseconds
+  const getTimeRangeMs = () => {
+    switch (timeRange) {
+      case "24h":
+        return 24 * 60 * 60 * 1000;
+      case "7d":
+        return 7 * 24 * 60 * 60 * 1000;
+      case "30d":
+        return 30 * 24 * 60 * 60 * 1000;
+      default:
+        return 24 * 60 * 60 * 1000;
+    }
+  };
 
   // Request notification permissions on load
   useEffect(() => {
@@ -128,7 +146,7 @@ const WalletScreen = () => {
 
   useEffect(() => {
     const addresses = new Set<string>();
-    linkedWallets.forEach((wallet) => {
+    linkedWallets.forEach((wallet: any) => {
       if (wallet.address) {
         addresses.add(wallet.address);
       }
@@ -148,15 +166,13 @@ const WalletScreen = () => {
       );
   }, [linkedWallets, primaryWalletAddress]);
 
-
-
   // Estimate fee when send modal is open and inputs are valid
   useEffect(() => {
     if (!sendModalVisible) {
       setEstimatedFee(null);
       return;
     }
-    
+
     const amount = parseFloat(sendAmount);
     if (!sendRecipient.trim() || Number.isNaN(amount) || amount <= 0) {
       setEstimatedFee(null);
@@ -229,7 +245,7 @@ const WalletScreen = () => {
     }
 
     const currentIndex = linkedWallets.findIndex(
-      (wallet) => wallet.address === activeWallet.address,
+      (wallet: any) => wallet.address === activeWallet.address,
     );
     const nextWallet =
       linkedWallets[
@@ -382,7 +398,6 @@ const WalletScreen = () => {
         symbol: "SOL",
         address: activeWallet.address,
       });
-
     } catch (err: any) {
       console.warn("Send failed", err);
       toast.show({
@@ -476,9 +491,9 @@ const WalletScreen = () => {
       }
     >();
 
-    linkedWallets.forEach((wallet) => {
+    linkedWallets.forEach((wallet: any) => {
       const walletTokens = detailedBalances[wallet.address]?.tokens || [];
-      walletTokens.forEach((token) => {
+      walletTokens.forEach((token: any) => {
         const existing = tokenMap.get(token.mint);
         if (existing) {
           existing.balance += token.balance;
@@ -502,30 +517,81 @@ const WalletScreen = () => {
 
   // Get real balance history data from wallet store
   const balanceHistoryData = useMemo(() => {
-    // First try to get historical data for primary wallet
-    if (primaryWalletAddress) {
-      const primaryBalances = useWalletHistoricalStore
-        .getState()
-        .getHistoricalBalances(primaryWalletAddress);
-      if (primaryBalances && primaryBalances.length > 0) {
-        return primaryBalances.sort((a, b) => a.timestamp - b.timestamp);
+    const now = Date.now();
+    const timeRangeMs = getTimeRangeMs();
+    const startTime = now - timeRangeMs;
+
+    try {
+      // First try to get historical data for primary wallet
+      if (primaryWalletAddress) {
+        const primaryBalances = useWalletHistoricalStore
+          .getState()
+          .getHistoricalBalances(primaryWalletAddress);
+        if (
+          primaryBalances &&
+          Array.isArray(primaryBalances) &&
+          primaryBalances.length > 0
+        ) {
+          return primaryBalances
+            .filter((balance) => {
+              return (
+                balance &&
+                typeof balance.timestamp === "number" &&
+                balance.timestamp >= startTime &&
+                balance.timestamp <= now
+              );
+            })
+            .sort((a, b) => a.timestamp - b.timestamp);
+        }
       }
-    }
 
-    // Fallback to active wallet
-    if (activeWallet) {
-      const activeBalances = useWalletHistoricalStore
-        .getState()
-        .getHistoricalBalances(activeWallet.address);
-      if (activeBalances && activeBalances.length > 0) {
-        return activeBalances.sort((a, b) => a.timestamp - b.timestamp);
+      // Fallback to active wallet
+      if (activeWallet) {
+        const activeBalances = useWalletHistoricalStore
+          .getState()
+          .getHistoricalBalances(activeWallet.address);
+        if (
+          activeBalances &&
+          Array.isArray(activeBalances) &&
+          activeBalances.length > 0
+        ) {
+          return activeBalances
+            .filter((balance) => {
+              return (
+                balance &&
+                typeof balance.timestamp === "number" &&
+                balance.timestamp >= startTime &&
+                balance.timestamp <= now
+              );
+            })
+            .sort((a, b) => a.timestamp - b.timestamp);
+        }
       }
+
+      return [];
+    } catch (error) {
+      console.error("Error fetching balance history data:", error);
+      return [];
     }
+  }, [primaryWalletAddress, activeWallet, timeRange]);
 
-    return [];
-  }, [primaryWalletAddress, activeWallet]);
-
-
+  // Handle balance history errors
+  useEffect(() => {
+    if (
+      balanceHistoryData.length === 0 &&
+      (primaryWalletAddress || activeWallet)
+    ) {
+      // Only set error if we have wallets but no data
+      setBalanceHistoryError("No balance history data available");
+    } else {
+      setBalanceHistoryError(null);
+    }
+  }, [
+    balanceHistoryData,
+    primaryWalletAddress,
+    activeWallet,
+    setBalanceHistoryError,
+  ]);
 
   return (
     <View style={styles.screen}>
@@ -918,7 +984,7 @@ const WalletScreen = () => {
                       style={styles.sheetWalletList}
                       showsVerticalScrollIndicator={false}
                     >
-                      {linkedWallets.map((wallet) => {
+                      {linkedWallets.map((wallet: any) => {
                         const isActiveWallet =
                           wallet.address === activeWallet?.address;
                         const isPrimaryWallet =
@@ -1046,7 +1112,9 @@ const WalletScreen = () => {
               )}
               {estimatedFee !== null && (
                 <View style={styles.feeEstimateRow}>
-                  <Text style={styles.feeEstimateLabel}>Estimated Network Fee</Text>
+                  <Text style={styles.feeEstimateLabel}>
+                    Estimated Network Fee
+                  </Text>
                   <Text style={styles.feeEstimateValue}>
                     ~{estimatedFee.toFixed(6)} SOL
                   </Text>
@@ -1140,14 +1208,66 @@ const WalletScreen = () => {
           </View>
         </Modal>
 
-
+        {/* Time Range Selector */}
+        <View style={styles.timeRangeSelector}>
+          <TouchableOpacity
+            style={[
+              styles.timeRangeButton,
+              timeRange === "24h" && styles.timeRangeButtonActive,
+            ]}
+            onPress={() => setTimeRange("24h")}
+          >
+            <Text
+              style={[
+                styles.timeRangeButtonText,
+                timeRange === "24h" && styles.timeRangeButtonTextActive,
+              ]}
+            >
+              24h
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.timeRangeButton,
+              timeRange === "7d" && styles.timeRangeButtonActive,
+            ]}
+            onPress={() => setTimeRange("7d")}
+          >
+            <Text
+              style={[
+                styles.timeRangeButtonText,
+                timeRange === "7d" && styles.timeRangeButtonTextActive,
+              ]}
+            >
+              7d
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.timeRangeButton,
+              timeRange === "30d" && styles.timeRangeButtonActive,
+            ]}
+            onPress={() => setTimeRange("30d")}
+          >
+            <Text
+              style={[
+                styles.timeRangeButtonText,
+                timeRange === "30d" && styles.timeRangeButtonTextActive,
+              ]}
+            >
+              30d
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Balance Chart */}
         <BalanceChart
           data={balanceHistoryData}
-          title="24h Balance History"
+          title={`${timeRange.toUpperCase()} Balance History`}
           height={220}
           showSolLine={true}
+          loading={balanceHistoryLoading}
+          error={balanceHistoryError}
         />
 
         {/* Token Pie Chart */}
@@ -1157,8 +1277,6 @@ const WalletScreen = () => {
           height={300}
           showPercentage={true}
         />
-
-
       </ScrollView>
     </View>
   );
@@ -1558,6 +1676,32 @@ const styles = StyleSheet.create({
     color: "#7F56D9",
     fontSize: 11,
     fontWeight: "700",
+  },
+  timeRangeSelector: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 12,
+    marginBottom: 16,
+  },
+  timeRangeButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+  },
+  timeRangeButtonActive: {
+    backgroundColor: "rgba(127, 86, 217, 0.2)",
+    borderColor: "rgba(127, 86, 217, 0.4)",
+  },
+  timeRangeButtonText: {
+    color: "rgba(255, 255, 255, 0.6)",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  timeRangeButtonTextActive: {
+    color: "#7F56D9",
   },
   walletBalance: {
     marginBottom: 16,

@@ -5,7 +5,7 @@ import { priceService } from "./priceService";
 import { tokenMetadataService } from "./tokenMetadataService";
 import { jupiterPortfolioService } from "./jupiterPortfolioService";
 
-import { useWalletHistoricalStore } from "../store/walletStore";
+import { useWalletHistoricalStore } from "../navigation/walletStore";
 import type { WalletActivity, WalletBalance } from "../types/wallet";
 
 // Define JupiterTransactionRecord type
