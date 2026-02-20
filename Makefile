@@ -18,7 +18,7 @@ ENV_EXPORT := EXPO_PUBLIC_API_URL=$(EXPO_PUBLIC_API_URL) \
 
 help:
 	@echo "WalletHub shortcuts:"
-	@echo "  make install        # npm install (root workspaces)"
+	@echo "  make install        # pnpm install (root workspaces)"
 	@echo "  make setup          # setup project with dependencies"
 	@echo "  make dev-api        # start Nest API (watch mode, optional)"
 	@echo "  make dev-mobile     # start Expo dev server"
@@ -44,34 +44,34 @@ help:
 	@echo "  make eas-submit     # submit to Google Play"
 
 install:
-	npm install
+	pnpm install
 
 # Setup project with dependencies
 setup:
-	npm install
-	npm run build:contracts
+	pnpm install
+	pnpm run build:contracts
 
 # Start API development server
 dev-api:
-	npm run dev:api
+	pnpm run dev:api
 
 # Start mobile development server
 dev-mobile: check-env-mobile
-	$(ENV_EXPORT) npm run dev:mobile
+	$(ENV_EXPORT) pnpm run dev:mobile
 
 dev-app: dev-mobile
 
 # Build and install Android debug APK
 android: adb-reverse
-	cd apps/mobile && $(ENV_EXPORT) npx --yes expo run:android
+	cd apps/mobile && $(ENV_EXPORT) pnpm exec expo run:android
 
 # Build and run on iOS simulator
 ios:
-	cd apps/mobile && $(ENV_EXPORT) npx --yes expo run:ios
+	cd apps/mobile && $(ENV_EXPORT) pnpm exec expo run:ios
 
 # Run Expo web preview
 web:
-	$(ENV_EXPORT) npm run web
+	$(ENV_EXPORT) pnpm run web
 
 # Clean mobile build cache
 clean-mobile:
@@ -86,29 +86,29 @@ adb-reverse:
 
 # Run both API and mobile dev servers concurrently
 dev-all:
-	$(ENV_EXPORT) npx concurrently --kill-others-on-fail --names "api,mobile" \
-		"npm run dev:api" \
-		"npm run dev:mobile"
+	$(ENV_EXPORT) pnpm exec concurrently --kill-others-on-fail --names "api,mobile" \
+		"pnpm run dev:api" \
+		"pnpm run dev:mobile"
 
 # Build shared contracts and API
 build:
-	npm run build
+	pnpm run build
 
 # Build API only
 build-api:
-	npm run build:api
+	pnpm run build:api
 
 # Build shared contracts only
 build-contracts:
-	npm run build:contracts
+	pnpm run build:contracts
 
 # Run backend linting
 lint:
-	npm run lint
+	pnpm run lint
 
 # Run backend tests
 test-api:
-	npm run test --workspace apps/api -- --runInBand
+	pnpm run test --workspace apps/api -- --runInBand
 
 # Check mobile environment variables
 check-env-mobile:
@@ -137,7 +137,7 @@ export-env:
 
 # Type check mobile app
 typecheck-mobile:
-	npx tsc -p apps/mobile/tsconfig.json --noEmit
+	pnpm exec tsc -p apps/mobile/tsconfig.json --noEmit
 
 # EAS build commands
 eas-build-dev:

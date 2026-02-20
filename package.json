@@ -10,14 +10,14 @@
     "packages/contracts"
   ],
   "scripts": {
-    "dev:mobile": "npm run start --workspace apps/mobile",
-    "web": "npm run web --workspace apps/mobile",
-    "dev:api": "npm run start:dev --workspace apps/api",
-    "build:contracts": "npm run build --workspace packages/contracts",
-    "build:api": "npm run build --workspace apps/api",
-    "build": "npm run build:contracts && npm run build:api",
-    "lint": "npm run lint --workspace apps/api",
-    "postinstall": "npm run build:contracts"
+    "dev:mobile": "pnpm run start --workspace apps/mobile",
+    "web": "pnpm run web --workspace apps/mobile",
+    "dev:api": "pnpm run start:dev --workspace apps/api",
+    "build:contracts": "pnpm run build --workspace packages/contracts",
+    "build:api": "pnpm run build --workspace apps/api",
+    "build": "pnpm run build:contracts && pnpm run build:api",
+    "lint": "pnpm run lint --workspace apps/api",
+    "postinstall": "pnpm run build:contracts"
   },
   "repository": {
     "type": "git",
