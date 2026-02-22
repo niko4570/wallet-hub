@@ -5,7 +5,7 @@ import { priceService } from "./priceService";
 import { tokenMetadataService } from "./tokenMetadataService";
 import { jupiterPortfolioService } from "./jupiterPortfolioService";
 
-import { useWalletHistoricalStore } from "../navigation/walletStore";
+import { useWalletHistoricalStore } from "../store/walletStore";
 import type { WalletActivity, WalletBalance } from "../types/wallet";
 
 // Define JupiterTransactionRecord type
@@ -123,10 +123,19 @@ export async function fetchAccountSnapshot(
 
   // Update historical balance data
   const walletHistoricalStore = useWalletHistoricalStore.getState();
-  walletHistoricalStore.updateHistoricalBalance(normalizedAddress, {
+  const historyUpdate = {
     timestamp: Date.now(),
-    usd: snapshot.usdValue,
-    sol: snapshot.balance,
+    usd: Number(snapshot.usdValue.toFixed(2)),
+    sol: Number(snapshot.balance.toFixed(6)),
+  };
+
+  walletHistoricalStore.updateHistoricalBalance(
+    normalizedAddress,
+    historyUpdate,
+  );
+  console.debug("Historical balance updated:", {
+    address: normalizedAddress,
+    data: historyUpdate,
   });
 
   return { snapshot, activity };

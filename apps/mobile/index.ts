@@ -1,27 +1,30 @@
-import 'react-native-get-random-values';
-import { registerRootComponent } from 'expo';
-import { Buffer } from 'buffer';
-import { getRandomValues as expoCryptoGetRandomValues } from 'expo-crypto';
+import "react-native-get-random-values";
+import { registerRootComponent } from "expo";
+import { Buffer } from "buffer";
+import { getRandomValues as expoCryptoGetRandomValues } from "expo-crypto";
 
-global.Buffer = Buffer;
+(globalThis as any).Buffer = Buffer;
 
 class CryptoPolyfill {
   getRandomValues = expoCryptoGetRandomValues;
 }
 
-const cryptoInstance = typeof globalThis.crypto !== 'undefined' ? globalThis.crypto : new CryptoPolyfill();
+const cryptoInstance =
+  typeof globalThis.crypto !== "undefined"
+    ? globalThis.crypto
+    : new CryptoPolyfill();
 
 (() => {
-  if (typeof globalThis.crypto === 'undefined') {
-    Object.defineProperty(globalThis, 'crypto', {
-      configurable: true,
-      enumerable: true,
+  if (typeof globalThis.crypto === "undefined") {
+    Object.defineProperty(globalThis, "crypto", {
+      configurable: true, // Allow redefinition if needed
+      enumerable: true, // Make it show up in console logs
       get: () => cryptoInstance,
     });
   }
 })();
 
-import App from './App';
+import App from "./App";
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);
 // It also ensures that whether you load the app in Expo Go or in a native build,

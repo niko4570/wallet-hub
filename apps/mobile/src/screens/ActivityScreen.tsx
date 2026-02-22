@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { formatAddress, formatAmount } from "../utils/format";
-import { useWalletStore } from "../navigation/walletStore";
+import { useWalletStore } from "../store/walletStore";
 import { rpcService } from "../services";
 import { Transaction } from "../types";
 import { SkeletonTransaction } from "../components/common/SkeletonLoader";
@@ -666,7 +666,9 @@ const ActivityScreen = () => {
     if (!selectedTransaction) return null;
 
     // Get all linked wallet addresses
-    const linkedWalletAddresses = linkedWallets.map((wallet: any) => wallet.address);
+    const linkedWalletAddresses = linkedWallets.map(
+      (wallet: any) => wallet.address,
+    );
 
     // Check if this is an outbound transaction (from any of our wallets)
     const isOutbound = linkedWalletAddresses.includes(
