@@ -28,7 +28,7 @@ import {
   useWalletStore,
   useWalletBalanceStore,
   useWalletHistoricalStore,
-} from "../navigation/walletStore";
+} from "../store/walletStore";
 import { LinkedWallet, AuthorizationPreview } from "../types/wallet";
 
 const APP_IDENTITY = {

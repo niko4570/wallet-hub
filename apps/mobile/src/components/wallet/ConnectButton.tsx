@@ -1,16 +1,16 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback } from "react";
 import {
   TouchableOpacity,
   Text,
   StyleSheet,
   ActivityIndicator,
   View,
-} from 'react-native';
-import { Feather } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useSolana } from '../../context/SolanaContext';
-import { useWalletStore, useWalletStatusStore } from '../../navigation/walletStore';
-import * as Haptics from 'expo-haptics';
+} from "react-native";
+import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { useSolana } from "../../context/SolanaContext";
+import { useWalletStore, useWalletStatusStore } from "../../store/walletStore";
+import * as Haptics from "expo-haptics";
 
 interface ConnectButtonProps {
   onConnect?: (wallets: any[]) => void;
@@ -21,10 +21,11 @@ interface ConnectButtonProps {
 export const ConnectButton: React.FC<ConnectButtonProps> = ({
   onConnect,
   onError,
-  testID = 'connect-wallet-button',
+  testID = "connect-wallet-button",
 }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const { startAuthorization, finalizeAuthorization, refreshBalance } = useSolana();
+  const { startAuthorization, finalizeAuthorization, refreshBalance } =
+    useSolana();
   const { linkedWallets } = useWalletStore();
   const { setError } = useWalletStatusStore();
 
@@ -38,29 +39,37 @@ export const ConnectButton: React.FC<ConnectButtonProps> = ({
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const preview = await startAuthorization();
       const accounts = await finalizeAuthorization(preview);
-      
+
       await Promise.all(
         accounts.map((account: any) =>
           refreshBalance(account.address).catch((err: any) =>
-            console.warn('Balance refresh failed post-connect', err)
-          )
-        )
+            console.warn("Balance refresh failed post-connect", err),
+          ),
+        ),
       );
 
       if (onConnect) {
         onConnect(accounts);
       }
     } catch (error: any) {
-      console.error('Wallet connection error:', error);
-      setError(error.message || 'Failed to connect wallet');
-      
+      console.error("Wallet connection error:", error);
+      setError(error.message || "Failed to connect wallet");
+
       if (onError) {
         onError(error);
       }
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, startAuthorization, finalizeAuthorization, refreshBalance, onConnect, onError, setError]);
+  }, [
+    isLoading,
+    startAuthorization,
+    finalizeAuthorization,
+    refreshBalance,
+    onConnect,
+    onError,
+    setError,
+  ]);
 
   const isConnected = linkedWallets.length > 0;
 
@@ -72,7 +81,7 @@ export const ConnectButton: React.FC<ConnectButtonProps> = ({
       testID={testID}
     >
       <LinearGradient
-        colors={['#9333EA', '#7E22CE', '#6B21A8']}
+        colors={["#9333EA", "#7E22CE", "#6B21A8"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.button}
@@ -82,9 +91,14 @@ export const ConnectButton: React.FC<ConnectButtonProps> = ({
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
             <>
-              <Feather name="link-2" size={14} color="#FFFFFF" style={styles.buttonIcon} />
+              <Feather
+                name="link-2"
+                size={14}
+                color="#FFFFFF"
+                style={styles.buttonIcon}
+              />
               <Text style={styles.buttonText}>
-                {isConnected ? 'Connected' : 'Connect Wallet'}
+                {isConnected ? "Connected" : "Connect Wallet"}
               </Text>
             </>
           )}
@@ -97,23 +111,23 @@ export const ConnectButton: React.FC<ConnectButtonProps> = ({
 const styles = StyleSheet.create({
   button: {
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 24,
     paddingVertical: 12,
     minWidth: 140,
   },
   buttonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   },
   buttonIcon: {
     marginRight: 8,
   },
   buttonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
+    color: "#FFFFFF",
+    fontWeight: "600",
     fontSize: 16,
   },
 });

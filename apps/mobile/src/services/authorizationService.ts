@@ -8,7 +8,7 @@ import type {
   TransactionAuditEntry,
 } from "@wallethub/contracts";
 import { API_URL } from "../config/env";
-import { useWalletStore } from "../navigation/walletStore";
+import { useWalletStore } from "../store/walletStore";
 import { walletService } from "./walletService";
 import { Buffer } from "buffer";
 import { LinkedWallet } from "../types/wallet";

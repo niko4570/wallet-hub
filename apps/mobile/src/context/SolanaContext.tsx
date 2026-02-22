@@ -1,13 +1,13 @@
 import React, { createContext, useContext, ReactNode, useMemo } from "react";
 import { useSolana as useSolanaHook } from "../hooks/useSolana";
 import type { UseSolanaResult } from "../hooks/useSolana";
-import { 
-  useWalletBaseStore, 
-  useWalletBalanceStore, 
-  useWalletActivityStore, 
+import {
+  useWalletBaseStore,
+  useWalletBalanceStore,
+  useWalletActivityStore,
   useWalletHistoricalStore,
-  useWalletStatusStore
-} from "../navigation/walletStore";
+  useWalletStatusStore,
+} from "../store/walletStore";
 
 interface SolanaContextType {
   solana: UseSolanaResult;
@@ -19,7 +19,7 @@ export const SolanaProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
   const solana = useSolanaHook();
-  
+
   // Use split stores
   const {
     linkedWallets,
@@ -29,14 +29,10 @@ export const SolanaProvider: React.FC<{ children: ReactNode }> = ({
     setActiveWallet,
     setActiveWalletAddress,
   } = useWalletBaseStore();
-  
-  const {
-    balances,
-    detailedBalances,
-    updateBalance,
-    updateDetailedBalance,
-  } = useWalletBalanceStore();
-  
+
+  const { balances, detailedBalances, updateBalance, updateDetailedBalance } =
+    useWalletBalanceStore();
+
   const [hasHydrated, setHasHydrated] = React.useState(
     useWalletBaseStore.persist?.hasHydrated?.() ?? true,
   );
@@ -65,8 +61,7 @@ export const SolanaProvider: React.FC<{ children: ReactNode }> = ({
 
     // Always sync linked wallets, even if empty
     if (solana.linkedWallets.length > 0 || linkedWallets.length === 0) {
-      const sameLength =
-        solana.linkedWallets.length === linkedWallets.length;
+      const sameLength = solana.linkedWallets.length === linkedWallets.length;
       const sameAddresses =
         sameLength &&
         solana.linkedWallets.every(
@@ -174,10 +169,10 @@ export const useSolana = (): UseSolanaResult => {
 };
 
 // Also export the wallet stores directly for components that need more control
-export { 
-  useWalletBaseStore, 
-  useWalletBalanceStore, 
-  useWalletActivityStore, 
+export {
+  useWalletBaseStore,
+  useWalletBalanceStore,
+  useWalletActivityStore,
   useWalletHistoricalStore,
-  useWalletStatusStore
- };
+  useWalletStatusStore,
+};

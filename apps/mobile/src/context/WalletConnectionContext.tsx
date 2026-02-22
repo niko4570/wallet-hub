@@ -6,7 +6,7 @@ import React, {
   ReactNode,
 } from "react";
 import { useSolana } from "./SolanaContext";
-import { useWalletStatusStore, useWalletBaseStore } from "../navigation/walletStore";
+import { useWalletStatusStore, useWalletBaseStore } from "../store/walletStore";
 import { LinkedWallet } from "../types/wallet";
 
 interface WalletConnectionContextType {
@@ -52,28 +52,25 @@ export const WalletConnectionProvider: React.FC<
   } = useSolana();
   const walletStatusStore = useWalletStatusStore();
 
-  const connectWallet = useCallback(
-    async (): Promise<LinkedWallet[]> => {
-      if (isConnecting) {
-        throw new Error("Already connecting to wallet");
-      }
+  const connectWallet = useCallback(async (): Promise<LinkedWallet[]> => {
+    if (isConnecting) {
+      throw new Error("Already connecting to wallet");
+    }
 
-      setIsConnecting(true);
-      walletStatusStore.setError(null);
+    setIsConnecting(true);
+    walletStatusStore.setError(null);
 
-      try {
-        const connectedWallets = await registerPrimaryWallet();
-        return connectedWallets;
-      } catch (error: any) {
-        console.error("Wallet connection error:", error);
-        walletStatusStore.setError(error.message || "Failed to connect wallet");
-        throw error;
-      } finally {
-        setIsConnecting(false);
-      }
-    },
-    [isConnecting, registerPrimaryWallet, walletStatusStore],
-  );
+    try {
+      const connectedWallets = await registerPrimaryWallet();
+      return connectedWallets;
+    } catch (error: any) {
+      console.error("Wallet connection error:", error);
+      walletStatusStore.setError(error.message || "Failed to connect wallet");
+      throw error;
+    } finally {
+      setIsConnecting(false);
+    }
+  }, [isConnecting, registerPrimaryWallet, walletStatusStore]);
 
   const disconnectWallet = useCallback(
     async (address?: string) => {
@@ -88,7 +85,7 @@ export const WalletConnectionProvider: React.FC<
   );
 
   const walletBaseStore = useWalletBaseStore();
-  
+
   const disconnectAllWallets = useCallback(() => {
     walletBaseStore.clearAllWallets();
   }, [walletBaseStore]);
