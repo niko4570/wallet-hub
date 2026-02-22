@@ -28,7 +28,7 @@ import {
   useWalletStore,
   useWalletBalanceStore,
   useWalletHistoricalStore,
-} from "../navigation/walletStore";
+} from "../store/walletStore";
 import { formatUsd, formatAddress, formatAmount } from "../utils/format";
 import { LinkedWallet } from "../types/wallet";
 import * as Haptics from "expo-haptics";
@@ -115,6 +115,11 @@ const WalletScreen = () => {
     null,
   );
   const [timeRange, setTimeRange] = useState<"24h" | "7d" | "30d">("24h");
+
+  // Subscribe to historical balances for all wallets
+  const historicalBalances = useWalletHistoricalStore(
+    (state) => state.historicalBalances,
+  );
 
   // Get time range in milliseconds
   const getTimeRangeMs = () => {
@@ -522,75 +527,132 @@ const WalletScreen = () => {
     const startTime = now - timeRangeMs;
 
     try {
-      // First try to get historical data for primary wallet
+      // Collect all wallet addresses to include
+      const walletAddresses = new Set<string>();
+
+      // Add primary wallet if exists
       if (primaryWalletAddress) {
-        const primaryBalances = useWalletHistoricalStore
-          .getState()
-          .getHistoricalBalances(primaryWalletAddress);
-        if (
-          primaryBalances &&
-          Array.isArray(primaryBalances) &&
-          primaryBalances.length > 0
-        ) {
-          return primaryBalances
-            .filter((balance) => {
-              return (
-                balance &&
-                typeof balance.timestamp === "number" &&
-                balance.timestamp >= startTime &&
-                balance.timestamp <= now
-              );
-            })
-            .sort((a, b) => a.timestamp - b.timestamp);
-        }
+        walletAddresses.add(primaryWalletAddress);
       }
 
-      // Fallback to active wallet
-      if (activeWallet) {
-        const activeBalances = useWalletHistoricalStore
-          .getState()
-          .getHistoricalBalances(activeWallet.address);
-        if (
-          activeBalances &&
-          Array.isArray(activeBalances) &&
-          activeBalances.length > 0
-        ) {
-          return activeBalances
-            .filter((balance) => {
-              return (
-                balance &&
-                typeof balance.timestamp === "number" &&
-                balance.timestamp >= startTime &&
-                balance.timestamp <= now
-              );
-            })
-            .sort((a, b) => a.timestamp - b.timestamp);
-        }
+      // Add active wallet if exists and different from primary
+      if (activeWallet && activeWallet.address !== primaryWalletAddress) {
+        walletAddresses.add(activeWallet.address);
       }
 
-      return [];
+      // Add all linked wallets
+      linkedWallets.forEach((wallet) => {
+        walletAddresses.add(wallet.address);
+      });
+
+      // Get historical data for all wallets using the subscribed state
+      const allBalances: Array<{
+        timestamp: number;
+        usd: number;
+        sol: number;
+      }> = [];
+
+      walletAddresses.forEach((address) => {
+        const balances = historicalBalances[address] || [];
+
+        if (balances && Array.isArray(balances)) {
+          balances.forEach((balance) => {
+            // Validate balance data
+            if (
+              balance &&
+              typeof balance.timestamp === "number" &&
+              typeof balance.usd === "number" &&
+              typeof balance.sol === "number" &&
+              balance.timestamp >= startTime &&
+              balance.timestamp <= now
+            ) {
+              allBalances.push(balance);
+            }
+          });
+        }
+      });
+
+      // If no data, return empty array
+      if (allBalances.length === 0) {
+        console.debug("No balance history data in range:", {
+          startTime,
+          now,
+          addresses: Array.from(walletAddresses),
+        });
+        return [];
+      }
+
+      // Log data collection for debugging
+      console.debug("Collected balance history:", {
+        count: allBalances.length,
+        timeRange,
+        addressCount: walletAddresses.size,
+      });
+
+      // Group balances by timestamp
+      const balancesByTimestamp = new Map<
+        number,
+        Array<{ usd: number; sol: number }>
+      >();
+
+      allBalances.forEach((balance) => {
+        if (!balancesByTimestamp.has(balance.timestamp)) {
+          balancesByTimestamp.set(balance.timestamp, []);
+        }
+        balancesByTimestamp
+          .get(balance.timestamp)
+          ?.push({ usd: balance.usd, sol: balance.sol });
+      });
+
+      // Calculate average for each timestamp
+      const mergedBalances = Array.from(balancesByTimestamp.entries())
+        .map(([timestamp, balances]) => {
+          const totalUsd = balances.reduce((sum, b) => sum + b.usd, 0);
+          const totalSol = balances.reduce((sum, b) => sum + b.sol, 0);
+          const count = balances.length;
+
+          return {
+            timestamp,
+            usd: totalUsd / count,
+            sol: totalSol / count,
+          };
+        })
+        .sort((a, b) => a.timestamp - b.timestamp);
+
+      return mergedBalances;
     } catch (error) {
       console.error("Error fetching balance history data:", error);
       return [];
     }
-  }, [primaryWalletAddress, activeWallet, timeRange]);
+  }, [
+    primaryWalletAddress,
+    activeWallet,
+    linkedWallets,
+    timeRange,
+    historicalBalances,
+  ]);
 
-  // Handle balance history errors
+  // Handle balance history errors and loading state
   useEffect(() => {
     if (
       balanceHistoryData.length === 0 &&
-      (primaryWalletAddress || activeWallet)
+      (primaryWalletAddress || activeWallet || linkedWallets.length > 0)
     ) {
-      // Only set error if we have wallets but no data
-      setBalanceHistoryError("No balance history data available");
+      // Data is collected and stored for up to 30 days
+      // It may take time for history to accumulate after initial wallet connection
+      setBalanceHistoryError(
+        "No balance history data available. Data will appear as your wallet activity updates.",
+      );
     } else {
       setBalanceHistoryError(null);
+      setBalanceHistoryLoading(false);
     }
   }, [
     balanceHistoryData,
     primaryWalletAddress,
     activeWallet,
-    setBalanceHistoryError,
+    linkedWallets.length,
+    timeRange,
   ]);
 
   return (
@@ -1268,6 +1330,7 @@ const WalletScreen = () => {
           showSolLine={true}
           loading={balanceHistoryLoading}
           error={balanceHistoryError}
+          timeRange={timeRange}
         />
 
         {/* Token Pie Chart */}
