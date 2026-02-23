@@ -1,13 +1,6 @@
-import React, { createContext, useContext, ReactNode, useMemo } from "react";
-import { useSolana as useSolanaHook } from "../hooks/useSolana";
+import React, { createContext, useContext, ReactNode } from "react";
+import { useSolanaStore } from "../store/solanaStore";
 import type { UseSolanaResult } from "../hooks/useSolana";
-import {
-  useWalletBaseStore,
-  useWalletBalanceStore,
-  useWalletActivityStore,
-  useWalletHistoricalStore,
-  useWalletStatusStore,
-} from "../store/walletStore";
 
 interface SolanaContextType {
   solana: UseSolanaResult;
@@ -18,143 +11,44 @@ const SolanaContext = createContext<SolanaContextType | undefined>(undefined);
 export const SolanaProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
-  const solana = useSolanaHook();
-
-  // Use split stores
   const {
     linkedWallets,
     activeWallet,
     activeWalletAddress,
-    setLinkedWallets,
-    setActiveWallet,
-    setActiveWalletAddress,
-  } = useWalletBaseStore();
-
-  const { balances, detailedBalances, updateBalance, updateDetailedBalance } =
-    useWalletBalanceStore();
-
-  const [hasHydrated, setHasHydrated] = React.useState(
-    useWalletBaseStore.persist?.hasHydrated?.() ?? true,
-  );
-
-  React.useEffect(() => {
-    const unsubscribe = useWalletBaseStore.persist?.onFinishHydration?.(() => {
-      setHasHydrated(true);
-    });
-
-    if (useWalletBaseStore.persist?.hasHydrated?.()) {
-      setHasHydrated(true);
-    }
-
-    return () => {
-      if (typeof unsubscribe === "function") {
-        unsubscribe();
-      }
-    };
-  }, []);
-
-  // Sync state from useSolanaHook to walletStore
-  React.useEffect(() => {
-    if (!hasHydrated) {
-      return;
-    }
-
-    // Always sync linked wallets, even if empty
-    if (solana.linkedWallets.length > 0 || linkedWallets.length === 0) {
-      const sameLength = solana.linkedWallets.length === linkedWallets.length;
-      const sameAddresses =
-        sameLength &&
-        solana.linkedWallets.every(
-          (wallet, index) => wallet.address === linkedWallets[index]?.address,
-        );
-      if (!sameAddresses) {
-        setLinkedWallets(solana.linkedWallets);
-      }
-    }
-
-    // Sync active wallet
-    if (solana.activeWallet) {
-      if (activeWallet?.address !== solana.activeWallet.address) {
-        setActiveWallet(solana.activeWallet);
-      }
-    } else if (solana.linkedWallets.length > 0) {
-      // If no active wallet but there are linked wallets, set the first one as active
-      if (activeWallet?.address !== solana.linkedWallets[0]?.address) {
-        setActiveWallet(solana.linkedWallets[0]);
-      }
-    }
-
-    // Sync balances
-    if (solana.balances) {
-      const entries = Object.entries(solana.balances);
-      entries.forEach(([address, balance]) => {
-        if (balances[address] !== balance) {
-          updateBalance(address, balance);
-        }
-      });
-    }
-
-    if (solana.detailedBalances) {
-      Object.entries(solana.detailedBalances).forEach(([address, balance]) => {
-        const current = detailedBalances[address];
-        const tokensLength = balance.tokens?.length ?? 0;
-        const currentTokensLength = current?.tokens?.length ?? 0;
-        const needsUpdate =
-          !current ||
-          current.balance !== balance.balance ||
-          current.usdValue !== balance.usdValue ||
-          current.lastUpdated !== balance.lastUpdated ||
-          currentTokensLength !== tokensLength;
-
-        if (needsUpdate) {
-          updateDetailedBalance({
-            address,
-            balance: balance.balance,
-            usdValue: balance.usdValue,
-            lastUpdated: balance.lastUpdated,
-            tokens: balance.tokens,
-          });
-        }
-      });
-    }
-  }, [
-    hasHydrated,
-    solana.linkedWallets,
-    solana.activeWallet,
-    solana.balances,
-    solana.detailedBalances,
-    linkedWallets.length,
-    activeWallet?.address,
+    isAuthenticated,
     balances,
     detailedBalances,
-    setLinkedWallets,
-    setActiveWallet,
-    updateBalance,
-    updateDetailedBalance,
-  ]);
+    disconnect,
+    sendSol,
+    registerPrimaryWallet,
+    selectActiveWallet,
+    refreshBalance,
+    startAuthorization,
+    finalizeAuthorization,
+    silentRefreshAuthorization,
+    connection,
+  } = useSolanaStore();
 
-  // Create a merged solana object that uses walletStore for state
-  const mergedSolana = useMemo(
-    () => ({
-      ...solana,
-      linkedWallets,
-      activeWallet,
-      balances,
-      isAuthenticated: linkedWallets.length > 0,
-      selectActiveWallet: (address: string) => {
-        // Find the wallet by address
-        const wallet = linkedWallets.find((w) => w.address === address);
-        if (wallet) {
-          setActiveWallet(wallet);
-          solana.selectActiveWallet(address);
-        }
-      },
-    }),
-    [solana, linkedWallets, activeWallet, balances, setActiveWallet],
-  );
+  // Create solana object from the store
+  const solana: UseSolanaResult = {
+    disconnect,
+    sendSol,
+    registerPrimaryWallet,
+    linkedWallets,
+    activeWallet,
+    selectActiveWallet,
+    connection,
+    isAuthenticated,
+    balances,
+    detailedBalances,
+    refreshBalance,
+    startAuthorization,
+    finalizeAuthorization,
+    silentRefreshAuthorization,
+  };
 
   return (
-    <SolanaContext.Provider value={{ solana: mergedSolana }}>
+    <SolanaContext.Provider value={{ solana }}>
       {children}
     </SolanaContext.Provider>
   );
@@ -168,11 +62,5 @@ export const useSolana = (): UseSolanaResult => {
   return context.solana;
 };
 
-// Also export the wallet stores directly for components that need more control
-export {
-  useWalletBaseStore,
-  useWalletBalanceStore,
-  useWalletActivityStore,
-  useWalletHistoricalStore,
-  useWalletStatusStore,
-};
+// Export the solana store directly for components that need more control
+export { useSolanaStore };
