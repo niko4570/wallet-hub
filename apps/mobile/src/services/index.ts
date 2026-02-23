@@ -1,7 +1,6 @@
 // Import existing services
 import { priceService } from "./priceService";
 import { authorizationApi } from "./authorizationService";
-import { iconService } from "./iconService";
 import { walletService } from "./walletService";
 import { heliusService } from "./heliusService";
 
@@ -15,7 +14,6 @@ import { jupiterService } from "./jupiterService";
 interface ServiceRegistry {
   price: typeof priceService;
   authorization: typeof authorizationApi;
-  icon: typeof iconService;
   wallet: typeof walletService;
   walletAdapter: typeof walletAdapterService;
   rpc: typeof rpcService;
@@ -28,7 +26,6 @@ interface ServiceRegistry {
 export const services: ServiceRegistry = {
   price: priceService,
   authorization: authorizationApi,
-  icon: iconService,
   wallet: walletService,
   walletAdapter: walletAdapterService,
   rpc: rpcService,
@@ -41,7 +38,6 @@ export const services: ServiceRegistry = {
 export {
   priceService,
   authorizationApi,
-  iconService,
   walletService,
   walletAdapterService,
   rpcService,
