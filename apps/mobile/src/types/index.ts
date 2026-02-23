@@ -2,7 +2,6 @@ import type { LinkedWallet } from "./wallet";
 
 // Export all types from existing files
 export * from "./wallet";
-export * from "./icon";
 export * from "./dashboard";
 
 // Transaction related types
@@ -15,7 +14,13 @@ export interface Transaction {
   amountUnit?: string;
   status: "success" | "pending" | "failed";
   timestamp: string;
-  type: "transfer" | "token_transfer" | "stake_delegate" | "stake_withdraw" | "nft_transfer" | "swap";
+  type:
+    | "transfer"
+    | "token_transfer"
+    | "stake_delegate"
+    | "stake_withdraw"
+    | "nft_transfer"
+    | "swap";
   fee?: number;
   slot?: number;
   memo?: string;
