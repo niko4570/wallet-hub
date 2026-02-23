@@ -42,15 +42,11 @@ export default function App() {
     init();
   }, []);
 
-  if (!initialized) {
-    return null;
-  }
-
   return (
     <SafeAreaProvider>
       <ToastProvider>
         <SolanaProvider>
-          <AppContent />
+          {initialized ? <AppContent /> : null}
         </SolanaProvider>
       </ToastProvider>
     </SafeAreaProvider>

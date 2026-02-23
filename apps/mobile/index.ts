@@ -2,6 +2,7 @@ import "react-native-get-random-values";
 import { registerRootComponent } from "expo";
 import { Buffer } from "buffer";
 import { getRandomValues as expoCryptoGetRandomValues } from "expo-crypto";
+import { AppRegistry } from "react-native";
 
 (globalThis as any).Buffer = Buffer;
 
@@ -23,6 +24,39 @@ const cryptoInstance =
     });
   }
 })();
+
+const headlessTaskRegistry: Set<string> =
+  (globalThis as any).__whHeadlessTaskRegistry ?? new Set<string>();
+(globalThis as any).__whHeadlessTaskRegistry = headlessTaskRegistry;
+
+const originalRegisterHeadlessTask = AppRegistry.registerHeadlessTask;
+AppRegistry.registerHeadlessTask = (taskKey, taskProvider) => {
+  if (headlessTaskRegistry.has(taskKey)) {
+    return;
+  }
+  headlessTaskRegistry.add(taskKey);
+  return originalRegisterHeadlessTask(taskKey, taskProvider);
+};
+
+if (typeof AppRegistry.registerCancellableHeadlessTask === "function") {
+  const originalRegisterCancellableHeadlessTask =
+    AppRegistry.registerCancellableHeadlessTask;
+  AppRegistry.registerCancellableHeadlessTask = (
+    taskKey,
+    taskProvider,
+    cancelTaskProvider,
+  ) => {
+    if (headlessTaskRegistry.has(taskKey)) {
+      return;
+    }
+    headlessTaskRegistry.add(taskKey);
+    return originalRegisterCancellableHeadlessTask(
+      taskKey,
+      taskProvider,
+      cancelTaskProvider,
+    );
+  };
+}
 
 import App from "./App";
 

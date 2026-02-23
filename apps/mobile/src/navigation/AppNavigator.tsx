@@ -7,7 +7,7 @@ import { customCardStyleInterpolator } from "./CustomTransition";
 import { useTheme } from "../theme/ThemeContext";
 
 // Import screens
-import WalletScreen from "../screens/WalletScreen";
+import PortfolioScreen from "../screens/PortfolioScreen";
 import ActivityScreen from "../screens/ActivityScreen";
 
 // Import types
@@ -16,7 +16,7 @@ export type RootStackParamList = {
 };
 
 export type MainTabParamList = {
-  Wallet: undefined;
+  Portfolio: undefined;
   Activity: undefined;
 };
 
@@ -57,12 +57,13 @@ function MainTabs() {
       }}
     >
       <Tab.Screen
-        name="Wallet"
-        component={WalletScreen}
+        name="Portfolio"
+        component={PortfolioScreen}
         options={{
-          title: "Wallet",
+          title: "Portfolio",
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
-            <Feather name="credit-card" size={size} color={color} />
+            <Feather name="pie-chart" size={size} color={color} />
           ),
         }}
       />

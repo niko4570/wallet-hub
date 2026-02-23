@@ -3,6 +3,7 @@ import type { LinkedWallet } from "./wallet";
 // Export all types from existing files
 export * from "./wallet";
 export * from "./icon";
+export * from "./dashboard";
 
 // Transaction related types
 export interface Transaction {
