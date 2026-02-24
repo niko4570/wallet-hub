@@ -7,6 +7,7 @@ import { jupiterPortfolioService } from "./jupiterPortfolioService";
 
 import { useWalletHistoricalStore } from "../store/walletStore";
 import type { WalletActivity, WalletBalance } from "../types/wallet";
+import { savePortfolioSnapshot } from "../utils/portfolioSnapshot";
 
 // Define JupiterTransactionRecord type
 export interface JupiterTransactionRecord {
@@ -137,6 +138,9 @@ export async function fetchAccountSnapshot(
     address: normalizedAddress,
     data: historyUpdate,
   });
+
+  // Save portfolio snapshot for performance tracking
+  await savePortfolioSnapshot(snapshot.usdValue);
 
   return { snapshot, activity };
 }

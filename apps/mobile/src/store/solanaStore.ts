@@ -25,8 +25,16 @@ import { tokenMetadataService } from "../services/tokenMetadataService";
 import { HELIUS_RPC_URL, SOLANA_CLUSTER } from "../config/env";
 import { requireBiometricApproval } from "../security/biometrics";
 import { decodeWalletAddress } from "../utils/solanaAddress";
-import { LinkedWallet, AuthorizationPreview, WalletBalance } from "../types/wallet";
-import { useWalletBalanceStore, useWalletHistoricalStore } from "./walletStore";
+import {
+  LinkedWallet,
+  AuthorizationPreview,
+  WalletBalance,
+} from "../types/wallet";
+import {
+  useWalletBaseStore,
+  useWalletBalanceStore,
+  useWalletHistoricalStore,
+} from "./walletStore";
 
 const APP_IDENTITY = {
   name: "WalletHub",
@@ -85,18 +93,18 @@ interface SolanaStoreState {
   activeWallet: LinkedWallet | null;
   activeWalletAddress: string | null;
   isAuthenticated: boolean;
-  
+
   // Balance state
   balances: Record<string, number>;
   detailedBalances: Record<string, WalletBalance>;
-  
+
   // Transaction state
   isLoading: boolean;
   error: string | null;
-  
+
   // Connection
   connection: Connection;
-  
+
   // Actions
   disconnect: (address?: string) => Promise<void>;
   sendSol: (
@@ -136,17 +144,18 @@ export const useSolanaStore = create<SolanaStoreState>()(
 
       // Set loading state
       setLoading: (loading) => set({ isLoading: loading }),
-      
+
       // Set error state
       setError: (error) => set({ error }),
-      
+
       // Clear error
       clearError: () => set({ error: null }),
 
       // Select active wallet
       selectActiveWallet: (address) => {
         const state = get();
-        const wallet = state.linkedWallets.find((w) => w.address === address) || null;
+        const wallet =
+          state.linkedWallets.find((w) => w.address === address) || null;
         set({
           activeWallet: wallet,
           activeWalletAddress: wallet?.address || null,
@@ -226,7 +235,10 @@ export const useSolanaStore = create<SolanaStoreState>()(
           }> = [];
 
           if (tokensWithBalance.length === 0) {
-            tokenBalances = await tokenMetadataService.getTokenBalancesForWallet(targetAddress);
+            tokenBalances =
+              await tokenMetadataService.getTokenBalancesForWallet(
+                targetAddress,
+              );
           }
 
           const isNativeSol = (mint: string, symbol?: string) => {
@@ -241,9 +253,10 @@ export const useSolanaStore = create<SolanaStoreState>()(
             (token) => !isNativeSol(token.mint, token.symbol),
           );
 
-          const mints = tokensWithBalance.length > 0
-            ? tokensWithBalance.map((token) => token.mint)
-            : filteredTokenBalances.map((token) => token.mint);
+          const mints =
+            tokensWithBalance.length > 0
+              ? tokensWithBalance.map((token) => token.mint)
+              : filteredTokenBalances.map((token) => token.mint);
 
           const [mintPrices, metadataMap] = await Promise.all([
             priceService.getTokenPricesInUsd(mints),
@@ -251,47 +264,51 @@ export const useSolanaStore = create<SolanaStoreState>()(
           ]);
 
           const missingPrices: string[] = [];
-          tokenDetails = tokensWithBalance.length > 0
-            ? tokensWithBalance.map((token) => {
-                const price = mintPrices[token.mint];
-                if (price === undefined) {
-                  missingPrices.push(
-                    metadataMap[token.mint]?.symbol ?? token.mint,
-                  );
-                }
+          tokenDetails =
+            tokensWithBalance.length > 0
+              ? tokensWithBalance.map((token) => {
+                  const price = mintPrices[token.mint];
+                  if (price === undefined) {
+                    missingPrices.push(
+                      metadataMap[token.mint]?.symbol ?? token.mint,
+                    );
+                  }
 
-                const balance = token.uiAmount;
-                const usdValue = typeof price === "number" ? balance * price : 0;
+                  const balance = token.uiAmount;
+                  const usdValue =
+                    typeof price === "number" ? balance * price : 0;
 
-                return {
-                  mint: token.mint,
-                  symbol: metadataMap[token.mint]?.symbol,
-                  name: metadataMap[token.mint]?.name,
-                  balance,
-                  usdValue,
-                  decimals: token.decimals,
-                };
-              })
-            : filteredTokenBalances.map((token) => {
-                const price = mintPrices[token.mint] ?? token.pricePerToken ?? 0;
-                if (!price) {
-                  missingPrices.push(token.symbol ?? token.mint);
-                }
+                  return {
+                    mint: token.mint,
+                    symbol: metadataMap[token.mint]?.symbol,
+                    name: metadataMap[token.mint]?.name,
+                    balance,
+                    usdValue,
+                    decimals: token.decimals,
+                  };
+                })
+              : filteredTokenBalances.map((token) => {
+                  const price =
+                    mintPrices[token.mint] ?? token.pricePerToken ?? 0;
+                  if (!price) {
+                    missingPrices.push(token.symbol ?? token.mint);
+                  }
 
-                const balance = token.balance;
-                const usdValue = typeof price === "number"
-                  ? balance * price
-                  : (token.usdValue ?? 0);
+                  const balance = token.balance;
+                  const usdValue =
+                    typeof price === "number"
+                      ? balance * price
+                      : (token.usdValue ?? 0);
 
-                return {
-                  mint: token.mint,
-                  symbol: token.symbol ?? metadataMap[token.mint]?.symbol,
-                  name: token.name ?? metadataMap[token.mint]?.name,
-                  balance,
-                  usdValue,
-                  decimals: token.decimals,
-                };
-              });
+                  return {
+                    mint: token.mint,
+                    symbol: token.symbol ?? metadataMap[token.mint]?.symbol,
+                    name: token.name ?? metadataMap[token.mint]?.name,
+                    balance,
+                    usdValue,
+                    decimals: token.decimals,
+                  };
+                });
 
           const tokenUsdValue = tokenDetails.reduce(
             (sum, token) => sum + token.usdValue,
@@ -344,7 +361,8 @@ export const useSolanaStore = create<SolanaStoreState>()(
           return result;
         } catch (error) {
           console.error("Wallet authorization failed", error);
-          const errorMessage = error instanceof Error ? error.message : "Authorization failed";
+          const errorMessage =
+            error instanceof Error ? error.message : "Authorization failed";
           set({ error: errorMessage, isLoading: false });
           throw error;
         }
@@ -354,10 +372,11 @@ export const useSolanaStore = create<SolanaStoreState>()(
       finalizeAuthorization: async (preview, selectedAddresses) => {
         try {
           set({ isLoading: true, error: null });
-          const accountsToLink = await walletService.finalizeWalletAuthorization(
-            preview,
-            selectedAddresses,
-          );
+          const accountsToLink =
+            await walletService.finalizeWalletAuthorization(
+              preview,
+              selectedAddresses,
+            );
 
           set((prev) => {
             const updatedWallets = [...prev.linkedWallets];
@@ -376,7 +395,7 @@ export const useSolanaStore = create<SolanaStoreState>()(
             });
 
             const activeWallet = prev.activeWallet || accountsToLink[0];
-            
+
             return {
               linkedWallets: updatedWallets,
               activeWallet,
@@ -389,14 +408,16 @@ export const useSolanaStore = create<SolanaStoreState>()(
           // Refresh balances for all linked wallets
           await Promise.all(
             accountsToLink.map((walletAccount) =>
-              get().refreshBalance(walletAccount.address).catch((err) => {
-                console.warn("Balance refresh failed post-connect", err);
-              }),
+              get()
+                .refreshBalance(walletAccount.address)
+                .catch((err) => {
+                  console.warn("Balance refresh failed post-connect", err);
+                }),
             ),
           );
 
           // Set primary wallet if not set
-          const walletState = useWalletBalanceStore.getState();
+          const walletState = useWalletBaseStore.getState();
           if (!walletState.primaryWalletAddress && accountsToLink.length > 0) {
             walletState.setPrimaryWalletAddress(accountsToLink[0].address);
           }
@@ -404,7 +425,8 @@ export const useSolanaStore = create<SolanaStoreState>()(
           return accountsToLink;
         } catch (error) {
           console.error("Error finalizing authorization:", error);
-          const errorMessage = error instanceof Error ? error.message : "Authorization failed";
+          const errorMessage =
+            error instanceof Error ? error.message : "Authorization failed";
           set({ error: errorMessage, isLoading: false });
           throw error;
         }
@@ -419,16 +441,17 @@ export const useSolanaStore = create<SolanaStoreState>()(
           });
           const preview = await get().startAuthorization();
           const accounts = await get().finalizeAuthorization(preview);
-          
+
           if (accounts.length > 0) {
-            const walletState = useWalletBalanceStore.getState();
+            const walletState = useWalletBaseStore.getState();
             walletState.setPrimaryWalletAddress(accounts[0].address);
           }
-          
+
           return accounts;
         } catch (error) {
           console.error("Register primary wallet failed", error);
-          const errorMessage = error instanceof Error ? error.message : "Registration failed";
+          const errorMessage =
+            error instanceof Error ? error.message : "Registration failed";
           set({ error: errorMessage, isLoading: false });
           throw error;
         }
@@ -482,7 +505,9 @@ export const useSolanaStore = create<SolanaStoreState>()(
           });
 
           // Normalize authorization
-          const normalizeAuthorization = (authorization: AuthorizationResult): LinkedWallet[] =>
+          const normalizeAuthorization = (
+            authorization: AuthorizationResult,
+          ): LinkedWallet[] =>
             authorization.accounts.map(
               (accountFromWallet: { address: string; label?: string }) => ({
                 address: decodeWalletAddress(accountFromWallet.address),
@@ -493,7 +518,9 @@ export const useSolanaStore = create<SolanaStoreState>()(
               }),
             );
 
-          const normalizedAccounts = normalizeAuthorization(result.authorization);
+          const normalizedAccounts = normalizeAuthorization(
+            result.authorization,
+          );
 
           // Update wallets
           set((prev) => {
@@ -561,7 +588,8 @@ export const useSolanaStore = create<SolanaStoreState>()(
             );
           }
 
-          const errorMessage = error instanceof Error ? error.message : "Re-authorization failed";
+          const errorMessage =
+            error instanceof Error ? error.message : "Re-authorization failed";
           set({ error: errorMessage, isLoading: false });
           throw error;
         }
@@ -598,13 +626,14 @@ export const useSolanaStore = create<SolanaStoreState>()(
           const nextWallets = prev.linkedWallets.filter(
             (wallet) => wallet.address !== targetAddress,
           );
-          const nextActiveWallet = prev.activeWallet?.address === targetAddress
-            ? nextWallets[0] || null
-            : prev.activeWallet;
-          
+          const nextActiveWallet =
+            prev.activeWallet?.address === targetAddress
+              ? nextWallets[0] || null
+              : prev.activeWallet;
+
           const nextBalances = { ...prev.balances };
           delete nextBalances[targetAddress];
-          
+
           const nextDetailedBalances = { ...prev.detailedBalances };
           delete nextDetailedBalances[targetAddress];
 
@@ -619,14 +648,14 @@ export const useSolanaStore = create<SolanaStoreState>()(
         });
 
         // Also update wallet store
-        const walletStore = useWalletBalanceStore.getState();
+        const walletStore = useWalletBaseStore.getState();
         walletStore.removeWallet(targetAddress);
       },
 
       // Send SOL
       sendSol: async (recipient, amountSol, options) => {
         const state = get();
-        
+
         if (!recipient) {
           throw new Error("Recipient address is required");
         }
@@ -637,7 +666,8 @@ export const useSolanaStore = create<SolanaStoreState>()(
           throw new Error("Amount exceeds maximum allowed value");
         }
 
-        const sourceAddress = options?.fromAddress ?? state.activeWallet?.address;
+        const sourceAddress =
+          options?.fromAddress ?? state.activeWallet?.address;
         if (!sourceAddress) {
           throw new Error("Select a wallet before sending");
         }
@@ -661,7 +691,7 @@ export const useSolanaStore = create<SolanaStoreState>()(
 
         try {
           set({ isLoading: true, error: null });
-          
+
           // Require biometric approval
           await requireBiometricApproval("Authenticate to send SOL");
 
@@ -731,7 +761,9 @@ export const useSolanaStore = create<SolanaStoreState>()(
             }
 
             // Normalize authorization
-            const normalizeAuthorization = (authorization: AuthorizationResult): LinkedWallet[] =>
+            const normalizeAuthorization = (
+              authorization: AuthorizationResult,
+            ): LinkedWallet[] =>
               authorization.accounts.map(
                 (accountFromWallet: { address: string; label?: string }) => ({
                   address: decodeWalletAddress(accountFromWallet.address),
@@ -878,7 +910,8 @@ export const useSolanaStore = create<SolanaStoreState>()(
           return submittedSignature;
         } catch (error) {
           console.error("Send SOL failed", error);
-          const errorMessage = error instanceof Error ? error.message : "Transaction failed";
+          const errorMessage =
+            error instanceof Error ? error.message : "Transaction failed";
           set({ error: errorMessage, isLoading: false });
           throw error;
         }
@@ -924,6 +957,8 @@ export const useSolanaSelectors = () => {
     hasActiveWallet: !!activeWallet,
     walletCount: linkedWallets.length,
     activeWalletBalance: activeWallet ? balances[activeWallet.address] || 0 : 0,
-    activeWalletUsdValue: activeWallet ? detailedBalances[activeWallet.address]?.usdValue || 0 : 0,
+    activeWalletUsdValue: activeWallet
+      ? detailedBalances[activeWallet.address]?.usdValue || 0
+      : 0,
   };
 };

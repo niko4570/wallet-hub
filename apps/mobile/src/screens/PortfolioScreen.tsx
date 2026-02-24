@@ -38,21 +38,10 @@ import {
   UI_CONFIG,
   CHART_CONFIG,
 } from "../config/appConfig";
-
-// Helper function to filter historical data by time range
-const filterHistoricalDataByRange = (
-  data: Array<{ timestamp: number; usd: number; sol: number }>,
-  days: number,
-): Array<{ timestamp: number; totalValueUSD: number }> => {
-  const now = Date.now();
-  const startTime = now - days * 24 * 60 * 60 * 1000;
-  return data
-    .filter((entry) => entry.timestamp >= startTime)
-    .map((entry) => ({
-      timestamp: entry.timestamp,
-      totalValueUSD: entry.usd,
-    }));
-};
+import {
+  calculatePortfolioChangePercent,
+  filterHistoricalDataByRange,
+} from "../utils/portfolioPerformance";
 
 // Helper function to get top tokens from detailed balances
 const getTopTokens = (
@@ -97,6 +86,7 @@ const PortfolioScreen: React.FC = () => {
   );
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [portfolioChangePercent, setPortfolioChangePercent] = useState(0);
 
   // Initialize chart data from real historical data
   const initialHistoryData = activeWallet
@@ -126,14 +116,23 @@ const PortfolioScreen: React.FC = () => {
   const isActivePrimary =
     !!activeWallet && activeWallet.address === primaryWalletAddress;
 
-  // Update chart data when active wallet changes
+  // Update chart data and portfolio change percentage when active wallet changes
   useEffect(() => {
     if (activeWallet) {
       const historyData = getHistoricalBalances(activeWallet.address);
       const days = parseInt(timeRange);
-      setChartData(filterHistoricalDataByRange(historyData, days));
+      const filteredData = filterHistoricalDataByRange(historyData, days);
+      setChartData(filteredData);
+
+      // Calculate portfolio change percentage
+      const changePercent = calculatePortfolioChangePercent(
+        activeWalletUsdValue,
+        filteredData,
+        timeRange,
+      );
+      setPortfolioChangePercent(changePercent);
     }
-  }, [activeWallet, timeRange, getHistoricalBalances]);
+  }, [activeWallet, timeRange, getHistoricalBalances, activeWalletUsdValue]);
 
   // Handle time range change with animation
   const handleTimeRangeChange = (range: "1D" | "7D" | "30D") => {
@@ -144,7 +143,16 @@ const PortfolioScreen: React.FC = () => {
       if (activeWallet) {
         const historyData = getHistoricalBalances(activeWallet.address);
         const days = parseInt(range);
-        setChartData(filterHistoricalDataByRange(historyData, days));
+        const filteredData = filterHistoricalDataByRange(historyData, days);
+        setChartData(filteredData);
+
+        // Calculate portfolio change percentage
+        const changePercent = calculatePortfolioChangePercent(
+          activeWalletUsdValue,
+          filteredData,
+          range,
+        );
+        setPortfolioChangePercent(changePercent);
       }
       setLoading(false);
       chartOpacity.value = withTiming(1, {
@@ -237,7 +245,7 @@ const PortfolioScreen: React.FC = () => {
         <View style={styles.section}>
           <PortfolioHeader
             totalValueUSD={activeWalletUsdValue}
-            change24hPercent={2.5}
+            change24hPercent={portfolioChangePercent}
           />
         </View>
 
