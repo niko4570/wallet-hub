@@ -41,3 +41,33 @@ export const formatLargeNumber = (num: number): string => {
   }
   return num.toString();
 };
+
+/**
+ * Formats a numerical value as a percentage change string
+ * @param value - Numerical value to format
+ * @returns Formatted percentage string in the format "+X.XX%", "-X.XX%", or "0.00%"
+ */
+export const formatPercentChange = (value: number): string => {
+  // Handle null, undefined, NaN, and non-finite values
+  if (value === null || value === undefined || isNaN(value) || !isFinite(value)) {
+    return "0.00%";
+  }
+
+  // Determine if the value is positive
+  const isPositive = value > 0;
+  
+  // Round to exactly 2 decimal places
+  const roundedValue = Math.round(Math.abs(value) * 100) / 100;
+  
+  // Format with consistent 2 decimal places
+  const formattedValue = roundedValue.toFixed(2);
+  
+  // Return with appropriate sign
+  if (isPositive) {
+    return `+${formattedValue}%`;
+  } else if (value < 0) {
+    return `-${formattedValue}%`;
+  } else {
+    return "0.00%";
+  }
+};

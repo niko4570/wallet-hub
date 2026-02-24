@@ -77,6 +77,16 @@ export const UI_CONFIG = {
   
   // Bottom space for scroll views
   BOTTOM_SPACE: 48,
+  
+  // Portfolio snapshot configuration
+  SNAPSHOT: {
+    // Snapshot interval in milliseconds (default: 1 hour)
+    INTERVAL_MS: 3600000,
+    // Snapshot retention period in milliseconds (default: 90 days)
+    RETENTION_MS: 90 * 24 * 60 * 60 * 1000,
+    // Maximum number of snapshots to keep
+    MAX_SNAPSHOTS: 2160, // Approximately 90 days at 1-hour intervals
+  },
 };
 
 // Animation configuration
