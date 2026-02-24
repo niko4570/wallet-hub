@@ -313,6 +313,9 @@ importers:
       '@jest/globals':
         specifier: ^30.2.0
         version: 30.2.0
+      '@testing-library/jest-native':
+        specifier: ^5.4.3
+        version: 5.4.3(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10))(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@5.0.10))(react-test-renderer@19.1.0(react@19.1.0))(react@19.1.0)
       '@testing-library/react-native':
         specifier: ^13.3.3
         version: 13.3.3(jest@30.2.0)(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10))(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@5.0.10))(react-test-renderer@19.1.0(react@19.1.0))(react@19.1.0)
@@ -1929,6 +1932,18 @@ packages:
 
   '@swc/helpers@0.5.18':
     resolution: {integrity: sha512-TXTnIcNJQEKwThMMqBXsZ4VGAza6bvN4pa41Rkqoio6QBKMvo+5lexeTMScGCIxtzgQJzElcvIltani+adC5PQ==}
+
+  '@testing-library/jest-native@5.4.3':
+    resolution: {integrity: sha512-/sSDGaOuE+PJ1Z9Kp4u7PQScSVVXGud59I/qsBFFJvIbcn4P6yYw6cBnBmbPF+X9aRIsTJRDl6gzw5ZkJNm66w==}
+    deprecated: |-
+      DEPRECATED: This package is no longer maintained.
+      Please use the built-in Jest matchers available in @testing-library/react-native v12.4+.
+
+      See migration guide: https://callstack.github.io/react-native-testing-library/docs/migration/jest-matchers
+    peerDependencies:
+      react: '>=16.0.0'
+      react-native: '>=0.59'
+      react-test-renderer: '>=16.0.0'
 
   '@testing-library/react-native@13.3.3':
     resolution: {integrity: sha512-k6Mjsd9dbZgvY4Bl7P1NIpePQNi+dfYtlJ5voi9KQlynxSyQkfOgJmYGCYmw/aSgH/rUcFvG8u5gd4npzgRDyg==}
@@ -8906,6 +8921,17 @@ snapshots:
   '@swc/helpers@0.5.18':
     dependencies:
       tslib: 2.8.1
+
+  '@testing-library/jest-native@5.4.3(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10))(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@5.0.10))(react-test-renderer@19.1.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      chalk: 4.1.2
+      jest-diff: 29.7.0
+      jest-matcher-utils: 29.7.0
+      pretty-format: 29.7.0
+      react: 19.1.0
+      react-native: 0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10))(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@5.0.10)
+      react-test-renderer: 19.1.0(react@19.1.0)
+      redent: 3.0.0
 
   '@testing-library/react-native@13.3.3(jest@30.2.0)(react-native@0.81.5(@babel/core@7.29.0)(@react-native-community/cli@20.1.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10))(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@5.0.10))(react-test-renderer@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
