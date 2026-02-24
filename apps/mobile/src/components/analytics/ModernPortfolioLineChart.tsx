@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from "react";
 import { View, Text, Dimensions, StyleSheet, Animated } from "react-native";
 import { LineChart } from "react-native-chart-kit";
 import { LinearGradient } from "expo-linear-gradient";
+import { formatPercentChange } from "../../utils/format";
 
 interface ModernPortfolioLineChartProps {
   history: { timestamp: number; totalValueUSD: number }[];
@@ -14,9 +15,9 @@ const ModernPortfolioLineChart: React.FC<ModernPortfolioLineChartProps> = ({
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
-  // Determine chart color based on percentage change
+  // Determine chart color based on percentage change (Phantom-inspired theme)
   const getChartColor = (percent: number): string => {
-    return percent >= 0 ? "#66F2C3" : "#FF8BA7";
+    return percent >= 0 ? "#00FFB3" : "#FF4D4D";
   };
 
   // Extract data for chart
@@ -26,7 +27,7 @@ const ModernPortfolioLineChart: React.FC<ModernPortfolioLineChartProps> = ({
       {
         data: history.map((item) => item.totalValueUSD),
         color: (opacity = 1) => {
-          const baseColor = percentageChange >= 0 ? "#66F2C3" : "#FF8BA7";
+          const baseColor = percentageChange >= 0 ? "#00FFB3" : "#FF4D4D";
           // Convert hex to rgba with higher opacity
           const r = parseInt(baseColor.slice(1, 3), 16);
           const g = parseInt(baseColor.slice(3, 5), 16);
@@ -60,7 +61,7 @@ const ModernPortfolioLineChart: React.FC<ModernPortfolioLineChartProps> = ({
 
   // Format percentage change
   const formatPercentage = (value: number): string => {
-    return `${isPositiveChange ? "+" : ""}${value.toFixed(2)}%`;
+    return formatPercentChange(value);
   };
 
   // Animate on mount
@@ -111,8 +112,8 @@ const ModernPortfolioLineChart: React.FC<ModernPortfolioLineChartProps> = ({
       {/* Gradient background for chart */}
       <LinearGradient
         colors={[
-          `${percentageChange >= 0 ? "#66F2C340" : "#FF8BA740"}`, // 25% opacity
-          `${percentageChange >= 0 ? "#66F2C31A" : "#FF8BA71A"}`, // 10% opacity
+          `${percentageChange >= 0 ? "#00FFB340" : "#FF4D4D40"}`, // 25% opacity
+          `${percentageChange >= 0 ? "#00FFB31A" : "#FF4D4D1A"}`, // 10% opacity
           "transparent",
         ]}
         start={{ x: 0, y: 0 }}
@@ -130,7 +131,7 @@ const ModernPortfolioLineChart: React.FC<ModernPortfolioLineChartProps> = ({
             backgroundGradientTo: "transparent",
             decimalPlaces: 0,
             color: (opacity = 1) => {
-              const baseColor = percentageChange >= 0 ? "#66F2C3" : "#FF8BA7";
+              const baseColor = percentageChange >= 0 ? "#00FFB3" : "#FF4D4D";
               // Convert hex to rgba with higher brightness
               const r = parseInt(baseColor.slice(1, 3), 16);
               const g = parseInt(baseColor.slice(3, 5), 16);
@@ -168,7 +169,7 @@ const ModernPortfolioLineChart: React.FC<ModernPortfolioLineChartProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#0C0E1A",
+    backgroundColor: "#0B1221",
     borderRadius: 24,
     padding: 24,
     marginVertical: 8,
@@ -209,10 +210,10 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   positiveChange: {
-    backgroundColor: "rgba(34, 197, 94, 0.2)",
+    backgroundColor: "rgba(0, 255, 179, 0.2)",
   },
   negativeChange: {
-    backgroundColor: "rgba(239, 68, 68, 0.2)",
+    backgroundColor: "rgba(255, 77, 77, 0.2)",
   },
   changeText: {
     fontSize: 12,

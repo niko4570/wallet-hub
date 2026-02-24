@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { formatPercentChange } from '../../utils/format';
 
 interface PortfolioHeaderProps {
   totalValueUSD: number;
@@ -19,8 +20,7 @@ const PortfolioHeader: React.FC<PortfolioHeaderProps> = ({ totalValueUSD, change
 
   // Format change percentage
   const formatChangePercent = (percent: number): string => {
-    const sign = percent >= 0 ? '+' : '';
-    return `${sign}${percent.toFixed(2)}%`;
+    return formatPercentChange(percent);
   };
 
   // Determine change color based on percentage
