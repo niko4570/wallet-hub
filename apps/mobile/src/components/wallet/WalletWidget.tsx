@@ -78,6 +78,13 @@ const WalletWidget: React.FC<WalletWidgetProps> = ({
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const preview = await startAuthorization();
       const accounts = await finalizeAuthorization(preview);
+
+      // Set primary wallet if none is set
+      if (accounts.length > 0 && !primaryWalletAddress) {
+        await setPrimaryWalletAddress(accounts[0].address);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
       await Promise.all(
         accounts.map((account: LinkedWallet) =>
           refreshBalance(account.address).catch((err: any) =>
@@ -92,7 +99,13 @@ const WalletWidget: React.FC<WalletWidgetProps> = ({
     } finally {
       setConnecting(false);
     }
-  }, [finalizeAuthorization, refreshBalance, startAuthorization]);
+  }, [
+    finalizeAuthorization,
+    refreshBalance,
+    startAuthorization,
+    primaryWalletAddress,
+    setPrimaryWalletAddress,
+  ]);
 
   const handleSelectLinkedWallet = useCallback(
     (wallet: LinkedWallet) => {

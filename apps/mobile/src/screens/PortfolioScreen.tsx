@@ -25,7 +25,9 @@ import { fetchAssets } from "../services";
 import { SOLANA_CLUSTER } from "../config/env";
 import { filterAssets } from "../utils";
 import { useWalletStore } from "../store/walletStore";
+import { useSolanaStore } from "../store/solanaStore";
 import PortfolioHeader from "../components/common/PortfolioHeader";
+import NetworkSwitcher from "../components/common/NetworkSwitcher";
 import {
   ModernPortfolioLineChart,
   AssetAllocationPieChart,
@@ -64,6 +66,7 @@ const PortfolioScreen: React.FC = () => {
   const { sendSol, refreshBalance, detailedBalances } = useSolana();
   const { linkedWallets, activeWallet, primaryWalletAddress } =
     useWalletStore();
+  const { network } = useSolanaStore();
   const getHistoricalBalances = useWalletHistoricalStore(
     (state) => state.getHistoricalBalances,
   );
@@ -79,7 +82,7 @@ const PortfolioScreen: React.FC = () => {
 
   // Initialize chart data from real historical data
   const initialHistoryData = activeWallet
-    ? getHistoricalBalances(activeWallet.address)
+    ? getHistoricalBalances(network, activeWallet.address)
     : [];
   const [chartData, setChartData] = useState(
     filterHistoricalDataByRange(
@@ -142,7 +145,7 @@ const PortfolioScreen: React.FC = () => {
   // Update chart data and portfolio change percentage when active wallet changes
   useEffect(() => {
     if (activeWallet) {
-      const historyData = getHistoricalBalances(activeWallet.address);
+      const historyData = getHistoricalBalances(network, activeWallet.address);
       const days = parseInt(timeRange);
       const filteredData = filterHistoricalDataByRange(historyData, days);
       setChartData(filteredData);
@@ -155,7 +158,13 @@ const PortfolioScreen: React.FC = () => {
       );
       setPortfolioChangePercent(changePercent);
     }
-  }, [activeWallet, timeRange, getHistoricalBalances, activeWalletUsdValue]);
+  }, [
+    activeWallet,
+    timeRange,
+    getHistoricalBalances,
+    activeWalletUsdValue,
+    network,
+  ]);
 
   // Handle time range change with animation
   const handleTimeRangeChange = (range: "1D" | "7D" | "30D") => {
@@ -164,7 +173,10 @@ const PortfolioScreen: React.FC = () => {
 
     const updateChartData = () => {
       if (activeWallet) {
-        const historyData = getHistoricalBalances(activeWallet.address);
+        const historyData = getHistoricalBalances(
+          network,
+          activeWallet.address,
+        );
         const days = parseInt(range);
         const filteredData = filterHistoricalDataByRange(historyData, days);
         setChartData(filteredData);
@@ -263,6 +275,9 @@ const PortfolioScreen: React.FC = () => {
           onSendPress={() => setSendModalVisible(true)}
           onReceivePress={handleReceive}
         />
+
+        {/* Network Switcher */}
+        <NetworkSwitcher />
 
         {/* Portfolio Header */}
         <View style={styles.section}>

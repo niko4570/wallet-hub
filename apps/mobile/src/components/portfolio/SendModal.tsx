@@ -324,8 +324,8 @@ const styles = StyleSheet.create({
   modalContent: {
     borderTopLeftRadius: UI_CONFIG.BORDER_RADIUS.XL,
     borderTopRightRadius: UI_CONFIG.BORDER_RADIUS.XL,
-    minHeight: 0.7,
-    maxHeight: 0.95,
+    minHeight: "70%",
+    maxHeight: "95%",
   },
   modalHeader: {
     flexDirection: "row",

@@ -18,7 +18,7 @@ const ModernPortfolioLineChart: React.FC<ModernPortfolioLineChartProps> = ({
 }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
-  const hasData = history.length >= 2;
+  const hasData = history.length >= 1;
 
   // Get screen dimensions for responsive design
   const { width: screenWidth } = Dimensions.get("window");
@@ -239,26 +239,30 @@ const ModernPortfolioLineChart: React.FC<ModernPortfolioLineChartProps> = ({
 
                   return (
                     <>
-                      {/* Glow effect layer */}
-                      <Line
-                        points={linePoints}
-                        curveType="monotoneX"
-                        color={lineColor}
-                        strokeWidth={6}
-                        strokeCap="round"
-                        strokeJoin="round"
-                        opacity={0.2}
-                      />
-                      {/* Main line layer */}
-                      <Line
-                        points={linePoints}
-                        curveType="monotoneX"
-                        color={lineColor}
-                        strokeWidth={3}
-                        strokeCap="round"
-                        strokeJoin="round"
-                        opacity={1}
-                      />
+                      {linePoints.length >= 2 && (
+                        <>
+                          {/* Glow effect layer */}
+                          <Line
+                            points={linePoints}
+                            curveType="monotoneX"
+                            color={lineColor}
+                            strokeWidth={6}
+                            strokeCap="round"
+                            strokeJoin="round"
+                            opacity={0.2}
+                          />
+                          {/* Main line layer */}
+                          <Line
+                            points={linePoints}
+                            curveType="monotoneX"
+                            color={lineColor}
+                            strokeWidth={3}
+                            strokeCap="round"
+                            strokeJoin="round"
+                            opacity={1}
+                          />
+                        </>
+                      )}
                       {markerPoints.length > 0 && (
                         <Scatter
                           points={markerPoints}

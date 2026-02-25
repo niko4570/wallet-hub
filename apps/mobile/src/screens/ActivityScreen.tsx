@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo, memo } from "react";
 import {
   View,
   Text,
@@ -51,7 +51,158 @@ const ActivityScreen = () => {
   // Cache expiration time (5 minutes)
   const CACHE_EXPIRATION = 5 * 60 * 1000;
 
-  // Group transactions by date
+interface TransactionItemProps {
+  item: Transaction;
+  linkedWallets: any[];
+  onPress: (transaction: Transaction) => void;
+}
+
+const TransactionItem = memo(({ item, linkedWallets, onPress }: TransactionItemProps) => {
+  const linkedWalletAddresses = linkedWallets.map(
+    (wallet: any) => wallet.address,
+  );
+
+  const isOutbound = linkedWalletAddresses.includes(item.source);
+  const isInbound = linkedWalletAddresses.includes(item.destination);
+
+  if (!isOutbound && !isInbound) {
+    return null;
+  }
+
+  const amountUnit = item.amountUnit ?? "SOL";
+  const counterpartyAddress = isOutbound ? item.destination : item.source;
+  const formattedCounterparty = formatAddress(counterpartyAddress);
+
+  const getTransactionInfo = () => {
+    switch (item.type) {
+      case "transfer":
+        return {
+          title: isOutbound ? "Sent SOL" : "Received SOL",
+          icon: isOutbound ? (
+            <ArrowUpRight size={20} color="#FF4D4D" />
+          ) : (
+            <ArrowDownLeft size={20} color="#00FFB3" />
+          ),
+          iconColor: isOutbound ? "#FF4D4D" : "#00FFB3",
+        };
+      case "token_transfer":
+        return {
+          title: isOutbound ? "Sent Token" : "Received Token",
+          icon: isOutbound ? (
+            <ArrowUpRight size={20} color="#FFA500" />
+          ) : (
+            <ArrowDownLeft size={20} color="#32CD32" />
+          ),
+          iconColor: isOutbound ? "#FFA500" : "#32CD32",
+        };
+      case "stake_delegate":
+        return {
+          title: "Staked SOL",
+          icon: <ArrowUpRight size={20} color="#1E90FF" />,
+          iconColor: "#1E90FF",
+        };
+      case "stake_withdraw":
+        return {
+          title: "Unstaked SOL",
+          icon: <ArrowDownLeft size={20} color="#9370DB" />,
+          iconColor: "#9370DB",
+        };
+      case "nft_transfer":
+        return {
+          title: isOutbound ? "Sent NFT" : "Received NFT",
+          icon: isOutbound ? (
+            <ArrowUpRight size={20} color="#FF69B4" />
+          ) : (
+            <ArrowDownLeft size={20} color="#FF69B4" />
+          ),
+          iconColor: "#FF69B4",
+        };
+      case "swap":
+        return {
+          title: "Swapped Tokens",
+          icon: <ArrowUpRight size={20} color="#FFD700" />,
+          iconColor: "#FFD700",
+        };
+      default:
+        return {
+          title: isOutbound ? "Sent" : "Received",
+          icon: isOutbound ? (
+            <ArrowUpRight size={20} color="#FF4D4D" />
+          ) : (
+            <ArrowDownLeft size={20} color="#00FFB3" />
+          ),
+          iconColor: isOutbound ? "#FF4D4D" : "#00FFB3",
+        };
+    }
+  };
+
+  const transactionInfo = getTransactionInfo();
+
+  return (
+    <TouchableOpacity
+      style={styles.transactionItem}
+      onPress={() => onPress(item)}
+    >
+      <View
+        style={[
+          styles.transactionIcon,
+          { backgroundColor: `${transactionInfo.iconColor}20` },
+        ]}
+      >
+        {transactionInfo.icon}
+      </View>
+      <View style={styles.transactionContent}>
+        <Text style={styles.transactionTitle}>{transactionInfo.title}</Text>
+        <Text style={styles.transactionAddress}>
+          {isOutbound
+            ? `To ${formattedCounterparty}`
+            : `From ${formattedCounterparty}`}
+        </Text>
+        <Text style={styles.transactionWallet}>
+          {isOutbound
+            ? `From ${formatAddress(item.source)}`
+            : `To ${formatAddress(item.destination)}`}
+        </Text>
+      </View>
+      <View style={styles.transactionAmountContainer}>
+        <Text
+          style={[
+            styles.transactionAmount,
+            isOutbound && styles.transactionAmountOutbound,
+          ]}
+        >
+          {isOutbound
+            ? `- ${formatAmount(item.amount)} ${amountUnit}`
+            : `+ ${formatAmount(item.amount)} ${amountUnit}`}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+interface TransactionGroupProps {
+  item: { date: string; transactions: Transaction[] };
+  linkedWallets: any[];
+  onTransactionPress: (transaction: Transaction) => void;
+}
+
+const TransactionGroup = memo(({ item, linkedWallets, onTransactionPress }: TransactionGroupProps) => {
+  return (
+    <View style={styles.transactionGroup}>
+      <Text style={styles.transactionGroupDate}>{item.date}</Text>
+      {item.transactions.map((transaction) => (
+        <TransactionItem
+          key={transaction.id}
+          item={transaction}
+          linkedWallets={linkedWallets}
+          onPress={onTransactionPress}
+        />
+      ))}
+    </View>
+  );
+});
+
+// Group transactions by date
   const groupedTransactions = useMemo(() => {
     const groups: { [key: string]: Transaction[] } = {};
 
@@ -495,151 +646,18 @@ const ActivityScreen = () => {
     setShowTransactionDetail(true);
   };
 
-  const renderTransactionItem = ({ item }: ListRenderItemInfo<Transaction>) => {
-    // Get all linked wallet addresses
-    const linkedWalletAddresses = linkedWallets.map(
-      (wallet: any) => wallet.address,
-    );
-
-    // Check if this is an outbound transaction (from any of our wallets)
-    const isOutbound = linkedWalletAddresses.includes(item.source);
-    // Check if this is an inbound transaction (to any of our wallets)
-    const isInbound = linkedWalletAddresses.includes(item.destination);
-
-    // If neither, it's not related to our wallets (shouldn't happen)
-    if (!isOutbound && !isInbound) {
-      return null;
-    }
-
-    const amountUnit = item.amountUnit ?? "SOL";
-    const counterpartyAddress = isOutbound ? item.destination : item.source;
-    const formattedCounterparty = formatAddress(counterpartyAddress);
-
-    // Get transaction title and icon based on transaction type
-    const getTransactionInfo = () => {
-      switch (item.type) {
-        case "transfer":
-          return {
-            title: isOutbound ? "Sent SOL" : "Received SOL",
-            icon: isOutbound ? (
-              <ArrowUpRight size={20} color="#FF4D4D" />
-            ) : (
-              <ArrowDownLeft size={20} color="#00FFB3" />
-            ),
-            iconColor: isOutbound ? "#FF4D4D" : "#00FFB3",
-          };
-        case "token_transfer":
-          return {
-            title: isOutbound ? "Sent Token" : "Received Token",
-            icon: isOutbound ? (
-              <ArrowUpRight size={20} color="#FFA500" />
-            ) : (
-              <ArrowDownLeft size={20} color="#32CD32" />
-            ),
-            iconColor: isOutbound ? "#FFA500" : "#32CD32",
-          };
-        case "stake_delegate":
-          return {
-            title: "Staked SOL",
-            icon: <ArrowUpRight size={20} color="#1E90FF" />,
-            iconColor: "#1E90FF",
-          };
-        case "stake_withdraw":
-          return {
-            title: "Unstaked SOL",
-            icon: <ArrowDownLeft size={20} color="#9370DB" />,
-            iconColor: "#9370DB",
-          };
-        case "nft_transfer":
-          return {
-            title: isOutbound ? "Sent NFT" : "Received NFT",
-            icon: isOutbound ? (
-              <ArrowUpRight size={20} color="#FF69B4" />
-            ) : (
-              <ArrowDownLeft size={20} color="#FF69B4" />
-            ),
-            iconColor: "#FF69B4",
-          };
-        case "swap":
-          return {
-            title: "Swapped Tokens",
-            icon: <ArrowUpRight size={20} color="#FFD700" />,
-            iconColor: "#FFD700",
-          };
-        default:
-          return {
-            title: isOutbound ? "Sent" : "Received",
-            icon: isOutbound ? (
-              <ArrowUpRight size={20} color="#FF4D4D" />
-            ) : (
-              <ArrowDownLeft size={20} color="#00FFB3" />
-            ),
-            iconColor: isOutbound ? "#FF4D4D" : "#00FFB3",
-          };
-      }
-    };
-
-    const transactionInfo = getTransactionInfo();
-
-    return (
-      <TouchableOpacity
-        style={styles.transactionItem}
-        onPress={() => handleTransactionDetail(item)}
-      >
-        <View
-          style={[
-            styles.transactionIcon,
-            { backgroundColor: `${transactionInfo.iconColor}20` },
-          ]}
-        >
-          {transactionInfo.icon}
-        </View>
-        <View style={styles.transactionContent}>
-          <Text style={styles.transactionTitle}>{transactionInfo.title}</Text>
-          <Text style={styles.transactionAddress}>
-            {isOutbound
-              ? `To ${formattedCounterparty}`
-              : `From ${formattedCounterparty}`}
-          </Text>
-          {/* Show which wallet this transaction is related to */}
-          <Text style={styles.transactionWallet}>
-            {isOutbound
-              ? `From ${formatAddress(item.source)}`
-              : `To ${formatAddress(item.destination)}`}
-          </Text>
-        </View>
-        <View style={styles.transactionAmountContainer}>
-          <Text
-            style={[
-              styles.transactionAmount,
-              isOutbound && styles.transactionAmountOutbound,
-            ]}
-          >
-            {isOutbound
-              ? `- ${formatAmount(item.amount)} ${amountUnit}`
-              : `+ ${formatAmount(item.amount)} ${amountUnit}`}
-          </Text>
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  const renderTransactionGroup = ({
-    item,
-  }: ListRenderItemInfo<{ date: string; transactions: Transaction[] }>) => {
-    return (
-      <View style={styles.transactionGroup}>
-        <Text style={styles.transactionGroupDate}>{item.date}</Text>
-        {item.transactions.map((transaction) => (
-          <View key={transaction.id}>
-            {renderTransactionItem({
-              item: transaction,
-            } as ListRenderItemInfo<Transaction>)}
-          </View>
-        ))}
-      </View>
-    );
-  };
+  const renderTransactionGroup = useCallback(
+    ({ item }: ListRenderItemInfo<{ date: string; transactions: Transaction[] }>) => {
+      return (
+        <TransactionGroup
+          item={item}
+          linkedWallets={linkedWallets}
+          onTransactionPress={handleTransactionDetail}
+        />
+      );
+    },
+    [linkedWallets],
+  );
 
   const renderFooter = () => {
     if (!loadingMore) return null;
