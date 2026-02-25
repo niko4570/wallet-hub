@@ -7,11 +7,11 @@ import type {
   SilentReauthorizationRecord,
   TransactionAuditEntry,
 } from "@wallethub/contracts";
-import { API_URL } from "../config/env";
-import { useWalletStore } from "../store/walletStore";
-import { walletService } from "./walletService";
+import { API_URL } from "../../config/env";
+import { useWalletStore } from "../../store/walletStore";
+import { walletService } from "../wallet/walletService";
 import { Buffer } from "buffer";
-import { LinkedWallet } from "../types/wallet";
+import { LinkedWallet } from "../../types/wallet";
 
 const BASE_URL = API_URL.replace(/\/$/, "");
 const SIGNABLE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);

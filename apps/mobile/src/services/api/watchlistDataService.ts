@@ -1,13 +1,13 @@
 import { PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { API_URL } from "../config/env";
-import { rpcService } from "./rpcService";
+import { API_URL } from "../../config/env";
+import { rpcService } from "../solana/rpcService";
 import { priceService } from "./priceService";
 import { tokenMetadataService } from "./tokenMetadataService";
 import { jupiterPortfolioService } from "./jupiterPortfolioService";
 
-import { useWalletHistoricalStore } from "../store/walletStore";
-import type { WalletActivity, WalletBalance } from "../types/wallet";
-import { savePortfolioSnapshot } from "../utils/portfolioSnapshot";
+import { useWalletHistoricalStore } from "../../store/walletStore";
+import type { WalletActivity, WalletBalance } from "../../types/wallet";
+import { savePortfolioSnapshot } from "../../utils";
 
 // Define JupiterTransactionRecord type
 export interface JupiterTransactionRecord {
@@ -254,6 +254,8 @@ async function fetchLocalSnapshot(address: string): Promise<WalletBalance> {
     usdValue: Number(usdValue.toFixed(2)),
     lastUpdated: now,
     tokens,
+    totalTokens: tokens.length,
+    totalValue: Number(usdValue.toFixed(2)),
   };
 }
 
@@ -294,6 +296,8 @@ async function fetchJupiterSnapshot(
     usdValue: Number(totalUsdValue.toFixed(2)),
     lastUpdated: now,
     tokens,
+    totalTokens: tokens.length,
+    totalValue: Number(totalUsdValue.toFixed(2)),
   };
 }
 
@@ -321,7 +325,7 @@ function normalizeServerActivity(
       return {
         signature,
         timestamp,
-        type: String(entry?.type ?? "unknown").toLowerCase(),
+        type: String(entry?.type ?? "unknown").toLowerCase() as any,
         description: entry?.description,
         fee:
           typeof entry?.fee === "number"
@@ -331,6 +335,7 @@ function normalizeServerActivity(
         amount: changeSummary?.amount,
         mint: changeSummary?.mint,
         direction: changeSummary?.direction,
+        status: "success" as const,
       };
     })
     .filter((entry) => Boolean(entry.signature))
@@ -366,10 +371,11 @@ function normalizeJupiterActivities(
       return {
         signature,
         timestamp,
-        type,
+        type: type as any,
         description,
         source: entry?.platform ?? entry?.dex ?? "jupiter",
         direction,
+        status: "success" as const,
       };
     })
     .filter((entry) => Boolean(entry.signature))

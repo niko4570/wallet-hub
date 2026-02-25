@@ -1,6 +1,6 @@
 import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
-import { cacheUtils } from "../utils/cache";
-import { rpcService } from "./rpcService";
+import { cacheUtils } from "../../utils";
+import { rpcService } from "../solana/rpcService";
 import { priceService } from "./priceService";
 import { jupiterService } from "./jupiterService";
 
@@ -291,7 +291,6 @@ const parsePriceValue = (value?: number | string): number | null => {
   return null;
 };
 
-
 export const tokenMetadataService = {
   async getTokenBalancesForWallet(
     walletAddress: string,
@@ -443,5 +442,4 @@ export const tokenMetadataService = {
       return {};
     }
   },
-
 };

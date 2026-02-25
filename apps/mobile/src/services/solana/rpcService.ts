@@ -3,7 +3,7 @@ import {
   PublicKey,
   GetProgramAccountsConfig,
 } from "@solana/web3.js";
-import { HELIUS_RPC_URL } from "../config/env";
+import { HELIUS_RPC_URL } from "../../config/env";
 
 const TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

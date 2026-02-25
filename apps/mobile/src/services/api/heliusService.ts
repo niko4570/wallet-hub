@@ -1,11 +1,11 @@
-import { HELIUS_API_BASE, HELIUS_API_KEY } from "../config/env";
+import { HELIUS_API_BASE, HELIUS_API_KEY } from "../../config/env";
 
 const heliusBaseUrl = HELIUS_API_BASE.replace(/\/$/, "");
 
 // Track in-flight requests to avoid concurrent calls
 let inFlightRequest: Promise<any> | null = null;
 
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const getTransaction = async (signature: string): Promise<any> => {
   if (!HELIUS_API_KEY) {
@@ -40,8 +40,12 @@ const getTransaction = async (signature: string): Promise<any> => {
 
         if (!response.ok) {
           const errorText = await response.text();
-          console.error(`Helius API error: ${response.status}`, { error: errorText });
-          throw new Error(`Helius API error: ${response.status} - ${errorText}`);
+          console.error(`Helius API error: ${response.status}`, {
+            error: errorText,
+          });
+          throw new Error(
+            `Helius API error: ${response.status} - ${errorText}`,
+          );
         }
 
         const payload = await response.json();

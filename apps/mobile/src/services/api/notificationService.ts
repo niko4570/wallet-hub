@@ -2,8 +2,8 @@ import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import * as Haptics from "expo-haptics";
 import Constants from "expo-constants";
-import { API_URL } from "../config/env";
-import { handleApiError } from "../utils/errorHandler";
+import { API_URL } from "../../config/env";
+import { handleApiError } from "../../utils";
 
 const MAX_TRACKED_ADDRESSES = 32;
 

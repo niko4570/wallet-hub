@@ -1,4 +1,4 @@
-import { cacheUtils } from "../utils/cache";
+import { cacheUtils } from "../../utils";
 import { jupiterService } from "./jupiterService";
 
 declare const process: { env?: Record<string, string | undefined> };
@@ -9,14 +9,6 @@ const PRICE_CHUNK_SIZE = 50;
 const DEFAULT_SOL_FALLBACK = 100;
 const RATE_LIMIT_COOLDOWN_MS = 5 * 1000;
 const UNAUTHORIZED_COOLDOWN_MS = 60 * 1000;
-
-type JupiterPriceEntry = {
-  price?: number | string;
-};
-
-type JupiterPriceEnvelope = {
-  data?: Record<string, JupiterPriceEntry>;
-};
 
 type PriceServiceStatus =
   | {
@@ -36,7 +28,7 @@ type PriceServiceStatus =
 export class PriceService {
   private static instance: PriceService;
   private cache: Map<string, { price: number; timestamp: number }> = new Map();
-  private cacheDuration = 5 * 60 * 1000; // 5 minutes cache
+  private cacheDuration = 30 * 1000; // 30 seconds cache
   private inFlightSol?: Promise<number>;
   private hasWarnedAboutKey = false;
   private status: PriceServiceStatus = JUPITER_API_KEY
@@ -149,30 +141,20 @@ export class PriceService {
     }
 
     try {
-      const envelope = await jupiterService.requestJson<JupiterPriceEnvelope>(
-        "/price/v3",
-        {
-          params: {
-            ids: mints.join(","),
-          },
+      const response = await jupiterService.requestJson<
+        Record<string, { usdPrice: number }>
+      >("/price/v3", {
+        params: {
+          ids: mints.join(","),
         },
-      );
-
-      const payload =
-        envelope?.data && typeof envelope.data === "object"
-          ? envelope.data
-          : (envelope as unknown as Record<string, JupiterPriceEntry>);
+      });
 
       const normalized: Record<string, number> = {};
 
       mints.forEach((mint) => {
-        const entry = payload?.[mint];
-        const parsed = this.parsePrice(
-          entry?.price ??
-            (entry as { usdPrice?: number | string } | undefined)?.usdPrice,
-        );
-        if (parsed !== null) {
-          normalized[mint] = parsed;
+        const entry = response?.[mint];
+        if (entry && typeof entry.usdPrice === "number") {
+          normalized[mint] = entry.usdPrice;
         }
       });
 
@@ -307,6 +289,17 @@ export class PriceService {
     }
 
     return result;
+  }
+
+  async getTokenPricesWithStructure(
+    mints: string[],
+  ): Promise<Record<string, { price: number }>> {
+    const prices = await this.getTokenPricesInUsd(mints);
+    const formattedResult: Record<string, { price: number }> = {};
+    Object.entries(prices).forEach(([mint, price]) => {
+      formattedResult[mint] = { price };
+    });
+    return formattedResult;
   }
 }
 
