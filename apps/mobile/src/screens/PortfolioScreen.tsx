@@ -21,10 +21,15 @@ import Animated, {
 } from "react-native-reanimated";
 import { useTheme } from "../theme/ThemeContext";
 import { useSolana } from "../context/SolanaContext";
+import { fetchAssets } from "../services";
+import { SOLANA_CLUSTER } from "../config/env";
+import { filterAssets } from "../utils";
 import { useWalletStore } from "../store/walletStore";
 import PortfolioHeader from "../components/common/PortfolioHeader";
-import ModernPortfolioLineChart from "../components/analytics/ModernPortfolioLineChart";
-import { AssetAllocationPieChart } from "../components/analytics/AssetAllocationPieChart";
+import {
+  ModernPortfolioLineChart,
+  AssetAllocationPieChart,
+} from "../components/analytics";
 import WalletWidget from "../components/wallet/WalletWidget";
 import TimeRangeSelector from "../components/portfolio/TimeRangeSelector";
 import SendModal from "../components/portfolio/SendModal";
@@ -38,37 +43,20 @@ import {
   UI_CONFIG,
   CHART_CONFIG,
 } from "../config/appConfig";
+import type { TokenAsset } from "../types";
 import {
   calculatePortfolioChangePercent,
   filterHistoricalDataByRange,
-} from "../utils/portfolioPerformance";
+} from "../utils";
 
-// Helper function to get top tokens from detailed balances
-const getTopTokens = (
-  detailedData: Record<
-    string,
-    {
-      tokens?: Array<{
-        symbol?: string;
-        mint: string;
-        usdValue: number;
-      }>;
-    }
-  >,
-  walletAddress?: string,
-): Array<{ symbol: string; valueUSD: number }> => {
-  if (!walletAddress || !detailedData[walletAddress]?.tokens) {
-    return [];
-  }
-
-  return detailedData[walletAddress].tokens
-    .map((token) => ({
-      symbol: token.symbol || token.mint.slice(0, 6),
-      valueUSD: token.usdValue,
-    }))
-    .sort((a, b) => b.valueUSD - a.valueUSD)
-    .slice(0, 5);
-};
+// Helper function to map fetched assets to chart-ready tokens
+const getAssetAllocationTokens = (
+  assets: TokenAsset[],
+): Array<{ symbol: string; usdValue: number }> =>
+  assets.map((asset) => ({
+    symbol: asset.symbol,
+    usdValue: asset.usdValue,
+  }));
 
 const PortfolioScreen: React.FC = () => {
   const { theme } = useTheme();
@@ -87,13 +75,17 @@ const PortfolioScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [portfolioChangePercent, setPortfolioChangePercent] = useState(0);
+  const [allocationAssets, setAllocationAssets] = useState<TokenAsset[]>([]);
 
   // Initialize chart data from real historical data
   const initialHistoryData = activeWallet
     ? getHistoricalBalances(activeWallet.address)
     : [];
   const [chartData, setChartData] = useState(
-    filterHistoricalDataByRange(initialHistoryData, 7),
+    filterHistoricalDataByRange(
+      initialHistoryData,
+      parseInt(TIME_RANGE_OPTIONS.DEFAULT),
+    ),
   );
 
   // Modal states
@@ -115,6 +107,37 @@ const PortfolioScreen: React.FC = () => {
   const isPrimaryWalletSet = Boolean(primaryWalletAddress);
   const isActivePrimary =
     !!activeWallet && activeWallet.address === primaryWalletAddress;
+
+  useEffect(() => {
+    let cancelled = false;
+    const address = activeWallet?.address;
+    if (!address) {
+      setAllocationAssets([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    fetchAssets(SOLANA_CLUSTER, address)
+      .then((assets) => {
+        if (!cancelled) {
+          const { verified } = filterAssets(assets, {
+            liquidityThresholdUsd: 0,
+          });
+          setAllocationAssets(verified);
+        }
+      })
+      .catch((error) => {
+        console.warn("Failed to fetch asset allocation assets", error);
+        if (!cancelled) {
+          setAllocationAssets([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeWallet?.address]);
 
   // Update chart data and portfolio change percentage when active wallet changes
   useEffect(() => {
@@ -276,7 +299,7 @@ const PortfolioScreen: React.FC = () => {
         {/* Asset Allocation Pie Chart */}
         <View style={styles.section}>
           <AssetAllocationPieChart
-            tokens={getTopTokens(detailedBalances, activeWallet?.address)}
+            tokens={getAssetAllocationTokens(allocationAssets)}
           />
         </View>
 

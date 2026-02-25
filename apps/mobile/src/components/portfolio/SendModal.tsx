@@ -16,10 +16,10 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "../../theme/ThemeContext";
 import { useSolana } from "../../context/SolanaContext";
-import { useWalletStore } from "../../store/walletStore";
+import { useWalletStore, useWalletBalanceStore } from "../../store/walletStore";
 import { toast } from "../common/ErrorToast";
 import { NETWORK_FEES, UI_CONFIG } from "../../config/appConfig";
-import { validateSolanaAddress, validateSolAmount } from "../../utils/validation";
+import { validateSolanaAddress, validateSolAmount } from "../../utils";
 
 interface SendModalProps {
   visible: boolean;
@@ -31,6 +31,7 @@ const SendModal: React.FC<SendModalProps> = ({ visible, onClose }) => {
   const insets = useSafeAreaInsets();
   const { sendSol, refreshBalance } = useSolana();
   const { activeWallet, primaryWalletAddress } = useWalletStore();
+  const { balances } = useWalletBalanceStore();
 
   const [sendRecipient, setSendRecipient] = useState("");
   const [sendAmount, setSendAmount] = useState("");
@@ -92,12 +93,12 @@ const SendModal: React.FC<SendModalProps> = ({ visible, onClose }) => {
     if (!activeWallet) {
       return;
     }
-    const balance = activeWallet.balance || 0;
+    const balance = balances[activeWallet.address] || 0;
     const feeReserve = estimatedFee || NETWORK_FEES.SOLANA;
     const maxSendable = Math.max(0, balance - feeReserve);
     setSendAmount(maxSendable.toFixed(6));
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [activeWallet, estimatedFee]);
+  }, [activeWallet, balances, estimatedFee]);
 
   // Handle send transaction
   const handleSend = useCallback(async () => {
@@ -110,12 +111,15 @@ const SendModal: React.FC<SendModalProps> = ({ visible, onClose }) => {
     }
 
     const trimmedRecipient = sendRecipient.trim();
-    const balance = activeWallet.balance || 0;
+    const balance = balances[activeWallet.address] || 0;
 
     // Validate recipient address
     const addressValidation = validateAddress(trimmedRecipient);
     if (!addressValidation.valid) {
-      Alert.alert("Invalid address", addressValidation.error);
+      Alert.alert(
+        "Invalid address",
+        addressValidation.error || "Invalid address format",
+      );
       return;
     }
 
@@ -128,7 +132,7 @@ const SendModal: React.FC<SendModalProps> = ({ visible, onClose }) => {
     // Validate amount
     const amountValidation = validateSolAmount(sendAmount, balance);
     if (!amountValidation.valid) {
-      Alert.alert("Invalid amount", amountValidation.error);
+      Alert.alert("Invalid amount", amountValidation.error || "Invalid amount");
       return;
     }
 
@@ -234,17 +238,12 @@ const SendModal: React.FC<SendModalProps> = ({ visible, onClose }) => {
             {/* Amount Input */}
             <View style={styles.inputGroup}>
               <View style={styles.amountHeader}>
-                <Text
-                  style={[styles.inputLabel, { color: theme.colors.text }]}
-                >
+                <Text style={[styles.inputLabel, { color: theme.colors.text }]}>
                   Amount (SOL)
                 </Text>
                 <TouchableOpacity onPress={handleUseMaxAmount}>
                   <Text
-                    style={[
-                      styles.maxButton,
-                      { color: theme.colors.primary },
-                    ]}
+                    style={[styles.maxButton, { color: theme.colors.primary }]}
                   >
                     Max
                   </Text>
@@ -281,9 +280,7 @@ const SendModal: React.FC<SendModalProps> = ({ visible, onClose }) => {
                 >
                   Network Fee
                 </Text>
-                <Text
-                  style={[styles.feeAmount, { color: theme.colors.text }]}
-                >
+                <Text style={[styles.feeAmount, { color: theme.colors.text }]}>
                   {estimatedFee.toFixed(6)} SOL
                 </Text>
               </View>
@@ -327,8 +324,8 @@ const styles = StyleSheet.create({
   modalContent: {
     borderTopLeftRadius: UI_CONFIG.BORDER_RADIUS.XL,
     borderTopRightRadius: UI_CONFIG.BORDER_RADIUS.XL,
-    minHeight: UI_CONFIG.MODAL.MIN_HEIGHT,
-    maxHeight: UI_CONFIG.MODAL.MAX_HEIGHT,
+    minHeight: 0.7,
+    maxHeight: 0.95,
   },
   modalHeader: {
     flexDirection: "row",

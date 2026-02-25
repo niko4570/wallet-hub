@@ -11,7 +11,7 @@ import {
   Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { formatAddress, formatAmount } from "../utils/format";
+import { formatAddress, formatAmount } from "../utils";
 import { useWalletStore } from "../store/walletStore";
 import { rpcService } from "../services";
 import { Transaction } from "../types";
