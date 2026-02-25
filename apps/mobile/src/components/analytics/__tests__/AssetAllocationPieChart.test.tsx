@@ -13,16 +13,11 @@ jest.mock("react-native", () => ({
   },
 }));
 
-// Mock PieChart component
-jest.mock("react-native-chart-kit", () => ({
-  PieChart: jest.fn(() => null),
-}));
-
 const mockTokensData = [
-  { symbol: "SOL", valueUSD: 1500 },
-  { symbol: "USDC", valueUSD: 1000 },
-  { symbol: "RAY", valueUSD: 500 },
-  { symbol: "LOW", valueUSD: 0.5 }, // Should be filtered out
+  { symbol: "SOL", usdValue: 1500 },
+  { symbol: "USDC", usdValue: 1000 },
+  { symbol: "RAY", usdValue: 500 },
+  { symbol: "LOW", usdValue: 0.5 }, // Should be filtered out
 ];
 
 describe("AssetAllocationPieChart", () => {
@@ -41,7 +36,7 @@ describe("AssetAllocationPieChart", () => {
   });
 
   it("renders correctly with only low-value tokens", () => {
-    const lowValueTokens = [{ symbol: "LOW", valueUSD: 0.5 }];
+    const lowValueTokens = [{ symbol: "LOW", usdValue: 0.5 }];
     render(<AssetAllocationPieChart tokens={lowValueTokens} />);
 
     // Check if the component renders without errors

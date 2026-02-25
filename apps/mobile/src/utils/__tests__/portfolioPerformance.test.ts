@@ -2,7 +2,7 @@
 import {
   calculatePortfolioChangePercent,
   filterHistoricalDataByRange,
-} from "../portfolioPerformance";
+} from "../portfolio/performance";
 
 describe("portfolioPerformance utilities", () => {
   describe("calculatePortfolioChangePercent", () => {

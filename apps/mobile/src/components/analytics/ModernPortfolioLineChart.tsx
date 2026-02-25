@@ -1,68 +1,152 @@
-import React, { useRef, useEffect } from "react";
-import { View, Text, Dimensions, StyleSheet, Animated } from "react-native";
-import { LineChart } from "react-native-chart-kit";
-import { LinearGradient } from "expo-linear-gradient";
-import { formatPercentChange } from "../../utils/format";
+import React, { useRef, useEffect, useMemo } from "react";
+import { View, Text, StyleSheet, Animated, Dimensions } from "react-native";
+import { CartesianChart, Line, Scatter } from "victory-native";
+import { formatPercentChange } from "../../utils";
+import { CHART_CONFIG, COLORS } from "../../config/appConfig";
+
+interface PortfolioHistoryItem {
+  timestamp: number;
+  totalValueUSD: number;
+}
 
 interface ModernPortfolioLineChartProps {
-  history: { timestamp: number; totalValueUSD: number }[];
+  history: PortfolioHistoryItem[];
 }
 
 const ModernPortfolioLineChart: React.FC<ModernPortfolioLineChartProps> = ({
   history,
 }) => {
-  const screenWidth = Dimensions.get("window").width;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const hasData = history.length >= 2;
 
-  // Determine chart color based on percentage change (Phantom-inspired theme)
-  const getChartColor = (percent: number): string => {
-    return percent >= 0 ? "#00FFB3" : "#FF4D4D";
-  };
+  // Get screen dimensions for responsive design
+  const { width: screenWidth } = Dimensions.get("window");
+  const isTablet = screenWidth >= 768;
+  const isDesktop = screenWidth >= 1024;
+
+  // Responsive chart height
+  const chartHeight = isDesktop
+    ? 300
+    : isTablet
+      ? 270
+      : CHART_CONFIG.CHART_HEIGHT;
+
+  // Responsive font sizes
+  const lastValueFontSize = isDesktop ? 36 : isTablet ? 32 : 30;
+  const headerLabelFontSize = isDesktop ? 14 : isTablet ? 13 : 12;
+  const changeTextFontSize = isDesktop ? 14 : isTablet ? 13 : 12;
+  const emptyStateFontSize = isDesktop ? 15 : isTablet ? 14 : 13;
+
+  // Responsive padding and spacing
+  const containerPadding = isDesktop ? 32 : isTablet ? 28 : 24;
+  const headerMarginBottom = isDesktop ? 32 : isTablet ? 28 : 24;
+  const chartFramePadding = isDesktop ? 12 : isTablet ? 10 : 8;
+  const borderRadius = isDesktop ? 32 : isTablet ? 28 : 24;
 
   // Extract data for chart
-  const chartData = {
-    labels: history.map(() => ""), // Empty labels for cleaner look
-    datasets: [
-      {
-        data: history.map((item) => item.totalValueUSD),
-        color: (opacity = 1) => {
-          const baseColor = percentageChange >= 0 ? "#00FFB3" : "#FF4D4D";
-          // Convert hex to rgba with higher opacity
-          const r = parseInt(baseColor.slice(1, 3), 16);
-          const g = parseInt(baseColor.slice(3, 5), 16);
-          const b = parseInt(baseColor.slice(5, 7), 16);
-          return `rgba(${r}, ${g}, ${b}, ${opacity * 0.9})`; // Increase opacity
-        },
-        strokeWidth: 3, // Increase stroke width for better visibility
-      },
-    ],
-  };
+  const lastValue = useMemo(
+    () => (history.length > 0 ? history[history.length - 1].totalValueUSD : 0),
+    [history],
+  );
 
-  // Get last value
-  const lastValue =
-    history.length > 0 ? history[history.length - 1].totalValueUSD : 0;
+  const firstValue = useMemo(
+    () => (history.length > 0 ? history[0].totalValueUSD : 0),
+    [history],
+  );
 
-  // Get first value for percentage change calculation
-  const firstValue = history.length > 0 ? history[0].totalValueUSD : 0;
-  const percentageChange =
-    firstValue > 0 ? ((lastValue - firstValue) / firstValue) * 100 : 0;
+  const percentageChange = useMemo(
+    () => (firstValue > 0 ? ((lastValue - firstValue) / firstValue) * 100 : 0),
+    [firstValue, lastValue],
+  );
+
   const isPositiveChange = percentageChange >= 0;
+  const lineColor = COLORS.GREEN;
 
   // Format USD value
-  const formatUSD = (value: number): string => {
-    return new Intl.NumberFormat("en-US", {
+  const formatUSD = useMemo(() => {
+    const formatter = new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(value);
+    });
+    return (value: number): string => formatter.format(value);
+  }, []);
+
+  // Remove outliers using IQR method
+  const removeOutliers = (
+    data: Array<{ x: number; y: number }>,
+  ): Array<{ x: number; y: number }> => {
+    if (data.length <= 4) return data;
+
+    const values = data.map((item) => item.y).sort((a, b) => a - b);
+    const q1 = values[Math.floor(values.length * 0.25)];
+    const q3 = values[Math.floor(values.length * 0.75)];
+    const iqr = q3 - q1;
+    const lowerBound = q1 - 1.5 * iqr;
+    const upperBound = q3 + 1.5 * iqr;
+
+    return data.filter((item) => item.y >= lowerBound && item.y <= upperBound);
   };
 
-  // Format percentage change
-  const formatPercentage = (value: number): string => {
-    return formatPercentChange(value);
-  };
+  // Prepare chart data
+  const chartData = useMemo(() => {
+    // Sort data by timestamp ascending
+    const sortedHistory = [...history].sort(
+      (a, b) => a.timestamp - b.timestamp,
+    );
+
+    // Convert to format with timestamp as x (rounded to minutes), filter out invalid data
+    let processedData = sortedHistory
+      .map((item) => ({
+        // Round timestamp to nearest minute
+        x: Math.round(item.timestamp / 60000) * 60000,
+        y: item.totalValueUSD,
+      }))
+      // Filter out invalid values
+      .filter(
+        (item) =>
+          item.y !== null &&
+          item.y !== undefined &&
+          !isNaN(item.y) &&
+          item.y > 0,
+      );
+
+    // Remove outliers
+    processedData = removeOutliers(processedData);
+
+    // Remove duplicate x values (keep the latest occurrence)
+    const uniqueDataMap = new Map<number, (typeof processedData)[0]>();
+    for (const item of processedData) {
+      uniqueDataMap.set(item.x, item);
+    }
+
+    // Convert back to array and sort by x ascending
+    return Array.from(uniqueDataMap.values()).sort((a, b) => a.x - b.x);
+  }, [history]);
+
+  // Calculate Y domain with exact min/max * 0.99/1.01
+  const yDomain = useMemo(() => {
+    if (chartData.length === 0) return [0, 100] as [number, number];
+
+    const values = chartData.map((item) => item.y);
+    const minY = Math.min(...values);
+    const maxY = Math.max(...values);
+
+    return [minY * 0.99, maxY * 1.01] as [number, number];
+  }, [chartData]);
+
+  // Calculate X domain
+  const xDomain = useMemo(() => {
+    if (chartData.length === 0) return [0, 1] as [number, number];
+
+    const timestamps = chartData.map((item) => item.x);
+    const minX = Math.min(...timestamps);
+    const maxX = Math.max(...timestamps);
+
+    return [minX, maxX] as [number, number];
+  }, [chartData]);
 
   // Animate on mount
   useEffect(() => {
@@ -88,101 +172,135 @@ const ModernPortfolioLineChart: React.FC<ModernPortfolioLineChartProps> = ({
         {
           opacity: fadeAnim,
           transform: [{ scale: scaleAnim }],
+          padding: containerPadding,
+          borderRadius,
         },
       ]}
     >
       {/* Portfolio value header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { marginBottom: headerMarginBottom }]}>
         <View>
-          <Text style={styles.headerLabel}>Portfolio Value</Text>
-          <Text style={styles.lastValue}>{formatUSD(lastValue)}</Text>
+          <Text style={[styles.headerLabel, { fontSize: headerLabelFontSize }]}>
+            Portfolio Value
+          </Text>
+          <Text style={[styles.lastValue, { fontSize: lastValueFontSize }]}>
+            {formatUSD(lastValue)}
+          </Text>
         </View>
         <View
           style={[
             styles.changeContainer,
             isPositiveChange ? styles.positiveChange : styles.negativeChange,
+            {
+              paddingHorizontal: isDesktop ? 16 : isTablet ? 14 : 12,
+              paddingVertical: isDesktop ? 8 : isTablet ? 7 : 6,
+            },
           ]}
         >
-          <Text style={styles.changeText}>
-            {formatPercentage(percentageChange)}
+          <Text style={[styles.changeText, { fontSize: changeTextFontSize }]}>
+            {formatPercentChange(percentageChange)}
           </Text>
         </View>
       </View>
 
-      {/* Gradient background for chart */}
-      <LinearGradient
-        colors={[
-          `${percentageChange >= 0 ? "#00FFB340" : "#FF4D4D40"}`, // 25% opacity
-          `${percentageChange >= 0 ? "#00FFB31A" : "#FF4D4D1A"}`, // 10% opacity
-          "transparent",
-        ]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={styles.gradientBackground}
-      >
-        {/* Line chart */}
-        <LineChart
-          data={chartData}
-          width={screenWidth - 32} // Account for padding
-          height={200}
-          chartConfig={{
-            backgroundColor: "transparent",
-            backgroundGradientFrom: "transparent",
-            backgroundGradientTo: "transparent",
-            decimalPlaces: 0,
-            color: (opacity = 1) => {
-              const baseColor = percentageChange >= 0 ? "#00FFB3" : "#FF4D4D";
-              // Convert hex to rgba with higher brightness
-              const r = parseInt(baseColor.slice(1, 3), 16);
-              const g = parseInt(baseColor.slice(3, 5), 16);
-              const b = parseInt(baseColor.slice(5, 7), 16);
-              return `rgba(${r}, ${g}, ${b}, ${opacity * 0.95})`; // Increase opacity for better visibility
-            },
-            labelColor: (opacity = 1) =>
-              `rgba(255, 255, 255, ${opacity * 0.8})`, // Increase label visibility
-            style: {
-              borderRadius: 16,
-            },
-            propsForDots: {
-              r: "0", // No dots
-              strokeWidth: "0",
-            },
-            propsForBackgroundLines: {
-              stroke: "transparent", // No background lines
-            },
-          }}
-          bezier
-          style={styles.chart}
-          withInnerLines={false} // No inner lines
-          withOuterLines={false} // No outer lines
-          withVerticalLabels={false} // No vertical labels
-          withHorizontalLabels={false} // No horizontal labels
-          withDots={false} // No dots
-          withShadow={false} // No shadow
-          withHorizontalLines={false} // No horizontal lines
-          withVerticalLines={false} // No vertical lines
-        />
-      </LinearGradient>
+      {/* Chart frame */}
+      <View style={[styles.chartFrame, { paddingVertical: chartFramePadding }]}>
+        {hasData ? (
+          <View style={styles.glowWrapper}>
+            <View style={[styles.chartCanvas, { height: chartHeight }]}>
+              <CartesianChart
+                data={chartData}
+                xKey="x"
+                yKeys={["y"]}
+                padding={{ left: 0, right: 0, top: 10, bottom: 10 }}
+                domain={{ x: xDomain, y: yDomain }}
+                domainPadding={{ left: 0, right: 0, top: 0, bottom: 0 }}
+                frame={{ lineWidth: 0, lineColor: "transparent" }}
+                xAxis={{
+                  lineWidth: 0,
+                  labelColor: "transparent",
+                  tickCount: 0,
+                }}
+                yAxis={[
+                  {
+                    lineWidth: 0,
+                    labelColor: "transparent",
+                    tickCount: 0,
+                  },
+                ]}
+              >
+                {({ points }) => {
+                  const linePoints = points.y;
+                  const lastPoint = linePoints[linePoints.length - 1];
+                  const markerPoints =
+                    lastPoint && typeof lastPoint.y === "number"
+                      ? [lastPoint]
+                      : [];
+
+                  return (
+                    <>
+                      {/* Glow effect layer */}
+                      <Line
+                        points={linePoints}
+                        curveType="monotoneX"
+                        color={lineColor}
+                        strokeWidth={6}
+                        strokeCap="round"
+                        strokeJoin="round"
+                        opacity={0.2}
+                      />
+                      {/* Main line layer */}
+                      <Line
+                        points={linePoints}
+                        curveType="monotoneX"
+                        color={lineColor}
+                        strokeWidth={3}
+                        strokeCap="round"
+                        strokeJoin="round"
+                        opacity={1}
+                      />
+                      {markerPoints.length > 0 && (
+                        <Scatter
+                          points={markerPoints}
+                          radius={8}
+                          color={lineColor}
+                          style="fill"
+                        />
+                      )}
+                    </>
+                  );
+                }}
+              </CartesianChart>
+            </View>
+          </View>
+        ) : (
+          <View style={[styles.emptyState, { height: chartHeight }]}>
+            <Text
+              style={[styles.emptyStateText, { fontSize: emptyStateFontSize }]}
+            >
+              Not enough data yet
+            </Text>
+          </View>
+        )}
+      </View>
     </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#0B1221",
+    backgroundColor: COLORS.BACKGROUND,
     borderRadius: 24,
     padding: 24,
     marginVertical: 8,
-    shadowColor: "#000",
+    shadowColor: COLORS.SHADOW,
     shadowOffset: {
       width: 0,
-      height: 8,
+      height: 10,
     },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.05)",
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
   },
   header: {
     flexDirection: "row",
@@ -191,17 +309,17 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   headerLabel: {
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.6)",
-    fontWeight: "500",
-    letterSpacing: 0.5,
+    fontSize: 12,
+    color: COLORS.TEXT_SECONDARY,
+    fontWeight: "600",
+    letterSpacing: 0.6,
     marginBottom: 4,
   },
   lastValue: {
-    fontSize: 28,
-    color: "#FFFFFF",
+    fontSize: 30,
+    color: COLORS.TEXT_PRIMARY,
     fontWeight: "700",
-    letterSpacing: -0.5,
+    letterSpacing: -0.2,
   },
   changeContainer: {
     paddingHorizontal: 12,
@@ -210,26 +328,44 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   positiveChange: {
-    backgroundColor: "rgba(0, 255, 179, 0.2)",
+    backgroundColor: COLORS.GREEN_LIGHT,
   },
   negativeChange: {
-    backgroundColor: "rgba(255, 77, 77, 0.2)",
+    backgroundColor: COLORS.RED_LIGHT,
   },
   changeText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#FFFFFF",
+    color: COLORS.TEXT_PRIMARY,
   },
-  gradientBackground: {
-    borderRadius: 16,
+  chartFrame: {
+    borderRadius: 18,
     overflow: "hidden",
+    backgroundColor: COLORS.BACKGROUND,
+    paddingVertical: 8,
+    paddingHorizontal: 0,
     marginBottom: 16,
   },
-  chart: {
-    borderRadius: 16,
-    marginVertical: 0,
-    paddingRight: 0,
-    paddingLeft: 0,
+  chartCanvas: {
+    width: "100%",
+    height: CHART_CONFIG.CHART_HEIGHT,
+  },
+  glowWrapper: {
+    shadowColor: COLORS.GREEN,
+    shadowOpacity: 0.3,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 6,
+  },
+  emptyState: {
+    height: CHART_CONFIG.CHART_HEIGHT,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyStateText: {
+    fontSize: 13,
+    color: COLORS.TEXT_SECONDARY,
+    letterSpacing: 0.3,
   },
 });
 

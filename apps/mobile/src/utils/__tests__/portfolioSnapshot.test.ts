@@ -5,7 +5,7 @@ import {
   getPortfolioSnapshots,
   clearPortfolioSnapshots,
   PortfolioSnapshot,
-} from "../portfolioSnapshot";
+} from "../portfolio/snapshot";
 
 // Mock AsyncStorage
 jest.mock("@react-native-async-storage/async-storage", () => ({
@@ -21,8 +21,8 @@ describe("portfolioSnapshot utilities", () => {
     // Clear all mocks before each test
     jest.clearAllMocks();
     // Clear global cache before each test
-    if (global.snapshotCache) {
-      delete global.snapshotCache;
+    if (globalThis.snapshotCache) {
+      delete globalThis.snapshotCache;
     }
     // Mock Date.now for consistent testing
     jest.useFakeTimers();
@@ -182,8 +182,8 @@ describe("portfolioSnapshot utilities", () => {
       mockAsyncStorage.getItem.mockResolvedValue(JSON.stringify(mockSnapshots));
 
       // Clear cache before test
-      if (global.snapshotCache) {
-        delete global.snapshotCache.snapshots;
+      if (globalThis.snapshotCache) {
+        delete globalThis.snapshotCache.snapshots;
       }
 
       const result = await getPortfolioSnapshots();
