@@ -1,5 +1,35 @@
 // Application configuration
 
+// Color palette
+export const COLORS = {
+  // Primary colors
+  PRIMARY: "#22C55E",
+  GREEN: "#22C55E",
+  RED: "#EF4444",
+  
+  // Light variants
+  GREEN_LIGHT: "rgba(34, 197, 94, 0.22)",
+  RED_LIGHT: "rgba(239, 68, 68, 0.22)",
+  
+  // Background colors
+  BACKGROUND: "#0B0B0F",
+  CARD: "#1A1A2E",
+  
+  // Text colors
+  TEXT_PRIMARY: "#FFFFFF",
+  TEXT_SECONDARY: "rgba(255, 255, 255, 0.6)",
+  TEXT_TERTIARY: "rgba(255, 255, 255, 0.4)",
+  
+  // Border colors
+  BORDER: "rgba(255, 255, 255, 0.1)",
+  
+  // Shadow colors
+  SHADOW: "#000000",
+  
+  // Transparent
+  TRANSPARENT: "transparent",
+};
+
 // Network fees
 export const NETWORK_FEES = {
   SOLANA: 0.000005, // SOL network fee
@@ -23,6 +53,8 @@ export const CHART_CONFIG = {
   CHART_HEIGHT: 240, // Chart height in pixels
   ANIMATION_DURATION: 500, // Animation duration in milliseconds
   TIMESTAMP_TOLERANCE: 60 * 1000, // 1 minute tolerance for duplicate timestamps
+  ASSET_ALLOCATION_MAX_SLICES: 8, // Max slices (incl. "Others") in allocation chart
+  ASSET_ALLOCATION_MIN_VALUE_USD: 0, // Minimum USD value to include in allocation
 };
 
 // UI configuration
