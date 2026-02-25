@@ -16,14 +16,16 @@ import type {
   WalletCapabilityReport,
   AuthorizationPrimitive,
 } from "@wallethub/contracts";
-import { walletService } from "../services/walletService";
-import { authorizationApi } from "../services/authorizationService";
-import { rpcService } from "../services/rpcService";
-import { priceService } from "../services/priceService";
-import { tokenMetadataService } from "../services/tokenMetadataService";
+import {
+  authorizationApi,
+  priceService,
+  rpcService,
+  tokenMetadataService,
+  walletService,
+} from "../services";
 import { HELIUS_RPC_URL, SOLANA_CLUSTER } from "../config/env";
 import { requireBiometricApproval } from "../security/biometrics";
-import { decodeWalletAddress } from "../utils/solanaAddress";
+import { decodeWalletAddress } from "../utils";
 import {
   useWalletStore,
   useWalletBalanceStore,
@@ -340,6 +342,8 @@ export function useSolana(): UseSolanaResult {
         usdValue: Number(totalUsdValue.toFixed(2)),
         lastUpdated: now,
         tokens: tokenDetails,
+        totalTokens: tokenDetails.length,
+        totalValue: Number(totalUsdValue.toFixed(2)),
       };
 
       setDetailedBalances((prev) => ({
