@@ -16,7 +16,7 @@ import { LinkedWallet } from "../../types/wallet";
 import { useWalletStore } from "../../store/walletStore";
 import * as Haptics from "expo-haptics";
 import { toast } from "../common/ErrorToast";
-import { formatAddress, formatAmount } from "../../utils/format";
+import { formatAddress, formatAmount } from "../../utils";
 import { requireBiometricApproval } from "../../security/biometrics";
 
 interface WalletWidgetProps {
