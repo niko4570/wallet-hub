@@ -381,23 +381,25 @@ export const useWalletActivityStore = create<{
 // Wallet historical balance state store
 export const useWalletHistoricalStore = create<{
   historicalBalances: Record<
-    string,
+    string, // Key format: `${network}:${address}`
     Array<{ timestamp: number; usd: number; sol: number }>
   >;
   updateHistoricalBalance: (
+    network: string,
     address: string,
     balance: { timestamp: number; usd: number; sol: number },
   ) => void;
   getHistoricalBalances: (
+    network: string,
     address: string,
   ) => Array<{ timestamp: number; usd: number; sol: number }>;
   cleanupHistoricalBalances: () => void;
-  cleanupWalletBalances: (address: string) => void;
+  cleanupWalletBalances: (network: string, address: string) => void;
 }>()(
   persist(
     (set, get) => ({
       historicalBalances: {},
-      updateHistoricalBalance: (address, balance) =>
+      updateHistoricalBalance: (network, address, balance) =>
         set((state) => {
           // Validate balance data before storing
           if (
@@ -412,7 +414,8 @@ export const useWalletHistoricalStore = create<{
             return state; // Don't update if data is invalid
           }
 
-          const existingBalances = state.historicalBalances[address] || [];
+          const key = `${network}:${address}`;
+          const existingBalances = state.historicalBalances[key] || [];
 
           // Check if we already have data for this timestamp (within 1 minute)
           const TIMESTAMP_TOLERANCE = 60 * 1000; // 1 minute tolerance
@@ -442,13 +445,14 @@ export const useWalletHistoricalStore = create<{
           return {
             historicalBalances: {
               ...state.historicalBalances,
-              [address]: updatedBalances,
+              [key]: updatedBalances,
             },
           };
         }),
-      getHistoricalBalances: (address) => {
+      getHistoricalBalances: (network, address) => {
         const state = get();
-        return state.historicalBalances[address] || [];
+        const key = `${network}:${address}`;
+        return state.historicalBalances[key] || [];
       },
       cleanupHistoricalBalances: () => {
         set((state) => {
@@ -479,13 +483,14 @@ export const useWalletHistoricalStore = create<{
           };
         });
       },
-      cleanupWalletBalances: (address) => {
+      cleanupWalletBalances: (network, address) => {
         set((state) => {
           const now = Date.now();
           // Keep data for 30 days
           const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
 
-          const balances = state.historicalBalances[address] || [];
+          const key = `${network}:${address}`;
+          const balances = state.historicalBalances[key] || [];
           const cleaned = balances
             .filter((item) => item.timestamp >= thirtyDaysAgo)
             .sort((a, b) => a.timestamp - b.timestamp);
@@ -493,9 +498,9 @@ export const useWalletHistoricalStore = create<{
           const newHistoricalBalances = { ...state.historicalBalances };
 
           if (cleaned.length > 0) {
-            newHistoricalBalances[address] = cleaned;
+            newHistoricalBalances[key] = cleaned;
           } else {
-            delete newHistoricalBalances[address];
+            delete newHistoricalBalances[key];
           }
 
           return {

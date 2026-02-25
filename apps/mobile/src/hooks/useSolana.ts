@@ -23,7 +23,7 @@ import {
   tokenMetadataService,
   walletService,
 } from "../services";
-import { HELIUS_RPC_URL, SOLANA_CLUSTER } from "../config/env";
+import { SOLANA_RPC_URL, SOLANA_NETWORK, SOLANA_CLUSTER } from "../config/env";
 import { requireBiometricApproval } from "../security/biometrics";
 import { decodeWalletAddress } from "../utils";
 import {
@@ -174,8 +174,8 @@ export function useSolana(): UseSolanaResult {
   );
 
   const connection = useMemo(
-    () => new Connection(HELIUS_RPC_URL, "confirmed"),
-    [HELIUS_RPC_URL],
+    () => new Connection(SOLANA_RPC_URL, "confirmed"),
+    [SOLANA_RPC_URL],
   );
 
   const activeWallet = useMemo(() => {
@@ -355,7 +355,7 @@ export function useSolana(): UseSolanaResult {
       const walletBalanceStore = useWalletBalanceStore.getState();
       const walletHistoricalStore = useWalletHistoricalStore.getState();
       walletBalanceStore.updateDetailedBalance(walletBalance);
-      walletHistoricalStore.updateHistoricalBalance(targetAddress, {
+      walletHistoricalStore.updateHistoricalBalance(SOLANA_NETWORK, targetAddress, {
         timestamp: Date.now(),
         usd: walletBalance.usdValue,
         sol: walletBalance.balance,

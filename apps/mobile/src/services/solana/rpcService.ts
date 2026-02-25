@@ -3,7 +3,7 @@ import {
   PublicKey,
   GetProgramAccountsConfig,
 } from "@solana/web3.js";
-import { HELIUS_RPC_URL } from "../../config/env";
+import { SOLANA_RPC_URL } from "../../config/env";
 
 const TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -28,11 +28,24 @@ class RpcService {
     string,
     { transaction: any; timestamp: number }
   > = new Map();
-  private cacheTTL = 30000; // 30 seconds
+  private tokenAccountsCache: Map<
+    string,
+    { accounts: ParsedTokenAccountBalance[]; timestamp: number }
+  > = new Map();
+  private pendingRequests: Map<string, Promise<any>> = new Map();
+  private cacheTTL: {
+    balance: number;
+    transaction: number;
+    tokenAccounts: number;
+  } = {
+    balance: 30000,
+    transaction: 60000,
+    tokenAccounts: 45000,
+  };
   private maxRetries = 3;
 
   private constructor() {
-    this.connection = new Connection(HELIUS_RPC_URL, "confirmed");
+    this.connection = new Connection(SOLANA_RPC_URL, "confirmed");
   }
 
   static getInstance(): RpcService {
@@ -50,34 +63,44 @@ class RpcService {
   }
 
   /**
+   * Set Solana connection
+   * @param connection New connection
+   */
+  setConnection(connection: Connection): void {
+    this.connection = connection;
+    // Clear cache when connection changes
+    this.clearCache();
+  }
+
+  /**
    * Get balance for a single address
    * @param address Wallet address
    * @returns Balance in lamports
    */
   async getBalance(address: string): Promise<number> {
-    // Check cache first
     const cached = this.balanceCache.get(address);
-    if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
+    if (cached && Date.now() - cached.timestamp < this.cacheTTL.balance) {
       return cached.balance;
     }
 
-    try {
-      const publicKey = new PublicKey(address);
-      const balance = await this.retry(async () => {
-        return await this.connection.getBalance(publicKey);
-      });
+    return this.deduplicateRequest(`balance:${address}`, async () => {
+      try {
+        const publicKey = new PublicKey(address);
+        const balance = await this.retry(async () => {
+          return await this.connection.getBalance(publicKey);
+        });
 
-      // Update cache
-      this.balanceCache.set(address, {
-        balance,
-        timestamp: Date.now(),
-      });
+        this.balanceCache.set(address, {
+          balance,
+          timestamp: Date.now(),
+        });
 
-      return balance;
-    } catch (error) {
-      console.error("Error fetching balance:", error);
-      throw error;
-    }
+        return balance;
+      } catch (error) {
+        console.error("Error fetching balance:", error);
+        throw error;
+      }
+    });
   }
 
   /**
@@ -94,7 +117,7 @@ class RpcService {
     // Check cache for each address
     for (const address of addresses) {
       const cached = this.balanceCache.get(address);
-      if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
+      if (cached && Date.now() - cached.timestamp < this.cacheTTL.balance) {
         result[address] = cached.balance;
       } else {
         uncachedAddresses.push(address);
@@ -144,31 +167,31 @@ class RpcService {
    * @returns Transaction details
    */
   async getTransaction(signature: string): Promise<any> {
-    // Check cache first
     const cached = this.transactionCache.get(signature);
-    if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
+    if (cached && Date.now() - cached.timestamp < this.cacheTTL.transaction) {
       return cached.transaction;
     }
 
-    try {
-      const transaction = await this.retry(async () => {
-        return await this.connection.getParsedTransaction(signature, {
-          commitment: "confirmed",
-          maxSupportedTransactionVersion: 0,
+    return this.deduplicateRequest(`transaction:${signature}`, async () => {
+      try {
+        const transaction = await this.retry(async () => {
+          return await this.connection.getParsedTransaction(signature, {
+            commitment: "confirmed",
+            maxSupportedTransactionVersion: 0,
+          });
         });
-      });
 
-      // Update cache
-      this.transactionCache.set(signature, {
-        transaction,
-        timestamp: Date.now(),
-      });
+        this.transactionCache.set(signature, {
+          transaction,
+          timestamp: Date.now(),
+        });
 
-      return transaction;
-    } catch (error) {
-      console.error("Error fetching transaction:", error);
-      throw error;
-    }
+        return transaction;
+      } catch (error) {
+        console.error("Error fetching transaction:", error);
+        throw error;
+      }
+    });
   }
 
   /**
@@ -257,52 +280,71 @@ class RpcService {
   async getParsedTokenAccountsByOwner(
     owner: PublicKey,
   ): Promise<ParsedTokenAccountBalance[]> {
-    try {
-      const [legacyResult, token2022Result] = await Promise.all([
-        this.retry(async () => {
-          return await this.connection.getParsedTokenAccountsByOwner(owner, {
-            programId: TOKEN_PROGRAM_ID,
-          });
-        }),
-        this.retry(async () => {
-          return await this.connection.getParsedTokenAccountsByOwner(owner, {
-            programId: TOKEN_2022_PROGRAM_ID,
-          });
-        }),
-      ]);
-
-      const combined = [...legacyResult.value, ...token2022Result.value];
-
-      return combined
-        .map((entry) => {
-          const info = entry.account.data.parsed?.info;
-          const tokenAmount = info?.tokenAmount;
-          const mint = info?.mint;
-          if (!tokenAmount || !mint) {
-            return null;
-          }
-
-          const decimals =
-            typeof tokenAmount.decimals === "number" ? tokenAmount.decimals : 0;
-          const amount =
-            typeof tokenAmount.amount === "string" ? tokenAmount.amount : "0";
-          const uiAmount =
-            typeof tokenAmount.uiAmount === "number"
-              ? tokenAmount.uiAmount
-              : Number(tokenAmount.uiAmountString ?? "0");
-
-          return {
-            mint,
-            decimals,
-            amount,
-            uiAmount,
-          };
-        })
-        .filter((entry): entry is ParsedTokenAccountBalance => entry !== null);
-    } catch (error) {
-      console.error("Error fetching parsed token accounts:", error);
-      throw error;
+    const ownerKey = owner.toString();
+    const cached = this.tokenAccountsCache.get(ownerKey);
+    if (cached && Date.now() - cached.timestamp < this.cacheTTL.tokenAccounts) {
+      return cached.accounts;
     }
+
+    return this.deduplicateRequest(`tokenAccounts:${ownerKey}`, async () => {
+      try {
+        const [legacyResult, token2022Result] = await Promise.all([
+          this.retry(async () => {
+            return await this.connection.getParsedTokenAccountsByOwner(owner, {
+              programId: TOKEN_PROGRAM_ID,
+            });
+          }),
+          this.retry(async () => {
+            return await this.connection.getParsedTokenAccountsByOwner(owner, {
+              programId: TOKEN_2022_PROGRAM_ID,
+            });
+          }),
+        ]);
+
+        const combined = [...legacyResult.value, ...token2022Result.value];
+
+        const result = combined
+          .map((entry) => {
+            const info = entry.account.data.parsed?.info;
+            const tokenAmount = info?.tokenAmount;
+            const mint = info?.mint;
+            if (!tokenAmount || !mint) {
+              return null;
+            }
+
+            const decimals =
+              typeof tokenAmount.decimals === "number"
+                ? tokenAmount.decimals
+                : 0;
+            const amount =
+              typeof tokenAmount.amount === "string" ? tokenAmount.amount : "0";
+            const uiAmount =
+              typeof tokenAmount.uiAmount === "number"
+                ? tokenAmount.uiAmount
+                : Number(tokenAmount.uiAmountString ?? "0");
+
+            return {
+              mint,
+              decimals,
+              amount,
+              uiAmount,
+            };
+          })
+          .filter(
+            (entry): entry is ParsedTokenAccountBalance => entry !== null,
+          );
+
+        this.tokenAccountsCache.set(ownerKey, {
+          accounts: result,
+          timestamp: Date.now(),
+        });
+
+        return result;
+      } catch (error) {
+        console.error("Error fetching parsed token accounts:", error);
+        throw error;
+      }
+    });
   }
 
   /**
@@ -338,6 +380,31 @@ class RpcService {
   clearCache(): void {
     this.balanceCache.clear();
     this.transactionCache.clear();
+    this.tokenAccountsCache.clear();
+    this.pendingRequests.clear();
+  }
+
+  /**
+   * Deduplicate pending requests
+   * @param key Request key
+   * @param requestFn Function to execute if not already pending
+   * @returns Promise result
+   */
+  private async deduplicateRequest<T>(
+    key: string,
+    requestFn: () => Promise<T>,
+  ): Promise<T> {
+    const existingRequest = this.pendingRequests.get(key);
+    if (existingRequest) {
+      return existingRequest as Promise<T>;
+    }
+
+    const promise = requestFn().finally(() => {
+      this.pendingRequests.delete(key);
+    });
+
+    this.pendingRequests.set(key, promise);
+    return promise;
   }
 
   /**

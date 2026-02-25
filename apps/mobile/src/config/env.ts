@@ -1,6 +1,8 @@
 // Environment variables configuration
 // Expo inlines EXPO_PUBLIC_* values at build time
 
+import { clusterApiUrl } from "@solana/web3.js";
+
 declare const process: { env?: Record<string, string | undefined> };
 
 /**
@@ -35,8 +37,44 @@ export const JUPITER_API_KEY = process.env?.EXPO_PUBLIC_JUPITER_API_KEY || "";
 export const COINGECKO_API_KEY = getEnv("EXPO_PUBLIC_COINGECKO_API_KEY", "");
 
 // Solana network configuration
-export const SOLANA_CLUSTER: "solana:mainnet-beta" | "solana:testnet" | "solana:devnet" = "solana:mainnet-beta";
-export const SOLANA_NETWORK = "mainnet-beta";
+type SolanaChainId = "solana:mainnet-beta" | "solana:testnet" | "solana:devnet";
+type SolanaClusterName = "mainnet-beta" | "testnet" | "devnet";
+
+const CHAIN_ID_TO_CLUSTER: Record<SolanaChainId, SolanaClusterName> = {
+  "solana:mainnet-beta": "mainnet-beta",
+  "solana:testnet": "testnet",
+  "solana:devnet": "devnet",
+};
+
+const DEFAULT_SOLANA_CHAIN: SolanaChainId = "solana:mainnet-beta";
+const rawSolanaChain = process.env?.EXPO_PUBLIC_SOLANA_CLUSTER;
+const resolvedSolanaChain = (
+  rawSolanaChain && rawSolanaChain in CHAIN_ID_TO_CLUSTER
+    ? rawSolanaChain
+    : DEFAULT_SOLANA_CHAIN
+) as SolanaChainId;
+
+export const SOLANA_CLUSTER: SolanaChainId = resolvedSolanaChain;
+export const SOLANA_NETWORK: SolanaClusterName =
+  CHAIN_ID_TO_CLUSTER[SOLANA_CLUSTER];
+
+const overrideRpcUrl = process.env?.EXPO_PUBLIC_SOLANA_RPC_URL;
+const devnetOverrideRpcUrl = process.env?.EXPO_PUBLIC_SOLANA_DEVNET_RPC_URL;
+const testnetOverrideRpcUrl = process.env?.EXPO_PUBLIC_SOLANA_TESTNET_RPC_URL;
+export const SOLANA_RPC_URL =
+  overrideRpcUrl && overrideRpcUrl.length > 0
+    ? overrideRpcUrl
+    : SOLANA_NETWORK === "mainnet-beta"
+      ? HELIUS_RPC_URL
+      : SOLANA_NETWORK === "devnet" &&
+          devnetOverrideRpcUrl &&
+          devnetOverrideRpcUrl.length > 0
+        ? devnetOverrideRpcUrl
+        : SOLANA_NETWORK === "testnet" &&
+            testnetOverrideRpcUrl &&
+            testnetOverrideRpcUrl.length > 0
+          ? testnetOverrideRpcUrl
+          : clusterApiUrl(SOLANA_NETWORK);
 
 // Feature flags
 export const FEATURE_FLAGS = {

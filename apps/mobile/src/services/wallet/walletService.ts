@@ -4,7 +4,7 @@ import {
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import type { AuthorizationResult } from "@solana-mobile/mobile-wallet-adapter-protocol";
 import { Connection, PublicKey } from "@solana/web3.js";
-import { HELIUS_RPC_URL, SOLANA_CLUSTER } from "../../config/env";
+import { SOLANA_RPC_URL } from "../../config/env";
 import { requireBiometricApproval } from "../../security/biometrics";
 import { SecureStorageService } from "../storage/secureStorage.service";
 import {
@@ -14,6 +14,8 @@ import {
 } from "../../utils";
 import { LinkedWallet, AuthorizationPreview } from "../../types/wallet";
 import { Buffer } from "buffer";
+
+type Network = "mainnet-beta" | "devnet" | "testnet";
 
 const APP_IDENTITY = {
   name: "WalletHub",
@@ -29,9 +31,30 @@ const DEFAULT_FEATURES = [
 
 class WalletService {
   private connection: Connection;
+  private network: Network;
 
   constructor() {
-    this.connection = new Connection(HELIUS_RPC_URL, "confirmed");
+    this.network = "mainnet-beta";
+    this.connection = new Connection(SOLANA_RPC_URL, "confirmed");
+  }
+
+  /**
+   * Set network and update connection
+   * @param network New network
+   * @param connection New connection (optional)
+   */
+  setNetwork(network: Network, connection?: Connection): void {
+    this.network = network;
+    if (connection) {
+      this.connection = connection;
+    }
+  }
+
+  /**
+   * Get current network
+   */
+  getNetwork(): Network {
+    return this.network;
   }
 
   async startWalletAuthorization(): Promise<AuthorizationPreview> {
@@ -43,7 +66,7 @@ class WalletService {
       const result = await transact(async (walletApi: Web3MobileWallet) => {
         const authorization = await walletApi.authorize({
           identity: APP_IDENTITY,
-          chain: SOLANA_CLUSTER,
+          chain: `solana:${this.network}`,
           features: [...DEFAULT_FEATURES],
         });
 
@@ -110,7 +133,7 @@ class WalletService {
               name: "WalletHub",
               uri: "https://wallethub.app",
             },
-            chain: "solana:mainnet-beta",
+            chain: `solana:${this.network}`,
             auth_token: wallet.authToken,
           });
 
@@ -349,7 +372,7 @@ class WalletService {
           if (!authorization) {
             authorization = await walletInstance.authorize({
               identity: APP_IDENTITY,
-              chain: SOLANA_CLUSTER,
+              chain: `solana:${this.network}`,
               features: [...DEFAULT_FEATURES],
             });
           }

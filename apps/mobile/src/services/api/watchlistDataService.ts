@@ -1,5 +1,5 @@
 import { PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { API_URL } from "../../config/env";
+import { API_URL, SOLANA_NETWORK } from "../../config/env";
 import { rpcService } from "../solana/rpcService";
 import { priceService } from "./priceService";
 import { tokenMetadataService } from "./tokenMetadataService";
@@ -131,6 +131,7 @@ export async function fetchAccountSnapshot(
   };
 
   walletHistoricalStore.updateHistoricalBalance(
+    SOLANA_NETWORK,
     normalizedAddress,
     historyUpdate,
   );

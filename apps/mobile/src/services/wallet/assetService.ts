@@ -7,6 +7,8 @@ export async function fetchAssets(
 ): Promise<TokenAsset[]> {
   switch (chain) {
     case "solana:mainnet-beta":
+    case "solana:devnet":
+    case "solana:testnet":
       return fetchSolanaAssets(address);
     default:
       throw new Error(`chain not supported: ${chain}`);

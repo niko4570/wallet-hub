@@ -114,6 +114,7 @@ export async function fetchSolanaAssets(
   }
 
   const mints = Array.from(new Set(parsedAccounts.map((token) => token.mint)));
+  
   const [tokenBalances, priceMap] = await Promise.all([
     tokenMetadataService.getTokenBalancesForWallet(address).catch((error) => {
       console.warn("Failed to fetch token metadata", error);
