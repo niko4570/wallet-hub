@@ -1,6 +1,6 @@
 // Portfolio snapshot management utilities for Solana wallet analysis
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { UI_CONFIG } from "../config/appConfig";
+import { UI_CONFIG } from "../../config/appConfig";
 
 // Extend global type to include snapshotCache
 declare global {

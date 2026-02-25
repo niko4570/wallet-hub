@@ -17,14 +17,16 @@ import type {
   SilentReauthorizationRecord,
   WalletCapabilityReport,
 } from "@wallethub/contracts";
-import { walletService } from "../services/walletService";
-import { authorizationApi } from "../services/authorizationService";
-import { rpcService } from "../services/rpcService";
-import { priceService } from "../services/priceService";
-import { tokenMetadataService } from "../services/tokenMetadataService";
+import {
+  authorizationApi,
+  priceService,
+  rpcService,
+  tokenMetadataService,
+  walletService,
+} from "../services";
 import { HELIUS_RPC_URL, SOLANA_CLUSTER } from "../config/env";
 import { requireBiometricApproval } from "../security/biometrics";
-import { decodeWalletAddress } from "../utils/solanaAddress";
+import { decodeWalletAddress } from "../utils";
 import {
   LinkedWallet,
   AuthorizationPreview,
@@ -310,16 +312,39 @@ export const useSolanaStore = create<SolanaStoreState>()(
                   };
                 });
 
-          const tokenUsdValue = tokenDetails.reduce(
+          // Add SOL to tokenDetails
+          const solToken = {
+            mint: "So11111111111111111111111111111111111111111",
+            symbol: "SOL",
+            name: "Solana",
+            balance: solBalance,
+            usdValue: solBalance * solPrice,
+            decimals: 9,
+          };
+
+          tokenDetails.unshift(solToken);
+
+          // Calculate total USD value from all tokens (including SOL)
+          totalUsdValue = tokenDetails.reduce(
             (sum, token) => sum + token.usdValue,
             0,
           );
-
-          totalUsdValue = solBalance * solPrice + tokenUsdValue;
         } catch (pricingError) {
           console.warn("Failed to aggregate token prices", pricingError);
           const solPrice = await priceService.getSolPriceInUsd().catch(() => 0);
           totalUsdValue = solBalance * solPrice;
+
+          // Add only SOL token in case of error
+          tokenDetails = [
+            {
+              mint: "So11111111111111111111111111111111111111111",
+              symbol: "SOL",
+              name: "Solana",
+              balance: solBalance,
+              usdValue: solBalance * solPrice,
+              decimals: 9,
+            },
+          ];
         }
 
         const walletBalance: WalletBalance = {
@@ -328,6 +353,8 @@ export const useSolanaStore = create<SolanaStoreState>()(
           usdValue: Number(totalUsdValue.toFixed(2)),
           lastUpdated: now,
           tokens: tokenDetails,
+          totalTokens: tokenDetails.length,
+          totalValue: Number(totalUsdValue.toFixed(2)),
         };
 
         // Update state

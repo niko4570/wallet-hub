@@ -1,5 +1,3 @@
-import type { LinkedWallet } from "./wallet";
-
 // Export all types from existing files
 export * from "./wallet";
 export * from "./dashboard";
@@ -39,7 +37,7 @@ export interface AuthorizationEvent {
 export interface RpcError {
   code: number;
   message: string;
-  data?: any;
+  data?: unknown;
 }
 
 export interface RpcResponse<T> {
@@ -49,55 +47,33 @@ export interface RpcResponse<T> {
   error?: RpcError;
 }
 
-// Service related types
-export interface ServiceRegistry {
-  price: any;
-  authorization: any;
-  icon: any;
-  wallet: any;
-  walletAdapter: any;
-  rpc: any;
-  helius: any;
-  secureStorage: any;
-  jupiter: any;
+// Historical data types
+export interface HistoricalBalance {
+  timestamp: number;
+  usd: number;
+  sol: number;
 }
 
-// Store related types
-export interface WalletStoreState {
-  linkedWallets: LinkedWallet[];
-  activeWallet: LinkedWallet | null;
-  activeWalletAddress: string | null;
-  balances: Record<string, number>;
-  detailedBalances?: Record<
-    string,
-    {
-      balance: number;
-      usdValue: number;
-      lastUpdated: string;
-      tokens?: Array<{
-        mint: string;
-        symbol?: string;
-        name?: string;
-        balance: number;
-        usdValue: number;
-        decimals: number;
-      }>;
-    }
-  >;
-  missingTokenPrices?: Record<string, string[]>;
-  isLoading: boolean;
-  error: string | null;
+export interface PortfolioSnapshot {
+  timestamp: number;
+  totalValueUSD: number;
+  version?: number;
+}
 
-  // Actions
-  setLinkedWallets: (wallets: LinkedWallet[]) => void;
-  setActiveWallet: (wallet: LinkedWallet | null) => void;
-  setActiveWalletAddress: (address: string | null) => void;
-  updateBalance: (address: string, balance: number) => void;
-  setLoading: (loading: boolean) => void;
-  setError: (error: string | null) => void;
-  addWallet: (wallet: LinkedWallet) => void;
-  removeWallet: (address: string) => void;
-  clearAllWallets: () => void;
+// Service related types
+export interface ServiceRegistry {
+  price: any; // Will be typed in future
+  authorization: any; // Will be typed in future
+  icon: any; // Will be typed in future
+  wallet: any; // Will be typed in future
+  walletAdapter: any; // Will be typed in future
+  rpc: any; // Will be typed in future
+  helius: any; // Will be typed in future
+  secureStorage: any; // Will be typed in future
+  jupiter: any; // Will be typed in future
+  tokenMetadata: any; // Will be typed in future
+  notification: any; // Will be typed in future
+  watchlistData: any; // Will be typed in future
 }
 
 // UI related types
@@ -112,4 +88,67 @@ export interface ToastMessage {
   type: "success" | "error" | "info";
   message: string;
   duration?: number;
+}
+
+export type ChainId =
+  | "solana:mainnet-beta"
+  | "solana:testnet"
+  | "solana:devnet";
+
+export interface TokenAsset {
+  chain: ChainId;
+  mint: string;
+  symbol: string;
+  amount: number;
+  usdValue: number;
+  priceUsd?: number;
+  liquidityUsd?: number;
+}
+
+// Chart related types
+export interface ChartDataPoint {
+  x: number;
+  y: number;
+}
+
+export interface TimeRangeOption {
+  value: "1D" | "7D" | "30D";
+  label: string;
+}
+
+// Validation types
+export interface ValidationResult {
+  valid: boolean;
+  error: string | null;
+}
+
+// API response types
+export interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
+}
+
+// Solana specific types
+export type SolanaCluster = "mainnet-beta" | "testnet" | "devnet";
+
+// Portfolio related types
+export interface PortfolioPerformance {
+  currentValue: number;
+  change24h: number;
+  change7d: number;
+  change30d: number;
+  totalReturn: number;
+  assets: TokenAsset[];
+}
+
+// Asset allocation types
+export interface AssetAllocation {
+  symbol: string;
+  name: string;
+  value: number;
+  percentage: number;
+  color: string;
+  mint?: string;
 }
