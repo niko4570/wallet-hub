@@ -29,6 +29,17 @@ const DEFAULT_FEATURES = [
   "solana:signMessages",
 ] as const;
 
+/**
+ * Wallet service for managing Solana wallet connections and operations.
+ * Handles wallet authorization, signing, and reconnection using Mobile Wallet Adapter.
+ *
+ * This service provides:
+ * - Wallet connection and authorization flow
+ * - Message signing capabilities
+ * - Wallet reconnection with cached auth tokens
+ * - Secure storage of authorization tokens
+ * - Network switching support
+ */
 class WalletService {
   private connection: Connection;
   private network: Network;
@@ -39,9 +50,17 @@ class WalletService {
   }
 
   /**
-   * Set network and update connection
-   * @param network New network
-   * @param connection New connection (optional)
+   * Set network and update connection.
+   * Changes the active Solana network (mainnet-beta, devnet, or testnet).
+   *
+   * @param network - New network to connect to
+   * @param connection - Optional new connection instance (uses default if not provided)
+   *
+   * @example
+   * ```typescript
+   * walletService.setNetwork("devnet");
+   * walletService.setNetwork("mainnet-beta", new Connection("https://...", "confirmed"));
+   * ```
    */
   setNetwork(network: Network, connection?: Connection): void {
     this.network = network;
@@ -51,12 +70,38 @@ class WalletService {
   }
 
   /**
-   * Get current network
+   * Get current network.
+   *
+   * @returns The active network ("mainnet-beta", "devnet", or "testnet")
    */
   getNetwork(): Network {
     return this.network;
   }
 
+  /**
+   * Initiates wallet authorization flow with biometric authentication.
+   * This is the first step in connecting a wallet - it shows available wallets
+   * and allows the user to select which accounts to authorize.
+   *
+   * The process:
+   * 1. Requires biometric approval for security
+   * 2. Opens Mobile Wallet Adapter to select wallet app
+   * 3. Authorizes the app to interact with selected wallets
+   * 4. Returns a preview of available accounts
+   *
+   * @returns Promise resolving to authorization preview with available accounts
+   * @throws {Error} If no compatible wallet found, user cancels, or authorization fails
+   *
+   * @example
+   * ```typescript
+   * try {
+   *   const preview = await walletService.startWalletAuthorization();
+   *   console.log("Available accounts:", preview.accounts);
+   * } catch (error) {
+   *   console.error("Authorization failed:", error);
+   * }
+   * ```
+   */
   async startWalletAuthorization(): Promise<AuthorizationPreview> {
     try {
       await requireBiometricApproval("Authenticate to choose a wallet", {
@@ -92,6 +137,25 @@ class WalletService {
     }
   }
 
+  /**
+   * Finalizes wallet authorization by selecting specific addresses.
+   * This is the second step in connecting a wallet - it filters the available
+   * accounts to only those the user wants to link.
+   *
+   * @param preview - The authorization preview from startWalletAuthorization
+   * @param selectedAddresses - Optional array of specific addresses to link (links all if not provided)
+   * @returns Promise resolving to array of linked wallets
+   * @throws {Error} If no addresses are selected
+   *
+   * @example
+   * ```typescript
+   * const preview = await walletService.startWalletAuthorization();
+   * const linkedWallets = await walletService.finalizeWalletAuthorization(
+   *   preview,
+   *   ["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"]
+   * );
+   * ```
+   */
   async finalizeWalletAuthorization(
     preview: AuthorizationPreview,
     selectedAddresses?: string[],
@@ -117,6 +181,22 @@ class WalletService {
     }
   }
 
+  /**
+   * Signs a message using the connected wallet.
+   * This is used for authentication and verification purposes.
+   *
+   * @param wallet - The linked wallet to sign with
+   * @param payload - The message payload to sign (as Uint8Array)
+   * @returns Promise resolving to the signature as Uint8Array
+   * @throws {Error} If wallet does not return a signature
+   *
+   * @example
+   * ```typescript
+   * const message = new TextEncoder().encode("Hello, World!");
+   * const signature = await walletService.signMessage(wallet, message);
+   * console.log("Signature:", Buffer.from(signature).toString("hex"));
+   * ```
+   */
   async signMessage(
     wallet: LinkedWallet,
     payload: Uint8Array,
@@ -157,6 +237,19 @@ class WalletService {
     }
   }
 
+  /**
+   * Gets the SOL balance for a wallet address.
+   *
+   * @param address - The wallet address to check
+   * @returns Promise resolving to balance in lamports
+   * @throws {Error} If fetching balance fails
+   *
+   * @example
+   * ```typescript
+   * const balance = await walletService.getWalletBalance("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU");
+   * console.log(`Balance: ${balance} lamports`);
+   * ```
+   */
   async getWalletBalance(address: string): Promise<number> {
     try {
       const publicKey = new PublicKey(address);
@@ -168,6 +261,13 @@ class WalletService {
     }
   }
 
+  /**
+   * Normalizes authorization result to linked wallet format.
+   * Converts the raw authorization response to a standardized LinkedWallet structure.
+   *
+   * @param authorization - The authorization result from Mobile Wallet Adapter
+   * @returns Array of linked wallets
+   */
   private normalizeAuthorization(
     authorization: AuthorizationResult,
   ): LinkedWallet[] {
@@ -180,6 +280,12 @@ class WalletService {
     }));
   }
 
+  /**
+   * Normalizes single authorization result to linked wallet format.
+   *
+   * @param authorization - The authorization result from Mobile Wallet Adapter
+   * @returns Single linked wallet
+   */
   private normalizeSingleAuthorization(
     authorization: AuthorizationResult,
   ): LinkedWallet {
@@ -194,7 +300,18 @@ class WalletService {
   }
 
   /**
-   * Connect to a wallet using MWA with proper error handling
+   * Connects to a wallet using Mobile Wallet Adapter.
+   * This is a convenience method that combines startWalletAuthorization
+   * and finalizeWalletAuthorization into a single flow.
+   *
+   * @returns Promise resolving to array of linked wallets
+   * @throws {Error} If authorization fails
+   *
+   * @example
+   * ```typescript
+   * const wallets = await walletService.connectWallet();
+   * console.log("Connected wallets:", wallets);
+   * ```
    */
   async connectWallet(): Promise<LinkedWallet[]> {
     try {
@@ -212,9 +329,20 @@ class WalletService {
   }
 
   /**
-   * Reconnect to a wallet using cached auth token
-   * @param walletAddress Wallet address to reconnect
-   * @returns Reconnected wallet or null if failed
+   * Reconnects to a wallet using cached auth token.
+   * This allows the app to reconnect to a previously authorized wallet
+   * without requiring user interaction.
+   *
+   * @param walletAddress - The wallet address to reconnect
+   * @returns Promise resolving to reconnected wallet, or null if failed
+   *
+   * @example
+   * ```typescript
+   * const wallet = await walletService.reconnectWallet("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU");
+   * if (wallet) {
+   *   console.log("Reconnected to:", wallet.address);
+   * }
+   * ```
    */
   async reconnectWallet(walletAddress: string): Promise<LinkedWallet | null> {
     try {
@@ -258,8 +386,16 @@ class WalletService {
   }
 
   /**
-   * Disconnect from a wallet
-   * @param wallet Wallet to disconnect
+   * Disconnects from a wallet and revokes authorization.
+   * This removes the wallet's authorization token and clears cached data.
+   *
+   * @param wallet - The linked wallet to disconnect
+   *
+   * @example
+   * ```typescript
+   * await walletService.disconnectWallet(wallet);
+   * console.log("Wallet disconnected");
+   * ```
    */
   async disconnectWallet(wallet: LinkedWallet): Promise<void> {
     try {
@@ -283,16 +419,19 @@ class WalletService {
   }
 
   /**
-   * Handle wallet errors with proper error messages
-   * @param error Error object
+   * Handles wallet errors with proper error messages.
+   *
+   * @param error - The error object to handle
    */
   private handleWalletError(error: unknown): void {
     handleWalletError(error);
   }
 
   /**
-   * Store auth tokens securely for all connected wallets
-   * @param wallets Array of linked wallets
+   * Stores auth tokens securely for all connected wallets.
+   * Uses SecureStorageService to persist tokens in encrypted storage.
+   *
+   * @param wallets - Array of linked wallets to store tokens for
    */
   private async storeAuthTokens(wallets: LinkedWallet[]): Promise<void> {
     for (const wallet of wallets) {
@@ -311,9 +450,10 @@ class WalletService {
   }
 
   /**
-   * Get cached auth token for a wallet
-   * @param walletAddress Wallet address
-   * @returns Auth token or null if not found
+   * Gets cached auth token for a wallet.
+   *
+   * @param walletAddress - The wallet address to get token for
+   * @returns Promise resolving to auth token string, or null if not found
    */
   async getCachedAuthToken(walletAddress: string): Promise<string | null> {
     try {
@@ -328,9 +468,10 @@ class WalletService {
   }
 
   /**
-   * Check if a wallet is already connected
-   * @param walletAddress Wallet address to check
-   * @returns True if wallet is connected
+   * Checks if a wallet is already connected.
+   *
+   * @param walletAddress - The wallet address to check
+   * @returns Promise resolving to true if wallet has a cached auth token
    */
   async isWalletConnected(walletAddress: string): Promise<boolean> {
     try {
@@ -343,9 +484,19 @@ class WalletService {
   }
 
   /**
-   * Refresh wallet authorization
-   * @param wallet Linked wallet to refresh
-   * @returns Refreshed wallet or null if failed
+   * Refreshes wallet authorization.
+   * Attempts to reauthorize using existing token, or falls back to full authorization.
+   *
+   * @param wallet - The linked wallet to refresh
+   * @returns Promise resolving to refreshed wallet, or null if failed
+   *
+   * @example
+   * ```typescript
+   * const refreshed = await walletService.refreshAuthorization(wallet);
+   * if (refreshed) {
+   *   console.log("Authorization refreshed");
+   * }
+   * ```
    */
   async refreshAuthorization(
     wallet: LinkedWallet,
@@ -399,9 +550,17 @@ class WalletService {
   }
 
   /**
-   * Get wallet capabilities
-   * @param wallet Linked wallet to check
-   * @returns Wallet capabilities or null if failed
+   * Gets wallet capabilities from Mobile Wallet Adapter.
+   * Returns the features and capabilities supported by the connected wallet.
+   *
+   * @param wallet - The linked wallet to check
+   * @returns Promise resolving to wallet capabilities object, or null if failed
+   *
+   * @example
+   * ```typescript
+   * const capabilities = await walletService.getWalletCapabilities(wallet);
+   * console.log("Supported features:", capabilities);
+   * ```
    */
   async getWalletCapabilities(wallet: LinkedWallet): Promise<any | null> {
     try {
