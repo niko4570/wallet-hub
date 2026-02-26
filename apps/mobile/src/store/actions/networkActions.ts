@@ -1,7 +1,8 @@
-import { Connection, clusterApiUrl } from "@solana/web3.js";
+import { clusterApiUrl } from "@solana/web3.js";
 import type { SolanaStoreState } from "../solanaStore";
 import { rpcService, walletService } from "../../services";
-import { HELIUS_RPC_URL } from "../../config/env";
+import { HELIUS_RPC_URL, HELIUS_API_KEY } from "../../config/env";
+import { SecureConnection } from "../../services/solana/secureConnection";
 
 type Network = "mainnet-beta" | "devnet" | "testnet";
 
@@ -21,7 +22,10 @@ export const createNetworkActions = (
     }
 
     if (network === "mainnet-beta") {
-      return HELIUS_RPC_URL;
+      if (HELIUS_API_KEY && HELIUS_API_KEY.length > 0) {
+        return HELIUS_RPC_URL;
+      }
+      return clusterApiUrl(network);
     } else if (
       network === "devnet" &&
       devnetOverrideRpcUrl &&
@@ -41,7 +45,12 @@ export const createNetworkActions = (
 
   setNetwork: (network: Network) => {
     const rpcUrl = get().getRpcUrl(network);
-    const newConnection = new Connection(rpcUrl, "confirmed");
+    const newConnection = new SecureConnection(rpcUrl, {
+      commitment: "confirmed",
+      ...(HELIUS_API_KEY && HELIUS_API_KEY.length > 0
+        ? { apiKey: HELIUS_API_KEY }
+        : {}),
+    });
 
     set({
       network,

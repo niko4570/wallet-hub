@@ -3,7 +3,8 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useShallow } from "zustand/react/shallow";
 import { Connection } from "@solana/web3.js";
-import { HELIUS_RPC_URL } from "../config/env";
+import { SOLANA_RPC_URL, HELIUS_API_KEY } from "../config/env";
+import { SecureConnection } from "../services/solana/secureConnection";
 import type {
   LinkedWallet,
   WalletBalance,
@@ -18,6 +19,11 @@ import { createTransactionActions } from "./actions/transactionActions";
 
 type Network = "mainnet-beta" | "devnet" | "testnet";
 
+/**
+ * Solana store state interface.
+ * Defines the complete state structure for Solana-related operations
+ * including wallet connections, balances, transactions, and network settings.
+ */
 export interface SolanaStoreState {
   // Wallet connection state
   linkedWallets: LinkedWallet[];
@@ -64,6 +70,32 @@ export interface SolanaStoreState {
   getRpcUrl: (network: Network) => string;
 }
 
+/**
+ * Main Solana store using Zustand for state management.
+ * Provides a centralized state management solution for all Solana-related operations.
+ *
+ * Features:
+ * - Persistent storage using AsyncStorage
+ * - Selective state persistence (only essential data)
+ * - Optimized selectors using useShallow
+ * - Modular action creators for better code organization
+ *
+ * @example
+ * ```typescript
+ * // Using the store in a component
+ * function MyComponent() {
+ *   const { linkedWallets, activeWallet, refreshBalance } = useSolanaStore();
+ *   const { hasActiveWallet, walletCount } = useSolanaSelectors();
+ *
+ *   return (
+ *     <View>
+ *       <Text>Wallets: {walletCount}</Text>
+ *       <Button onPress={() => refreshBalance()} title="Refresh" />
+ *     </View>
+ *   );
+ * }
+ * ```
+ */
 export const useSolanaStore = create<SolanaStoreState>()(
   persist(
     (set, get) => ({
@@ -76,10 +108,12 @@ export const useSolanaStore = create<SolanaStoreState>()(
       isLoading: false,
       error: null,
       network: "mainnet-beta" as Network,
-      connection: new Connection(
-        "https://api.mainnet-beta.solana.com",
-        "confirmed",
-      ),
+      connection: new SecureConnection(SOLANA_RPC_URL, {
+        commitment: "confirmed",
+        ...(HELIUS_API_KEY && HELIUS_API_KEY.length > 0
+          ? { apiKey: HELIUS_API_KEY }
+          : {}),
+      }),
       setLoading: (loading) => set({ isLoading: loading }),
       setError: (error) => set({ error }),
       clearError: () => set({ error: null }),
@@ -103,7 +137,26 @@ export const useSolanaStore = create<SolanaStoreState>()(
   ),
 );
 
-// Helper selectors with useShallow optimization
+/**
+ * Helper selectors with useShallow optimization.
+ * These selectors provide optimized access to store state by only
+ * triggering re-renders when the selected values change.
+ *
+ * @example
+ * ```typescript
+ * function MyComponent() {
+ *   const {
+ *     linkedWallets,
+ *     activeWallet,
+ *     hasActiveWallet,
+ *     walletCount,
+ *     activeWalletBalance
+ *   } = useSolanaSelectors();
+ *
+ *   return <Text>Balance: {activeWalletBalance}</Text>;
+ * }
+ * ```
+ */
 export const useSolanaSelectors = () => {
   return useSolanaStore(
     useShallow((state) => ({

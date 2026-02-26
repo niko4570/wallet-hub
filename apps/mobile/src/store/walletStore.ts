@@ -9,7 +9,10 @@ import {
   WalletGroup,
 } from "../types/wallet";
 
-// Wallet base state store
+/**
+ * Wallet base state store for managing wallet connections and groups.
+ * Provides persistent storage for wallet-related state.
+ */
 export const useWalletBaseStore = create<{
   linkedWallets: LinkedWallet[];
   activeWallet: LinkedWallet | null;
@@ -251,7 +254,10 @@ export const useWalletBaseStore = create<{
   ),
 );
 
-// Wallet balance state store
+/**
+ * Wallet balance state store for managing token balances and USD values.
+ * Provides persistent storage for wallet balance information.
+ */
 export const useWalletBalanceStore = create<{
   balances: Record<string, number>;
   detailedBalances: Record<string, WalletBalance>;
@@ -334,7 +340,10 @@ export const useWalletBalanceStore = create<{
   ),
 );
 
-// Wallet activity state store
+/**
+ * Wallet activity state store for managing transaction history.
+ * Provides persistent storage for wallet activity records.
+ */
 export const useWalletActivityStore = create<{
   walletActivity: Record<string, WalletActivity[]>;
   setWalletActivity: (address: string, activity: WalletActivity[]) => void;
@@ -378,7 +387,11 @@ export const useWalletActivityStore = create<{
   ),
 );
 
-// Wallet historical balance state store
+/**
+ * Wallet historical balance state store for tracking balance history over time.
+ * Provides persistent storage for historical balance data used in charts.
+ * Automatically cleans up old data (older than 30 days).
+ */
 export const useWalletHistoricalStore = create<{
   historicalBalances: Record<
     string, // Key format: `${network}:${address}`
@@ -531,7 +544,10 @@ export const useWalletHistoricalStore = create<{
   ),
 );
 
-// Wallet status state store (not persisted)
+/**
+ * Wallet status state store (not persisted).
+ * Manages transient UI state like loading and error messages.
+ */
 export const useWalletStatusStore = create<{
   isLoading: boolean;
   error: string | null;
@@ -547,9 +563,24 @@ export const useWalletStatusStore = create<{
 // Alias for backward compatibility
 export const useWalletStore = useWalletBaseStore;
 
-// Create selector hooks for better performance
+/**
+ * Create selector hooks for better performance.
+ * These selectors provide optimized access to store state
+ * by only triggering re-renders when selected values change.
+ */
 
-// Wallet base store selectors
+/**
+ * Wallet base store selectors.
+ * Provides optimized access to wallet connection state.
+ *
+ * @example
+ * ```typescript
+ * function MyComponent() {
+ *   const { linkedWallets, activeWallet, hasActiveWallet } = useWalletBaseSelectors();
+ *   return <Text>Active: {hasActiveWallet}</Text>;
+ * }
+ * ```
+ */
 export const useWalletBaseSelectors = () => {
   const linkedWallets = useWalletBaseStore((state) => state.linkedWallets);
   const activeWallet = useWalletBaseStore((state) => state.activeWallet);
@@ -567,7 +598,18 @@ export const useWalletBaseSelectors = () => {
   };
 };
 
-// Wallet balance store selectors
+/**
+ * Wallet balance store selectors.
+ * Provides optimized access to wallet balance state.
+ *
+ * @example
+ * ```typescript
+ * function MyComponent() {
+ *   const { totalBalance, totalUsdValue, hasBalances } = useWalletBalanceSelectors();
+ *   return <Text>Total: ${totalUsdValue}</Text>;
+ * }
+ * ```
+ */
 export const useWalletBalanceSelectors = () => {
   const totalBalance = useWalletBalanceStore((state) => state.totalBalance);
   const totalUsdValue = useWalletBalanceStore((state) => state.totalUsdValue);
@@ -583,7 +625,18 @@ export const useWalletBalanceSelectors = () => {
   };
 };
 
-// Wallet historical store selectors
+/**
+ * Wallet historical store selectors.
+ * Provides optimized access to historical balance state.
+ *
+ * @example
+ * ```typescript
+ * function MyComponent() {
+ *   const { historicalBalances, hasHistoricalData } = useWalletHistoricalSelectors();
+ *   return <Text>Data points: {Object.keys(historicalBalances).length}</Text>;
+ * }
+ * ```
+ */
 export const useWalletHistoricalSelectors = () => {
   const historicalBalances = useWalletHistoricalStore(
     (state) => state.historicalBalances,
@@ -595,14 +648,38 @@ export const useWalletHistoricalSelectors = () => {
   };
 };
 
-// Cross-wallet transfer function
+/**
+ * Cross-wallet transfer function.
+ * Placeholder implementation for transferring funds between linked wallets.
+ * In a real app, this would use wallet adapter to sign and send transactions.
+ *
+ * @param fromAddress - Source wallet address
+ * @param toAddress - Destination wallet address
+ * @param amount - Amount to transfer in SOL
+ * @returns Promise resolving to transaction signature
+ * @throws {Error} If transfer is not implemented
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   const signature = await transferBetweenWallets(
+ *     "addr1...",
+ *     "addr2...",
+ *     1.5
+ *   );
+ *   console.log("Transfer successful:", signature);
+ * } catch (error) {
+ *   console.error("Transfer failed:", error);
+ * }
+ * ```
+ */
 export const transferBetweenWallets = async (
   fromAddress: string,
   toAddress: string,
   amount: number,
 ): Promise<string> => {
   // This is a placeholder implementation
-  // In a real app, you would use the wallet adapter to sign and send the transaction
+  // In a real app, you would use of wallet adapter to sign and send transaction
   useWalletStatusStore.getState().setLoading(true);
   useWalletStatusStore.getState().setError(null);
 

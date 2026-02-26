@@ -3,7 +3,7 @@ import type {
   SilentReauthorizationRecord,
 } from "@wallethub/contracts";
 import { transact, type Web3MobileWallet } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
-import type { SolanaStoreState } from "./solanaStore";
+import type { SolanaStoreState } from "../solanaStore";
 import { authorizationApi, walletService } from "../../services";
 import { requireBiometricApproval } from "../../security/biometrics";
 import type { LinkedWallet, AuthorizationPreview } from "../../types/wallet";
@@ -100,7 +100,7 @@ export const createWalletActions = (
       const accounts = await get().finalizeAuthorization(preview);
 
       if (accounts.length > 0) {
-        const { useWalletBaseStore } = require("./walletStore");
+        const { useWalletBaseStore } = require("../walletStore");
         const walletState = useWalletBaseStore.getState();
         walletState.setPrimaryWalletAddress(accounts[0].address);
       }
@@ -289,7 +289,7 @@ export const createWalletActions = (
       };
     });
 
-    const { useWalletBaseStore } = require("./walletStore");
+    const { useWalletBaseStore } = require("../walletStore");
     const walletStore = useWalletBaseStore.getState();
     walletStore.removeWallet(targetAddress);
   },
