@@ -60,8 +60,7 @@ export class HeliusService {
 
   constructor(
     private readonly infraConfig: InfrastructureConfigService,
-    @Optional()
-    private readonly notificationsService?: NotificationsService,
+    @Optional() private readonly notificationsService?: NotificationsService,
   ) {
     const configuredBase = process.env.HELIUS_API_BASE?.trim();
     this.heliusApiBase =
@@ -167,7 +166,9 @@ export class HeliusService {
     return this.activityByAddress.get(normalized) ?? [];
   }
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  @Cron(CronExpression.EVERY_MINUTE, {
+    name: 'refreshTrackedAddresses',
+  })
   async refreshTrackedAddresses() {
     if (this.trackedAddresses.size === 0) {
       return;
@@ -197,7 +198,7 @@ export class HeliusService {
     address: string,
   ): Promise<HeliusAccountSnapshot> {
     const url = this.buildHeliusUrl(`/v0/addresses/${address}/balances`);
-    const response = await fetch(url, { method: 'GET' });
+    const response = await this.fetchWithAuth(url, { method: 'GET' });
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(
@@ -261,7 +262,7 @@ export class HeliusService {
     const url = this.buildHeliusUrl(`/v0/addresses/${address}/transactions`, {
       limit: 20,
     });
-    const response = await fetch(url, { method: 'GET' });
+    const response = await this.fetchWithAuth(url, { method: 'GET' });
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(
@@ -344,7 +345,6 @@ export class HeliusService {
     query: Record<string, string | number> = {},
   ) {
     const url = new URL(path, `${this.heliusApiBase}/`);
-    url.searchParams.set('api-key', this.getHeliusApiKey());
     Object.entries(query).forEach(([key, value]) => {
       url.searchParams.set(key, String(value));
     });
@@ -358,7 +358,25 @@ export class HeliusService {
     if (key && key.length > 0) {
       return key;
     }
-    return 'demo';
+    return '';
+  }
+
+  private async fetchWithAuth(
+    url: string,
+    options: RequestInit = {},
+  ): Promise<Response> {
+    const apiKey = this.getHeliusApiKey();
+    const headers = new Headers(options.headers);
+    headers.set('Content-Type', 'application/json');
+
+    if (apiKey) {
+      headers.set('Authorization', `Bearer ${apiKey}`);
+    }
+
+    return fetch(url, {
+      ...options,
+      headers,
+    });
   }
 
   private extractAddresses(event: any): string[] {

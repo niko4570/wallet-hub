@@ -36,8 +36,26 @@ Notifications.setNotificationHandler({
   }),
 });
 
+/**
+ * Notification service for managing local and push notifications.
+ * Provides functionality for scheduling local notifications, managing push tokens,
+ * and registering wallet address subscriptions for transaction alerts.
+ */
 export const notificationService = {
-  // Request permissions for notifications
+  /**
+   * Requests notification permissions from the user.
+   * On Android, also configures the default notification channel.
+   *
+   * @returns Promise resolving to true if permissions granted, false otherwise
+   *
+   * @example
+   * ```typescript
+   * const granted = await notificationService.requestPermissions();
+   * if (granted) {
+   *   console.log("Notifications enabled");
+   * }
+   * ```
+   */
   async requestPermissions(): Promise<boolean> {
     try {
       const { status: existingStatus } =
@@ -70,7 +88,23 @@ export const notificationService = {
     }
   },
 
-  // Schedule a local notification
+  /**
+   * Schedules an immediate local notification with haptic feedback.
+   *
+   * @param title - The notification title
+   * @param body - The notification body text
+   * @param data - Optional data to attach to the notification
+   * @returns Promise resolving to the notification ID
+   *
+   * @example
+   * ```typescript
+   * const id = await notificationService.scheduleNotification({
+   *   title: "Transaction Received",
+   *   body: "You received 1.5 SOL",
+   *   data: { type: "receive", amount: 1.5 }
+   * });
+   * ```
+   */
   async scheduleNotification({
     title,
     body,
@@ -101,6 +135,21 @@ export const notificationService = {
     }
   },
 
+  /**
+   * Gets the Expo push token for the device.
+   * The token is cached after first retrieval to avoid repeated calls.
+   * Returns null if project ID is not configured (expected in development).
+   *
+   * @returns Promise resolving to the push token string, or null if unavailable
+   *
+   * @example
+   * ```typescript
+   * const token = await notificationService.getPushToken();
+   * if (token) {
+   *   console.log("Push token:", token);
+   * }
+   * ```
+   */
   async getPushToken(): Promise<string | null> {
     try {
       if (cachedPushToken) {
@@ -138,6 +187,20 @@ export const notificationService = {
     }
   },
 
+  /**
+   * Registers device for push notifications with wallet address subscriptions.
+   * This enables the backend to send transaction notifications for specified addresses.
+   * Deduplicates registration calls to avoid redundant API requests.
+   *
+   * @param addresses - Array of wallet addresses to track (max 32)
+   *
+   * @example
+   * ```typescript
+   * await notificationService.registerDeviceSubscriptions([
+   *   "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+   * ]);
+   * ```
+   */
   async registerDeviceSubscriptions(addresses: string[]): Promise<void> {
     try {
       const granted = await this.requestPermissions();
@@ -196,7 +259,25 @@ export const notificationService = {
     }
   },
 
-  // Schedule a notification with a delay
+  /**
+   * Schedules a delayed local notification.
+   *
+   * @param title - The notification title
+   * @param body - The notification body text
+   * @param seconds - Delay in seconds before showing the notification
+   * @param data - Optional data to attach to the notification
+   * @returns Promise resolving to the notification ID
+   *
+   * @example
+   * ```typescript
+   * // Schedule notification in 60 seconds
+   * const id = await notificationService.scheduleDelayedNotification({
+   *   title: "Reminder",
+   *   body: "Check your wallet",
+   *   seconds: 60
+   * });
+   * ```
+   */
   async scheduleDelayedNotification({
     title,
     body,
@@ -229,7 +310,16 @@ export const notificationService = {
     }
   },
 
-  // Cancel a scheduled notification
+  /**
+   * Cancels a scheduled notification by ID.
+   *
+   * @param notificationId - The ID of the notification to cancel
+   *
+   * @example
+   * ```typescript
+   * await notificationService.cancelNotification("123-456-789");
+   * ```
+   */
   async cancelNotification(notificationId: string): Promise<void> {
     try {
       await Notifications.cancelScheduledNotificationAsync(notificationId);
@@ -238,7 +328,14 @@ export const notificationService = {
     }
   },
 
-  // Cancel all scheduled notifications
+  /**
+   * Cancels all scheduled notifications.
+   *
+   * @example
+   * ```typescript
+   * await notificationService.cancelAllNotifications();
+   * ```
+   */
   async cancelAllNotifications(): Promise<void> {
     try {
       await Notifications.cancelAllScheduledNotificationsAsync();
@@ -247,7 +344,17 @@ export const notificationService = {
     }
   },
 
-  // Get all scheduled notifications
+  /**
+   * Gets all currently scheduled notifications.
+   *
+   * @returns Promise resolving to an array of scheduled notification requests
+   *
+   * @example
+   * ```typescript
+   * const scheduled = await notificationService.getScheduledNotifications();
+   * console.log(`Found ${scheduled.length} scheduled notifications`);
+   * ```
+   */
   async getScheduledNotifications(): Promise<
     Notifications.NotificationRequest[]
   > {
@@ -259,7 +366,26 @@ export const notificationService = {
     }
   },
 
-  // Handle wallet activity notifications
+  /**
+   * Notifies user about wallet activity (send/receive transactions).
+   * Automatically formats the notification message based on transaction type.
+   *
+   * @param activity - The wallet activity details
+   * @param activity.type - Transaction type ("receive" or "send")
+   * @param activity.amount - Transaction amount
+   * @param activity.symbol - Token symbol (e.g., "SOL")
+   * @param activity.address - Wallet address involved
+   *
+   * @example
+   * ```typescript
+   * await notificationService.notifyWalletActivity({
+   *   type: "receive",
+   *   amount: 1.5,
+   *   symbol: "SOL",
+   *   address: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+   * });
+   * ```
+   */
   async notifyWalletActivity(activity: {
     type: string;
     amount: number;
@@ -281,7 +407,24 @@ export const notificationService = {
     }
   },
 
-  // Handle token price change notifications
+  /**
+   * Notifies user about token price changes.
+   * Calculates and displays the percentage change in price.
+   *
+   * @param symbol - Token symbol (e.g., "SOL")
+   * @param oldPrice - Previous price in USD
+   * @param newPrice - New price in USD
+   *
+   * @example
+   * ```typescript
+   * await notificationService.notifyPriceChange({
+   *   symbol: "SOL",
+   *   oldPrice: 100.00,
+   *   newPrice: 105.50
+   * });
+   * // Shows: "Price changed from $100.00 to $105.50 (+5.50%)"
+   * ```
+   */
   async notifyPriceChange({
     symbol,
     oldPrice,
@@ -308,7 +451,26 @@ export const notificationService = {
     }
   },
 
-  // Handle balance update notifications
+  /**
+   * Notifies user about balance updates.
+   * Calculates and displays the balance change amount.
+   *
+   * @param address - Wallet address
+   * @param oldBalance - Previous balance
+   * @param newBalance - New balance
+   * @param symbol - Token symbol (e.g., "SOL")
+   *
+   * @example
+   * ```typescript
+   * await notificationService.notifyBalanceUpdate({
+   *   address: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+   *   oldBalance: 10.0,
+   *   newBalance: 11.5,
+   *   symbol: "SOL"
+   * });
+   * // Shows: "Your balance changed to 11.5000 SOL (+1.5000)"
+   * ```
+   */
   async notifyBalanceUpdate({
     address,
     oldBalance,

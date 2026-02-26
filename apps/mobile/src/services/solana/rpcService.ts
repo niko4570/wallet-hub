@@ -3,7 +3,8 @@ import {
   PublicKey,
   GetProgramAccountsConfig,
 } from "@solana/web3.js";
-import { SOLANA_RPC_URL } from "../../config/env";
+import { SOLANA_RPC_URL, HELIUS_API_KEY } from "../../config/env";
+import { SecureConnection, SecureRpcConfig } from "./secureConnection";
 
 const TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -19,9 +20,21 @@ export interface ParsedTokenAccountBalance {
   uiAmount: number;
 }
 
+/**
+ * RPC service for interacting with Solana blockchain.
+ * Provides a singleton instance with caching, request deduplication,
+ * and automatic retry logic for improved performance and reliability.
+ *
+ * Features:
+ * - Balance caching with configurable TTL
+ * - Request deduplication to prevent duplicate calls
+ * - Automatic retry with exponential backoff
+ * - Support for both Token Program and Token-2022 Program
+ * - Transaction and token account caching
+ */
 class RpcService {
   private static instance: RpcService;
-  private connection: Connection;
+  private connection: SecureConnection;
   private balanceCache: Map<string, { balance: number; timestamp: number }> =
     new Map();
   private transactionCache: Map<
@@ -45,9 +58,16 @@ class RpcService {
   private maxRetries = 3;
 
   private constructor() {
-    this.connection = new Connection(SOLANA_RPC_URL, "confirmed");
+    const config = HELIUS_API_KEY ? { apiKey: HELIUS_API_KEY } : undefined;
+    this.connection = new SecureConnection(SOLANA_RPC_URL, config);
   }
 
+  /**
+   * Gets the singleton instance of RpcService.
+   * Creates a new instance if one doesn't exist.
+   *
+   * @returns The RpcService singleton instance
+   */
   static getInstance(): RpcService {
     if (!RpcService.instance) {
       RpcService.instance = new RpcService();
@@ -56,26 +76,39 @@ class RpcService {
   }
 
   /**
-   * Get Solana connection
+   * Gets the current Solana connection instance.
+   *
+   * @returns The Solana Connection object
    */
   getConnection(): Connection {
     return this.connection;
   }
 
   /**
-   * Set Solana connection
-   * @param connection New connection
+   * Sets a new Solana connection and clears all caches.
+   * This should be called when switching networks or RPC endpoints.
+   *
+   * @param connection - The new Connection object to use
    */
-  setConnection(connection: Connection): void {
+  setConnection(connection: SecureConnection): void {
     this.connection = connection;
     // Clear cache when connection changes
     this.clearCache();
   }
 
   /**
-   * Get balance for a single address
-   * @param address Wallet address
-   * @returns Balance in lamports
+   * Gets the SOL balance for a single wallet address.
+   * Uses caching to avoid redundant RPC calls.
+   *
+   * @param address - The wallet address to check
+   * @returns Promise resolving to balance in lamports
+   * @throws {Error} If fetching balance fails
+   *
+   * @example
+   * ```typescript
+   * const balance = await rpcService.getBalance("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU");
+   * console.log(`Balance: ${balance} lamports`);
+   * ```
    */
   async getBalance(address: string): Promise<number> {
     const cached = this.balanceCache.get(address);
@@ -104,9 +137,21 @@ class RpcService {
   }
 
   /**
-   * Get balances for multiple addresses
-   * @param addresses Array of wallet addresses
-   * @returns Object mapping addresses to balances
+   * Gets balances for multiple wallet addresses in a single batch request.
+   * More efficient than calling getBalance for each address individually.
+   *
+   * @param addresses - Array of wallet addresses to check
+   * @returns Promise resolving to object mapping addresses to balances
+   *
+   * @example
+   * ```typescript
+   * const balances = await rpcService.getMultipleBalances([
+   *   "addr1...",
+   *   "addr2..."
+   * ]);
+   * console.log(balances);
+   * // { "addr1...": 1000000, "addr2...": 2000000 }
+   * ```
    */
   async getMultipleBalances(
     addresses: string[],
@@ -162,9 +207,18 @@ class RpcService {
   }
 
   /**
-   * Get transaction details
-   * @param signature Transaction signature
-   * @returns Transaction details
+   * Gets transaction details by signature.
+   * Uses caching to avoid redundant RPC calls for the same transaction.
+   *
+   * @param signature - The transaction signature to fetch
+   * @returns Promise resolving to parsed transaction details
+   * @throws {Error} If fetching transaction fails
+   *
+   * @example
+   * ```typescript
+   * const tx = await rpcService.getTransaction("5H7vX...");
+   * console.log(tx);
+   * ```
    */
   async getTransaction(signature: string): Promise<any> {
     const cached = this.transactionCache.get(signature);
@@ -195,11 +249,22 @@ class RpcService {
   }
 
   /**
-   * Get transaction signatures for an address
-   * @param address Wallet address
-   * @param limit Maximum number of signatures to return
-   * @param before Optional signature to start from
-   * @returns Array of transaction signatures
+   * Gets transaction signatures for a wallet address.
+   * Useful for fetching transaction history.
+   *
+   * @param address - The wallet address to fetch signatures for
+   * @param limit - Maximum number of signatures to return (default: 10)
+   * @param before - Optional signature to start from (for pagination)
+   * @returns Promise resolving to array of transaction signatures
+   * @throws {Error} If fetching signatures fails
+   *
+   * @example
+   * ```typescript
+   * const signatures = await rpcService.getSignaturesForAddress(
+   *   "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+   *   20
+   * );
+   * ```
    */
   async getSignaturesForAddress(
     address: string,
@@ -221,10 +286,19 @@ class RpcService {
   }
 
   /**
-   * Get program accounts
-   * @param programId Program public key
-   * @param config Optional configuration
-   * @returns Array of program accounts
+   * Gets all program accounts for a given program ID.
+   * Useful for querying custom programs on Solana.
+   *
+   * @param programId - The program's public key
+   * @param config - Optional configuration for filtering accounts
+   * @returns Promise resolving to array of program accounts
+   * @throws {Error} If fetching program accounts fails
+   *
+   * @example
+   * ```typescript
+   * const programId = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+   * const accounts = await rpcService.getProgramAccounts(programId);
+   * ```
    */
   async getProgramAccounts(
     programId: PublicKey,
@@ -242,10 +316,19 @@ class RpcService {
   }
 
   /**
-   * Get token accounts for an owner
-   * @param owner Owner public key
-   * @param mint Optional mint public key
-   * @returns Array of token accounts
+   * Gets token accounts for an owner address.
+   * Queries the Token Program for all token accounts owned by the address.
+   *
+   * @param owner - The owner's public key
+   * @param mint - Optional mint address to filter by
+   * @returns Promise resolving to array of token accounts
+   * @throws {Error} If fetching token accounts fails
+   *
+   * @example
+   * ```typescript
+   * const owner = new PublicKey("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU");
+   * const accounts = await rpcService.getTokenAccountsByOwner(owner);
+   * ```
    */
   async getTokenAccountsByOwner(
     owner: PublicKey,
@@ -273,9 +356,21 @@ class RpcService {
   }
 
   /**
-   * Get parsed token accounts for an owner
-   * @param owner Owner public key
-   * @returns Array of token balances
+   * Gets parsed token accounts for an owner address.
+   * Returns token balances with decoded amounts and metadata.
+   * Queries both Token Program and Token-2022 Program.
+   *
+   * @param owner - The owner's public key
+   * @returns Promise resolving to array of parsed token balances
+   * @throws {Error} If fetching parsed token accounts fails
+   *
+   * @example
+   * ```typescript
+   * const owner = new PublicKey("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU");
+   * const balances = await rpcService.getParsedTokenAccountsByOwner(owner);
+   * console.log(balances);
+   * // [{ mint: "...", decimals: 9, amount: "1000000000", uiAmount: 1.0 }]
+   * ```
    */
   async getParsedTokenAccountsByOwner(
     owner: PublicKey,
@@ -348,8 +443,17 @@ class RpcService {
   }
 
   /**
-   * Get recent blockhash
-   * @returns Recent blockhash and last valid block height
+   * Gets the latest blockhash and last valid block height.
+   * Required for building and sending transactions.
+   *
+   * @returns Promise resolving to blockhash and last valid block height
+   * @throws {Error} If fetching blockhash fails
+   *
+   * @example
+   * ```typescript
+   * const { blockhash, lastValidBlockHeight } = await rpcService.getLatestBlockhash();
+   * console.log(`Blockhash: ${blockhash}, Valid until: ${lastValidBlockHeight}`);
+   * ```
    */
   async getLatestBlockhash(): Promise<{
     blockhash: string;
@@ -366,8 +470,15 @@ class RpcService {
   }
 
   /**
-   * Refresh cache for a specific address
-   * @param address Wallet address
+   * Refreshes the cache for a specific wallet address.
+   * Forces a fresh balance fetch from the RPC.
+   *
+   * @param address - The wallet address to refresh
+   *
+   * @example
+   * ```typescript
+   * await rpcService.refreshCache("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU");
+   * ```
    */
   async refreshCache(address: string): Promise<void> {
     this.balanceCache.delete(address);
@@ -375,7 +486,8 @@ class RpcService {
   }
 
   /**
-   * Clear all cache
+   * Clears all cached data.
+   * This should be called when switching networks or RPC endpoints.
    */
   clearCache(): void {
     this.balanceCache.clear();
@@ -385,10 +497,14 @@ class RpcService {
   }
 
   /**
-   * Deduplicate pending requests
-   * @param key Request key
-   * @param requestFn Function to execute if not already pending
-   * @returns Promise result
+   * Deduplicates pending requests to avoid duplicate API calls.
+   * If a request with the same key is already in flight,
+   * returns the existing promise instead of starting a new one.
+   *
+   * @template T - The type of the promise result
+   * @param key - A unique key identifying the request
+   * @param requestFn - The function to execute if not already pending
+   * @returns Promise resolving to the result
    */
   private async deduplicateRequest<T>(
     key: string,
@@ -408,10 +524,14 @@ class RpcService {
   }
 
   /**
-   * Retry function with exponential backoff
-   * @param fn Function to retry
-   * @param retries Number of retries
-   * @returns Result of the function
+   * Retries a function with exponential backoff on failure.
+   * Implements a retry mechanism with increasing delay between attempts.
+   *
+   * @template T - The type of the promise result
+   * @param fn - The function to retry
+   * @param retries - Number of retry attempts (default: 3)
+   * @returns Promise resolving to the result
+   * @throws {Error} If all retry attempts fail
    */
   private async retry<T>(
     fn: () => Promise<T>,

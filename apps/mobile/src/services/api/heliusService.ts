@@ -7,6 +7,30 @@ let inFlightRequest: Promise<any> | null = null;
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Fetches transaction details from Helius API for a given transaction signature.
+ * Implements rate limiting and request deduplication to prevent API abuse.
+ *
+ * This function:
+ * - Waits for any in-flight request to complete before starting a new one
+ * - Adds a 600ms delay between requests to prevent rate limiting
+ * - Tracks in-flight requests to avoid concurrent calls
+ * - Handles errors gracefully and clears in-flight state on failure
+ *
+ * @param signature - The transaction signature to fetch details for
+ * @returns Promise resolving to the transaction details from Helius API
+ * @throws {Error} If Helius API key is not configured or the API request fails
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   const txDetails = await getTransaction("5H7vX...");
+ *   console.log(txDetails);
+ * } catch (error) {
+ *   console.error("Failed to fetch transaction:", error);
+ * }
+ * ```
+ */
 const getTransaction = async (signature: string): Promise<any> => {
   if (!HELIUS_API_KEY) {
     throw new Error("Helius API key not configured");
@@ -26,17 +50,15 @@ const getTransaction = async (signature: string): Promise<any> => {
     // Set this request as in-flight
     inFlightRequest = (async () => {
       try {
-        const response = await fetch(
-          `${heliusBaseUrl}/v0/transactions?api-key=${HELIUS_API_KEY}`,
-          {
-            method: "POST",
-            headers: {
-              Accept: "application/json",
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ transactions: [signature] }),
+        const response = await fetch(`${heliusBaseUrl}/v0/transactions`, {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${HELIUS_API_KEY}`,
           },
-        );
+          body: JSON.stringify({ transactions: [signature] }),
+        });
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -65,6 +87,11 @@ const getTransaction = async (signature: string): Promise<any> => {
   }
 };
 
+/**
+ * Helius service for fetching Solana transaction data.
+ * Provides a simplified interface to the Helius API with built-in
+ * rate limiting and request deduplication.
+ */
 export const heliusService = {
   getTransaction,
   isConfigured: !!HELIUS_API_KEY,
