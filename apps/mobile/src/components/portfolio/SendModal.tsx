@@ -20,6 +20,7 @@ import { useWalletStore, useWalletBalanceStore } from "../../store/walletStore";
 import { toast } from "../common/ErrorToast";
 import { NETWORK_FEES, UI_CONFIG } from "../../config/appConfig";
 import { validateSolanaAddress, validateSolAmount } from "../../utils";
+import { requireBiometricApproval } from "../../security/biometrics";
 
 interface SendModalProps {
   visible: boolean;
@@ -138,6 +139,16 @@ const SendModal: React.FC<SendModalProps> = ({ visible, onClose }) => {
 
     const amount = parseFloat(sendAmount);
     const fee = estimatedFee || NETWORK_FEES.SOLANA;
+
+    // Require biometric approval before sending
+    try {
+      await requireBiometricApproval("Authenticate to send SOL");
+    } catch (error) {
+      if (error instanceof Error) {
+        Alert.alert("Authentication required", error.message);
+      }
+      return;
+    }
 
     setSending(true);
     try {

@@ -7,6 +7,10 @@ import AppNavigator from "./src/navigation/AppNavigator";
 import { SolanaProvider } from "./src/context/SolanaContext";
 import ToastProvider from "./src/components/common/ToastProvider";
 import { useTheme, initializeTheme } from "./src/theme/ThemeContext";
+import {
+  securityInitializationService,
+  networkSecurityService,
+} from "./src/services/security";
 
 // Suppress zeego warning (not using native menus yet)
 // import '@tamagui/native/setup-zeego';
@@ -24,7 +28,7 @@ function AppContent() {
 
   return (
     <PaperProvider theme={theme}>
-      <StatusBar style={themeMode === 'dark' ? "light" : "dark"} />
+      <StatusBar style={themeMode === "dark" ? "light" : "dark"} />
       <AppNavigator />
     </PaperProvider>
   );
@@ -35,7 +39,18 @@ export default function App() {
 
   useEffect(() => {
     const init = async () => {
-      await initializeTheme();
+      try {
+        await initializeTheme();
+        await securityInitializationService.initialize();
+
+        const networkValidation =
+          networkSecurityService.validateEnvironmentVariables();
+        if (!networkValidation.valid) {
+          console.warn("Network security warnings:", networkValidation.errors);
+        }
+      } catch (error) {
+        console.error("App initialization failed:", error);
+      }
       setInitialized(true);
     };
 
@@ -45,9 +60,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ToastProvider>
-        <SolanaProvider>
-          {initialized ? <AppContent /> : null}
-        </SolanaProvider>
+        <SolanaProvider>{initialized ? <AppContent /> : null}</SolanaProvider>
       </ToastProvider>
     </SafeAreaProvider>
   );

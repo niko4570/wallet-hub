@@ -23,12 +23,33 @@ const getEnv = (key: string, fallback?: string): string => {
 };
 
 // API configuration
-export const API_URL = getEnv("EXPO_PUBLIC_API_URL", "http://localhost:3000");
+export const API_URL = getEnv("EXPO_PUBLIC_API_URL", "https://localhost:3000");
 
 // Helius configuration
-export const HELIUS_API_KEY = getEnv("EXPO_PUBLIC_HELIUS_API_KEY", "demo");
-export const HELIUS_API_BASE = getEnv("EXPO_PUBLIC_HELIUS_API_BASE", "https://api.helius.xyz");
-export const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
+export const HELIUS_API_KEY = getEnv("EXPO_PUBLIC_HELIUS_API_KEY", "");
+export const HELIUS_API_BASE = getEnv(
+  "EXPO_PUBLIC_HELIUS_API_BASE",
+  "https://api.helius.xyz",
+);
+const HELIUS_RPC_BASE = getEnv(
+  "EXPO_PUBLIC_HELIUS_RPC_URL",
+  "https://mainnet.helius-rpc.com",
+);
+const withApiKey = (url: string, apiKey: string): string => {
+  if (!apiKey) {
+    return url;
+  }
+  try {
+    const parsed = new URL(url);
+    if (!parsed.searchParams.has("api-key")) {
+      parsed.searchParams.set("api-key", apiKey);
+    }
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+};
+export const HELIUS_RPC_URL = withApiKey(HELIUS_RPC_BASE, HELIUS_API_KEY);
 
 // Jupiter configuration
 export const JUPITER_API_KEY = process.env?.EXPO_PUBLIC_JUPITER_API_KEY || "";
@@ -64,13 +85,15 @@ const testnetOverrideRpcUrl = process.env?.EXPO_PUBLIC_SOLANA_TESTNET_RPC_URL;
 export const SOLANA_RPC_URL =
   overrideRpcUrl && overrideRpcUrl.length > 0
     ? overrideRpcUrl
-    : SOLANA_NETWORK === "mainnet-beta"
+    : SOLANA_NETWORK === "mainnet-beta" &&
+        HELIUS_API_KEY &&
+        HELIUS_API_KEY.length > 0
       ? HELIUS_RPC_URL
       : SOLANA_NETWORK === "devnet" &&
           devnetOverrideRpcUrl &&
           devnetOverrideRpcUrl.length > 0
         ? devnetOverrideRpcUrl
-        : SOLANA_NETWORK === "testnet" &&
+      : SOLANA_NETWORK === "testnet" &&
             testnetOverrideRpcUrl &&
             testnetOverrideRpcUrl.length > 0
           ? testnetOverrideRpcUrl
