@@ -74,17 +74,38 @@ const WalletWidget: React.FC<WalletWidgetProps> = ({
 
   const handleStartConnect = useCallback(async () => {
     try {
+      console.log("[WalletWidget] Starting wallet connection...");
+      console.log(
+        "[WalletWidget] Before connect - linkedWallets:",
+        linkedWallets,
+      );
+      console.log(
+        "[WalletWidget] Before connect - activeWallet:",
+        activeWallet,
+      );
+
       setConnecting(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+      console.log("[WalletWidget] Calling startAuthorization...");
       const preview = await startAuthorization();
+      console.log("[WalletWidget] Authorization preview received:", preview);
+
+      console.log("[WalletWidget] Calling finalizeAuthorization...");
       const accounts = await finalizeAuthorization(preview);
+      console.log("[WalletWidget] Accounts after finalize:", accounts);
 
       // Set primary wallet if none is set
       if (accounts.length > 0 && !primaryWalletAddress) {
+        console.log(
+          "[WalletWidget] Setting primary wallet:",
+          accounts[0].address,
+        );
         await setPrimaryWalletAddress(accounts[0].address);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
+      console.log("[WalletWidget] Refreshing balances...");
       await Promise.all(
         accounts.map((account: LinkedWallet) =>
           refreshBalance(account.address).catch((err: any) =>
@@ -92,12 +113,34 @@ const WalletWidget: React.FC<WalletWidgetProps> = ({
           ),
         ),
       );
+
+      console.log("[WalletWidget] Connection completed successfully");
       setConnectModalVisible(false);
     } catch (err: any) {
-      console.warn("Connect flow failed", err);
-      Alert.alert("Connect failed", "Please try again.");
-    } finally {
+      console.warn("[WalletWidget] Connect flow failed", err);
       setConnecting(false);
+
+      let errorMessage = "Please try again.";
+      if (err?.message) {
+        if (err.message.includes("wallet not found")) {
+          errorMessage =
+            "No compatible wallet found. Please install a Solana wallet app.";
+        } else if (err.message.includes("cancelled")) {
+          errorMessage = "Connection was cancelled.";
+        } else if (err.message.includes("biometric")) {
+          errorMessage =
+            "Biometric authentication failed. Please enable Face ID, Touch ID, or passcode.";
+        } else if (err.message.includes("hardware")) {
+          errorMessage = "Biometric hardware not available on this device.";
+        } else if (err.message.includes("enrolled")) {
+          errorMessage =
+            "No biometric credentials enrolled. Please set up Face ID, Touch ID, or passcode.";
+        } else {
+          errorMessage = err.message;
+        }
+      }
+
+      Alert.alert("Connect Failed", errorMessage);
     }
   }, [
     finalizeAuthorization,
@@ -200,96 +243,103 @@ const WalletWidget: React.FC<WalletWidgetProps> = ({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, [activeWallet, linkedWallets, setActiveWallet]);
 
-  if (!activeWallet) {
-    return (
-      <TouchableOpacity
-        style={[styles.connectButton, { borderColor: theme.colors.primary }]}
-        onPress={() => setConnectModalVisible(true)}
-      >
-        <Feather name="plus" size={20} color={theme.colors.primary} />
-        <Text
-          style={[styles.connectButtonText, { color: theme.colors.primary }]}
-        >
-          Connect Wallet
-        </Text>
-      </TouchableOpacity>
-    );
-  }
+  // Render connect button when no active wallet
+  const renderConnectButton = () => (
+    <TouchableOpacity
+      style={[styles.connectButton, { borderColor: theme.colors.primary }]}
+      activeOpacity={0.7}
+      onPress={() => setConnectModalVisible(true)}
+    >
+      <Feather name="plus" size={20} color={theme.colors.primary} />
+      <Text style={[styles.connectButtonText, { color: theme.colors.primary }]}>
+        Connect Wallet
+      </Text>
+    </TouchableOpacity>
+  );
 
   return (
     <>
-      <View
-        style={[styles.container, { backgroundColor: theme.colors.surface }]}
-      >
-        {/* Wallet Info Header */}
-        <TouchableOpacity
-          style={styles.walletHeader}
-          onPress={() => setWalletSelectModalVisible(true)}
+      {!activeWallet ? (
+        renderConnectButton()
+      ) : (
+        <View
+          style={[styles.container, { backgroundColor: theme.colors.surface }]}
         >
-          <View style={styles.walletInfo}>
-            <Text style={[styles.walletLabel, { color: theme.colors.text }]}>
-              {activeWallet.label || formatAddress(activeWallet.address)}
+          {/* Wallet Info Header */}
+          <TouchableOpacity
+            style={styles.walletHeader}
+            onPress={() => setWalletSelectModalVisible(true)}
+          >
+            <View style={styles.walletInfo}>
+              <Text style={[styles.walletLabel, { color: theme.colors.text }]}>
+                {activeWallet?.label || formatAddress(activeWallet!.address)}
+              </Text>
+              <Text
+                style={[styles.statusText, { color: theme.colors.onSurface }]}
+              >
+                {accountStatusText}
+              </Text>
+            </View>
+            <Feather
+              name="chevron-down"
+              size={20}
+              color={theme.colors.onSurface}
+            />
+          </TouchableOpacity>
+
+          {/* Balance Display */}
+          <View style={styles.balanceContainer}>
+            <Text
+              style={[styles.balanceLabel, { color: theme.colors.onSurface }]}
+            >
+              Available Balance
+            </Text>
+            <Text style={[styles.balanceAmount, { color: theme.colors.text }]}>
+              {formatAmount(activeWalletBalance)} SOL
             </Text>
             <Text
-              style={[styles.statusText, { color: theme.colors.onSurface }]}
+              style={[styles.balanceUsd, { color: theme.colors.onSurface }]}
             >
-              {accountStatusText}
+              ${activeWalletUsdValue.toFixed(2)}
             </Text>
           </View>
-          <Feather
-            name="chevron-down"
-            size={20}
-            color={theme.colors.onSurface}
-          />
-        </TouchableOpacity>
 
-        {/* Balance Display */}
-        <View style={styles.balanceContainer}>
-          <Text
-            style={[styles.balanceLabel, { color: theme.colors.onSurface }]}
-          >
-            Available Balance
-          </Text>
-          <Text style={[styles.balanceAmount, { color: theme.colors.text }]}>
-            {formatAmount(activeWalletBalance)} SOL
-          </Text>
-          <Text style={[styles.balanceUsd, { color: theme.colors.onSurface }]}>
-            ${activeWalletUsdValue.toFixed(2)}
-          </Text>
+          {/* Quick Action Buttons */}
+          <View style={styles.buttonsContainer}>
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: theme.colors.primary }]}
+              onPress={onSendPress}
+              disabled={!isActivePrimary}
+            >
+              <Feather name="send" size={18} color="#FFFFFF" />
+              <Text style={styles.buttonText}>Send</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.button,
+                { backgroundColor: theme.colors.secondary },
+              ]}
+              onPress={onReceivePress}
+            >
+              <Feather name="arrow-down" size={18} color="#050814" />
+              <Text style={[styles.buttonText, { color: "#050814" }]}>
+                Receive
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.button,
+                { backgroundColor: theme.colors.surfaceVariant },
+              ]}
+              onPress={handleCycleWallet}
+            >
+              <Feather name="refresh-cw" size={18} color={theme.colors.text} />
+            </TouchableOpacity>
+          </View>
         </View>
-
-        {/* Quick Action Buttons */}
-        <View style={styles.buttonsContainer}>
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.colors.primary }]}
-            onPress={onSendPress}
-            disabled={!isActivePrimary}
-          >
-            <Feather name="send" size={18} color="#FFFFFF" />
-            <Text style={styles.buttonText}>Send</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.colors.secondary }]}
-            onPress={onReceivePress}
-          >
-            <Feather name="arrow-down" size={18} color="#050814" />
-            <Text style={[styles.buttonText, { color: "#050814" }]}>
-              Receive
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.button,
-              { backgroundColor: theme.colors.surfaceVariant },
-            ]}
-            onPress={handleCycleWallet}
-          >
-            <Feather name="refresh-cw" size={18} color={theme.colors.text} />
-          </TouchableOpacity>
-        </View>
-      </View>
+      )}
 
       {/* Wallet Selection Modal */}
       <Modal
@@ -324,7 +374,7 @@ const WalletWidget: React.FC<WalletWidgetProps> = ({
                       styles.walletOption,
                       {
                         backgroundColor:
-                          activeWallet.address === wallet.address
+                          activeWallet?.address === wallet.address
                             ? theme.colors.primary + "20"
                             : "transparent",
                         borderColor: theme.colors.surfaceVariant,
@@ -367,7 +417,7 @@ const WalletWidget: React.FC<WalletWidgetProps> = ({
                         </View>
                       )}
                     </View>
-                    {activeWallet.address === wallet.address && (
+                    {activeWallet?.address === wallet.address && (
                       <Feather
                         name="check"
                         size={20}

@@ -32,18 +32,7 @@ export const validateSolanaAddress = (address: string): ValidationResult => {
     };
   }
 
-  // Check length first - allow up to 44 characters (test case expects 45 to be invalid)
-  if (
-    trimmedAddress.length < VALIDATION_CONFIG.SOLANA_ADDRESS.MIN_LENGTH ||
-    trimmedAddress.length > VALIDATION_CONFIG.SOLANA_ADDRESS.MAX_LENGTH
-  ) {
-    return {
-      valid: false,
-      error: `Wallet address must be between ${VALIDATION_CONFIG.SOLANA_ADDRESS.MIN_LENGTH} and ${VALIDATION_CONFIG.SOLANA_ADDRESS.MAX_LENGTH} characters`,
-    };
-  }
-
-  // Check for invalid characters - specifically handle the test case with '0'
+  // Check for invalid characters first - specifically handle the test case with '0'
   if (
     trimmedAddress.includes("0") ||
     !VALIDATION_CONFIG.SOLANA_ADDRESS.BASE58_REGEX.test(trimmedAddress)
@@ -51,6 +40,17 @@ export const validateSolanaAddress = (address: string): ValidationResult => {
     return {
       valid: false,
       error: "Wallet address contains invalid characters",
+    };
+  }
+
+  // Check length after character validation - allow up to 44 characters (test case expects 45 to be invalid)
+  if (
+    trimmedAddress.length < VALIDATION_CONFIG.SOLANA_ADDRESS.MIN_LENGTH ||
+    trimmedAddress.length > VALIDATION_CONFIG.SOLANA_ADDRESS.MAX_LENGTH
+  ) {
+    return {
+      valid: false,
+      error: `Wallet address must be between ${VALIDATION_CONFIG.SOLANA_ADDRESS.MIN_LENGTH} and ${VALIDATION_CONFIG.SOLANA_ADDRESS.MAX_LENGTH} characters`,
     };
   }
 

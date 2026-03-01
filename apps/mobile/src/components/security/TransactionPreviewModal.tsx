@@ -46,7 +46,10 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({
       <View
         style={[
           styles.container,
-          { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.surfaceVariant,
+          },
         ]}
       >
         <View style={styles.header}>
@@ -62,9 +65,7 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({
           {loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={theme.colors.primary} />
-              <Text
-                style={[styles.loadingText, { color: theme.colors.text }]}
-              >
+              <Text style={[styles.loadingText, { color: theme.colors.text }]}>
                 Analyzing transaction...
               </Text>
             </View>
@@ -94,16 +95,19 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({
                 <View
                   style={[
                     styles.alertBox,
-                    { backgroundColor: theme.colors.warning + "20" },
+                    { backgroundColor: theme.colors.secondary + "20" },
                   ]}
                 >
                   <Feather
                     name="alert-triangle"
                     size={20}
-                    color={theme.colors.warning}
+                    color={theme.colors.secondary}
                   />
                   <Text
-                    style={[styles.alertText, { color: theme.colors.warning }]}
+                    style={[
+                      styles.alertText,
+                      { color: theme.colors.secondary },
+                    ]}
                   >
                     {validation?.warnings?.join("\n")}
                   </Text>
@@ -123,9 +127,7 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({
                   >
                     Type
                   </Text>
-                  <Text
-                    style={[styles.value, { color: theme.colors.text }]}
-                  >
+                  <Text style={[styles.value, { color: theme.colors.text }]}>
                     {preview.type.toUpperCase()}
                   </Text>
                 </View>
@@ -166,9 +168,7 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({
                   >
                     Amount
                   </Text>
-                  <Text
-                    style={[styles.value, { color: theme.colors.text }]}
-                  >
+                  <Text style={[styles.value, { color: theme.colors.text }]}>
                     {preview.amount.toFixed(6)} {preview.token || "SOL"}
                   </Text>
                 </View>
@@ -179,9 +179,7 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({
                   >
                     Network Fee
                   </Text>
-                  <Text
-                    style={[styles.value, { color: theme.colors.text }]}
-                  >
+                  <Text style={[styles.value, { color: theme.colors.text }]}>
                     {preview.feeInSol?.toFixed(6) || "0.000005"} SOL
                   </Text>
                 </View>
@@ -219,7 +217,7 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({
                         styles.instructionBox,
                         {
                           backgroundColor: theme.colors.background,
-                          borderColor: theme.colors.border,
+                          borderColor: theme.colors.surfaceVariant,
                         },
                       ]}
                     >
@@ -232,7 +230,10 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({
                         {instruction.programName || "Unknown Program"}
                       </Text>
                       <Text
-                        style={[styles.instructionType, { color: theme.colors.text }]}
+                        style={[
+                          styles.instructionType,
+                          { color: theme.colors.text },
+                        ]}
                       >
                         {instruction.type}
                       </Text>
@@ -252,13 +253,12 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({
               )}
 
               <View style={styles.securityInfo}>
-                <Feather
-                  name="shield"
-                  size={16}
-                  color={theme.colors.success}
-                />
+                <Feather name="shield" size={16} color={theme.colors.success} />
                 <Text
-                  style={[styles.securityText, { color: theme.colors.onSurface }]}
+                  style={[
+                    styles.securityText,
+                    { color: theme.colors.onSurface },
+                  ]}
                 >
                   This transaction has been validated for security
                 </Text>
@@ -272,14 +272,12 @@ const TransactionPreviewModal: React.FC<TransactionPreviewModalProps> = ({
             style={[
               styles.button,
               styles.cancelButton,
-              { borderColor: theme.colors.border },
+              { borderColor: theme.colors.surfaceVariant },
             ]}
             onPress={onCancel}
             disabled={loading}
           >
-            <Text
-              style={[styles.buttonText, { color: theme.colors.text }]}
-            >
+            <Text style={[styles.buttonText, { color: theme.colors.text }]}>
               Cancel
             </Text>
           </TouchableOpacity>

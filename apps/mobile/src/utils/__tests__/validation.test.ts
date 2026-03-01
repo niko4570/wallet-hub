@@ -36,15 +36,15 @@ describe("Validation utilities", () => {
     });
 
     it("should return invalid for address that is too short", () => {
-      const result = validateSolanaAddress("1234567890123456789012345678901"); // 31 characters
+      const result = validateSolanaAddress("1234567891234567891234567891"); // 31 characters, no '0'
       expect(result.valid).toBe(false);
       expect(result.error).toContain("Wallet address must be between");
     });
 
     it("should return invalid for address that is too long", () => {
       const result = validateSolanaAddress(
-        "12345678901234567890123456789012345678901234",
-      ); // 45 characters
+        "123456789123456789123456789123456789123456789",
+      ); // 45 characters, no '0'
       expect(result.valid).toBe(false);
       expect(result.error).toContain("Wallet address must be between");
     });
