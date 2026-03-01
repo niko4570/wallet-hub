@@ -69,6 +69,22 @@ export const createWalletActions = (
         };
       });
 
+      // Keep wallet base store in sync so UI using useWalletStore stays consistent.
+      try {
+        const { useWalletBaseStore } = require("../walletStore");
+        const walletState = useWalletBaseStore.getState();
+
+        accountsToLink.forEach((account) => {
+          walletState.addWallet(account);
+        });
+
+        if (!walletState.activeWallet && accountsToLink.length > 0) {
+          walletState.setActiveWallet(accountsToLink[0]);
+        }
+      } catch (syncError) {
+        console.warn("[walletActions] Failed to sync wallet base store", syncError);
+      }
+
       const state = get();
       await Promise.all(
         accountsToLink.map((walletAccount) =>

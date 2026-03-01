@@ -1,4 +1,4 @@
-import { Connection, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
+import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import type { SolanaStoreState } from "../solanaStore";
 import { rpcService, priceService, tokenMetadataService } from "../../services";
 import type { WalletBalance } from "../../types/wallet";

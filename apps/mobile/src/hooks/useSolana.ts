@@ -172,11 +172,31 @@ export function useSolana(): UseSolanaResult {
   const primaryWalletAddress = useWalletStore(
     (state: any) => state.primaryWalletAddress,
   );
+  const linkedWalletsFromStore = useWalletStore(
+    (state: any) => state.linkedWallets,
+  );
+  const activeWalletFromStore = useWalletStore(
+    (state: any) => state.activeWallet,
+  );
 
   const connection = useMemo(
     () => new Connection(SOLANA_RPC_URL, "confirmed"),
     [SOLANA_RPC_URL],
   );
+
+  // Sync with useWalletStore on mount and when store changes
+  useEffect(() => {
+    console.log("[useSolana] Syncing from useWalletStore:", {
+      linkedWallets: linkedWalletsFromStore.length,
+      activeWallet: activeWalletFromStore?.address,
+    });
+    if (linkedWalletsFromStore.length > 0) {
+      setLinkedWallets(linkedWalletsFromStore);
+    }
+    if (activeWalletFromStore?.address && !activeWalletAddress) {
+      setActiveWalletAddress(activeWalletFromStore.address);
+    }
+  }, [linkedWalletsFromStore, activeWalletFromStore]);
 
   const activeWallet = useMemo(() => {
     if (!activeWalletAddress) {
@@ -451,16 +471,40 @@ export function useSolana(): UseSolanaResult {
   const finalizeAuthorization = useCallback(
     async (preview: AuthorizationPreview, selectedAddresses?: string[]) => {
       try {
+        console.log("[useSolana] Finalizing authorization...");
+        console.log("[useSolana] Preview:", preview);
+        
         const accountsToLink = await walletService.finalizeWalletAuthorization(
           preview,
           selectedAddresses,
         );
+        console.log("[useSolana] Accounts to link:", accountsToLink);
 
+        // Update local state in useSolana hook
+        console.log("[useSolana] Calling upsertWallets...");
         upsertWallets(accountsToLink);
+        
+        console.log("[useSolana] Setting active wallet address...");
         setActiveWalletAddress(
           (current) => current ?? accountsToLink[0].address,
         );
 
+        // Also update useWalletStore to keep it in sync
+        console.log("[useSolana] Syncing to useWalletStore...");
+        const walletState = useWalletStore.getState();
+        
+        // Add wallets to useWalletStore
+        accountsToLink.forEach((newAccount) => {
+          walletState.addWallet(newAccount);
+        });
+        
+        // Set active wallet in useWalletStore if not set
+        if (!walletState.activeWallet && accountsToLink.length > 0) {
+          console.log("[useSolana] Setting active wallet in useWalletStore:", accountsToLink[0].address);
+          walletState.setActiveWallet(accountsToLink[0]);
+        }
+
+        console.log("[useSolana] Refreshing balances...");
         await Promise.all(
           accountsToLink.map((walletAccount) =>
             refreshBalance(walletAccount.address).catch((err) => {
@@ -469,14 +513,21 @@ export function useSolana(): UseSolanaResult {
           ),
         );
 
-        const walletState = useWalletStore.getState();
+        // Set primary wallet in useWalletStore if not set
         if (!walletState.primaryWalletAddress && accountsToLink.length > 0) {
+          console.log("[useSolana] Setting primary wallet in useWalletStore:", accountsToLink[0].address);
           walletState.setPrimaryWalletAddress(accountsToLink[0].address);
         }
 
+        console.log("[useSolana] Finalize authorization completed");
+        console.log("[useSolana] useWalletStore state after sync:", {
+          linkedWallets: walletState.linkedWallets,
+          activeWallet: walletState.activeWallet,
+          primaryWalletAddress: walletState.primaryWalletAddress,
+        });
         return accountsToLink;
       } catch (error) {
-        console.error("Error finalizing authorization:", error);
+        console.error("[useSolana] Error finalizing authorization:", error);
         throw error;
       }
     },

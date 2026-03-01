@@ -39,29 +39,39 @@ export const useWalletBaseStore = create<{
       activeWalletAddress: null,
       primaryWalletAddress: null,
       walletGroups: [],
-      setLinkedWallets: (wallets) => set({ linkedWallets: wallets }),
+      setLinkedWallets: (wallets) => {
+        console.log("[walletStore] setLinkedWallets called:", wallets);
+        set({ linkedWallets: wallets });
+      },
       setActiveWallet: (wallet) => {
+        console.log("[walletStore] setActiveWallet called:", wallet);
         set({
           activeWallet: wallet,
           activeWalletAddress: wallet?.address || null,
         });
       },
-      setActiveWalletAddress: (address) =>
+      setActiveWalletAddress: (address) => {
+        console.log("[walletStore] setActiveWalletAddress called:", address);
         set((state) => {
           const wallet =
             state.linkedWallets.find((w) => w.address === address) || null;
+          console.log("[walletStore] Found wallet for address:", wallet);
           return { activeWalletAddress: address, activeWallet: wallet };
-        }),
-      setPrimaryWalletAddress: (address) =>
+        });
+      },
+      setPrimaryWalletAddress: (address) => {
+        console.log("[walletStore] setPrimaryWalletAddress called:", address);
         set((state) => {
           if (
             address &&
             !state.linkedWallets.some((wallet) => wallet.address === address)
           ) {
+            console.warn("[walletStore] Wallet not in linkedWallets:", address);
             return {};
           }
           return { primaryWalletAddress: address };
-        }),
+        });
+      },
       addWallet: (wallet) => {
         set((state) => {
           const existingWallet = state.linkedWallets.find(

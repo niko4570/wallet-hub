@@ -37,18 +37,26 @@ class WalletAdapterService {
   async connectWallet(): Promise<LinkedWallet[]> {
     const walletBaseStore = useWalletBaseStore.getState();
     const walletStatusStore = useWalletStatusStore.getState();
+    console.log("[walletAdapterService] connectWallet called");
+    console.log("[walletAdapterService] Current linkedWallets:", walletBaseStore.linkedWallets);
+    console.log("[walletAdapterService] Current activeWallet:", walletBaseStore.activeWallet);
+    
     walletStatusStore.setLoading(true);
     walletStatusStore.setError(null);
 
     try {
-      // Use existing walletService to start authorization. Passing no wallet lets MWA
-      // present its native chooser when multiple wallets are installed.
+      console.log("[walletAdapterService] Starting wallet authorization...");
       const preview = await walletService.startWalletAuthorization();
+      console.log("[walletAdapterService] Authorization preview received:", preview);
+      
+      console.log("[walletAdapterService] Finalizing authorization...");
       const accounts = await walletService.finalizeWalletAuthorization(preview);
+      console.log("[walletAdapterService] Accounts received:", accounts);
 
       // Update wallet store - add new accounts instead of replacing all
       const existingWallets = walletBaseStore.linkedWallets;
       const combinedWallets = [...existingWallets];
+      console.log("[walletAdapterService] Existing wallets:", existingWallets);
 
       // Add new accounts that don't already exist
       accounts.forEach((newAccount) => {
@@ -57,27 +65,32 @@ class WalletAdapterService {
         );
 
         if (existingIndex === -1) {
+          console.log("[walletAdapterService] Adding new account:", newAccount.address);
           combinedWallets.push(newAccount);
         } else {
-          // Update existing account with new information
+          console.log("[walletAdapterService] Updating existing account:", newAccount.address);
           combinedWallets[existingIndex] = newAccount;
         }
       });
 
+      console.log("[walletAdapterService] Setting combined wallets:", combinedWallets);
       walletBaseStore.setLinkedWallets(combinedWallets);
 
       // Set active wallet to the first new account if not already set
       if (!walletBaseStore.activeWallet && accounts.length > 0) {
+        console.log("[walletAdapterService] Setting active wallet:", accounts[0].address);
         walletBaseStore.setActiveWallet(accounts[0]);
         walletBaseStore.setActiveWalletAddress(accounts[0].address);
       }
 
       // Refresh balances for new wallets
+      console.log("[walletAdapterService] Refreshing balances...");
       await this.refreshBalances(accounts.map((account) => account.address));
 
+      console.log("[walletAdapterService] connectWallet completed successfully");
       return accounts;
     } catch (error) {
-      console.error("Wallet connection failed:", error);
+      console.error("[walletAdapterService] Wallet connection failed:", error);
       walletStatusStore.setError("Failed to connect wallet. Please try again.");
       throw error;
     } finally {

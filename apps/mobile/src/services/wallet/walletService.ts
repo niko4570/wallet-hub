@@ -79,15 +79,145 @@ class WalletService {
   }
 
   /**
+   * Clears any stale wallet connection state before starting a new authorization.
+   * This ensures that when adding a new wallet, there's no cached state from
+   * a previous wallet that could interfere with the wallet chooser or authorization flow.
+   *
+   * Required for proper Solflare authorization: prevents state leakage from Phantom
+   * that can cause Solflare's auth UI to not display properly.
+   *
+   * @private
+   */
+  private async clearWalletConnectionState(): Promise<void> {
+    const startTime = Date.now();
+    try {
+      console.log(
+        "═══════════════════════════════════════════════════════════",
+      );
+      console.log(
+        "[walletService] >>> START: Clearing wallet connection state",
+      );
+      console.log("[walletService] Timestamp:", new Date().toISOString());
+
+      // Step 1: Log current state before clearing
+      console.log("[walletService] Step 1: Checking current MWA state...");
+      let capabilitiesResult: any = null;
+      let capabilitiesError: any = null;
+
+      try {
+        const result = await transact(async (walletApi: Web3MobileWallet) => {
+          console.log("[walletService]   - transact callback entered");
+          console.log("[walletService]   - walletApi type:", typeof walletApi);
+          console.log(
+            "[walletService]   - walletApi methods:",
+            Object.getOwnPropertyNames(Object.getPrototypeOf(walletApi)).filter(
+              (m) => !m.startsWith("_"),
+            ),
+          );
+
+          try {
+            console.log("[walletService]   - Calling getCapabilities()...");
+            const caps = await walletApi.getCapabilities();
+            console.log("[walletService]   - getCapabilities() succeeded");
+            console.log(
+              "[walletService]   - Capabilities:",
+              JSON.stringify(caps, null, 2),
+            );
+            return caps;
+          } catch (error: any) {
+            console.log(
+              "[walletService]   - getCapabilities() failed:",
+              error?.message || error,
+            );
+            capabilitiesError = error;
+            return null;
+          }
+        });
+        capabilitiesResult = result;
+        console.log(
+          "[walletService]   - transact completed, result:",
+          result ? "has value" : "null",
+        );
+      } catch (transactError: any) {
+        console.warn(
+          "[walletService]   - transact() itself failed:",
+          transactError?.message || transactError,
+        );
+        capabilitiesError = transactError;
+      }
+
+      // Step 2: Log the result of capability check
+      if (capabilitiesResult) {
+        console.log("[walletService] Step 2: ✓ Found active wallet session");
+        console.log(
+          "[walletService]   - Supports signAndSend:",
+          capabilitiesResult.supports_sign_and_send_transactions,
+        );
+        console.log(
+          "[walletService]   - Supports sign:",
+          capabilitiesResult.supports_sign_transactions,
+        );
+      } else {
+        console.log(
+          "[walletService] Step 2: ✓ No active wallet session or session check failed",
+        );
+        if (capabilitiesError) {
+          console.log(
+            "[walletService]   - Error details:",
+            capabilitiesError?.message || capabilitiesError,
+          );
+        }
+      }
+
+      // Step 3: Add delay to ensure state is fully cleared
+      console.log(
+        "[walletService] Step 3: Adding 200ms delay for state reset...",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      console.log("[walletService]   - Delay completed");
+
+      const duration = Date.now() - startTime;
+      console.log(
+        "[walletService] >>> END: Wallet connection state cleared (took " +
+          duration +
+          "ms)",
+      );
+      console.log(
+        "═══════════════════════════════════════════════════════════",
+      );
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      console.warn(
+        "[walletService] >>> ERROR: Error clearing wallet state (non-critical, took " +
+          duration +
+          "ms)",
+      );
+      console.warn(
+        "[walletService]   - Error type:",
+        error?.constructor?.name || "Unknown",
+      );
+      console.warn(
+        "[walletService]   - Error message:",
+        error?.message || error,
+      );
+      console.warn("[walletService]   - Error stack:", error?.stack);
+      console.warn(
+        "[walletService]   - This is a cleanup operation, continuing anyway...",
+      );
+    }
+  }
+
+  /**
    * Initiates wallet authorization flow with biometric authentication.
    * This is the first step in connecting a wallet - it shows available wallets
    * and allows the user to select which accounts to authorize.
    *
    * The process:
-   * 1. Requires biometric approval for security
-   * 2. Opens Mobile Wallet Adapter to select wallet app
-   * 3. Authorizes the app to interact with selected wallets
-   * 4. Returns a preview of available accounts
+   * 1. Clears any stale connection state from previous wallets
+   * 2. Requires biometric approval for security
+   * 3. Opens Mobile Wallet Adapter to select wallet app
+   * 4. Authorizes the app to interact with selected wallets
+   * 5. Returns a preview of available accounts
    *
    * @returns Promise resolving to authorization preview with available accounts
    * @throws {Error} If no compatible wallet found, user cancels, or authorization fails
@@ -103,24 +233,150 @@ class WalletService {
    * ```
    */
   async startWalletAuthorization(): Promise<AuthorizationPreview> {
+    const startTime = Date.now();
     try {
+      console.log(
+        "╔═══════════════════════════════════════════════════════════╗",
+      );
+      console.log("║ [walletService] >>> START: Wallet Authorization Flow");
+      console.log(
+        "╚═══════════════════════════════════════════════════════════╝",
+      );
+      console.log("[walletService] Timestamp:", new Date().toISOString());
+      console.log("[walletService] Network:", this.network);
+      console.log("[walletService] Identity:", APP_IDENTITY);
+
+      // Step 1: Clear any stale connection state
+      console.log("[walletService]");
+      console.log(
+        "[walletService] >>> Step 1: Clearing stale connection state...",
+      );
+      await this.clearWalletConnectionState();
+      console.log("[walletService] >>> Step 1: Complete");
+
+      // Step 2: Biometric approval
+      console.log("[walletService]");
+      console.log(
+        "[walletService] >>> Step 2: Requesting biometric approval...",
+      );
+      const biometricStart = Date.now();
       await requireBiometricApproval("Authenticate to choose a wallet", {
         allowSessionReuse: true,
       });
+      const biometricDuration = Date.now() - biometricStart;
+      console.log(
+        "[walletService] >>> Step 2: Biometric approval passed (took " +
+          biometricDuration +
+          "ms)",
+      );
 
+      // Step 3: MWA Authorization
+      console.log("[walletService]");
+      console.log("[walletService] >>> Step 3: Starting MWA authorization...");
+      const mwaStart = Date.now();
+
+      console.log("[walletService]   - Calling transact()...");
       const result = await transact(async (walletApi: Web3MobileWallet) => {
+        console.log("[walletService]   - transact callback entered");
+        console.log("[walletService]   - Preparing authorize request...");
+        console.log(
+          "[walletService]   - Identity:",
+          JSON.stringify(APP_IDENTITY),
+        );
+        console.log("[walletService]   - Chain:", `solana:${this.network}`);
+        console.log("[walletService]   - Features:", DEFAULT_FEATURES);
+
+        console.log("[walletService]   - Calling walletApi.authorize()...");
         const authorization = await walletApi.authorize({
           identity: APP_IDENTITY,
           chain: `solana:${this.network}`,
           features: [...DEFAULT_FEATURES],
         });
 
+        console.log("[walletService]   - authorize() completed");
+        console.log("[walletService]   - Authorization result:");
+        console.log(
+          "[walletService]     • Accounts count:",
+          authorization.accounts?.length || 0,
+        );
+        console.log(
+          "[walletService]     • Auth token present:",
+          !!authorization.auth_token,
+        );
+        console.log(
+          "[walletService]     • Auth token (first 50 chars):",
+          authorization.auth_token?.substring(0, 50) + "...",
+        );
+        if (authorization.accounts?.length > 0) {
+          authorization.accounts.forEach((account, idx) => {
+            console.log(`[walletService]     • Account ${idx + 1}:`, {
+              address: account.address?.substring(0, 20) + "...",
+              label: account.label,
+            });
+          });
+        }
+        if ((authorization as any).wallet_icon) {
+          console.log("[walletService]     • Wallet icon present:", true);
+        }
+
         return authorization;
       });
 
-      return { accounts: this.normalizeAuthorization(result) };
+      const mwaDuration = Date.now() - mwaStart;
+      console.log(
+        "[walletService] >>> Step 3: MWA authorization complete (took " +
+          mwaDuration +
+          "ms)",
+      );
+
+      // Step 4: Normalize result
+      console.log("[walletService]");
+      console.log(
+        "[walletService] >>> Step 4: Normalizing authorization result...",
+      );
+      const normalized = { accounts: this.normalizeAuthorization(result) };
+      console.log(
+        "[walletService]   - Normalized accounts:",
+        normalized.accounts.map((a: any) => ({
+          address: a.address?.substring(0, 20) + "...",
+          label: a.label,
+          hasAuthToken: !!a.authToken,
+        })),
+      );
+
+      const totalDuration = Date.now() - startTime;
+      console.log("[walletService]");
+      console.log(
+        "╔═══════════════════════════════════════════════════════════╗",
+      );
+      console.log("║ [walletService] >>> SUCCESS: Authorization completed");
+      console.log("║ Total duration: " + totalDuration + "ms");
+      console.log(
+        "╚═══════════════════════════════════════════════════════════╝",
+      );
+
+      return normalized;
     } catch (error: any) {
-      console.error("Wallet authorization failed:", error);
+      const totalDuration = Date.now() - startTime;
+      console.error(
+        "╔═══════════════════════════════════════════════════════════╗",
+      );
+      console.error("║ [walletService] >>> ERROR: Authorization failed");
+      console.error("║ Total duration: " + totalDuration + "ms");
+      console.error(
+        "╚═══════════════════════════════════════════════════════════╝",
+      );
+      console.error("[walletService] Error details:");
+      console.error(
+        "[walletService]   - Error type:",
+        error?.constructor?.name || "Unknown",
+      );
+      console.error(
+        "[walletService]   - Error message:",
+        error?.message || error,
+      );
+      console.error("[walletService]   - Error code:", error?.code);
+      console.error("[walletService]   - Error stack:", error?.stack);
 
       // Handle specific error types
       if (error.code === "ERR_WALLET_NOT_FOUND") {
@@ -161,6 +417,10 @@ class WalletService {
     selectedAddresses?: string[],
   ): Promise<LinkedWallet[]> {
     try {
+      console.log("[walletService] Finalizing wallet authorization...");
+      console.log("[walletService] Preview accounts:", preview.accounts);
+      console.log("[walletService] Selected addresses:", selectedAddresses);
+
       const selection =
         selectedAddresses && selectedAddresses.length > 0
           ? new Set(selectedAddresses)
@@ -169,14 +429,17 @@ class WalletService {
       const accountsToLink = preview.accounts.filter((account) =>
         selection ? selection.has(account.address) : true,
       );
+      console.log("[walletService] Accounts to link:", accountsToLink);
 
       if (accountsToLink.length === 0) {
+        console.error("[walletService] No accounts selected to link");
         throw new Error("Select at least one account to continue");
       }
 
+      console.log("[walletService] Finalize authorization successful");
       return accountsToLink;
     } catch (error) {
-      console.error("Error finalizing authorization:", error);
+      console.error("[walletService] Error finalizing authorization:", error);
       throw error;
     }
   }
