@@ -22,14 +22,14 @@ import Animated, {
 import { useTheme } from "../theme/ThemeContext";
 import { useSolana } from "../context/SolanaContext";
 import { fetchAssets } from "../services";
-import { SOLANA_CLUSTER } from "../config/env";
+// runtime network is read from `useSolanaStore` in this screen
 import { filterAssets } from "../utils";
 import { useWalletStore } from "../store/walletStore";
 import { useSolanaStore } from "../store/solanaStore";
 import PortfolioHeader from "../components/common/PortfolioHeader";
 import NetworkSwitcher from "../components/common/NetworkSwitcher";
 import {
-  ModernPortfolioLineChart,
+  GiftedLineChart,
   AssetAllocationPieChart,
 } from "../components/analytics";
 import WalletWidget from "../components/wallet/WalletWidget";
@@ -121,7 +121,11 @@ const PortfolioScreen: React.FC = () => {
       };
     }
 
-    fetchAssets(SOLANA_CLUSTER, address)
+    // Use the runtime `network` from solana store so switching between
+    // mainnet/devnet triggers a refetch of allocation assets. Convert to
+    // ChainId expected by fetchAssets (e.g. "solana:devnet").
+    const chainId = `solana:${network}` as any;
+    fetchAssets(chainId, address)
       .then((assets) => {
         if (!cancelled) {
           const { verified } = filterAssets(assets, {
@@ -140,7 +144,7 @@ const PortfolioScreen: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeWallet?.address]);
+  }, [activeWallet?.address, network]);
 
   // Update chart data and portfolio change percentage when active wallet changes
   useEffect(() => {
@@ -306,7 +310,7 @@ const PortfolioScreen: React.FC = () => {
                 <ActivityIndicator size="large" color={theme.colors.primary} />
               </View>
             ) : (
-              <ModernPortfolioLineChart history={chartData} />
+              <GiftedLineChart history={chartData} />
             )}
           </Animated.View>
         </View>

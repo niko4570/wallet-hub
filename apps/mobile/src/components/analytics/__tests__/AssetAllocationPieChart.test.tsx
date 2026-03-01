@@ -2,17 +2,6 @@ import React from "react";
 import { render, screen } from "@testing-library/react-native";
 import { AssetAllocationPieChart } from "../AssetAllocationPieChart";
 
-// Mock Dimensions for testing
-jest.mock("react-native", () => ({
-  ...jest.requireActual("react-native"),
-  Dimensions: {
-    get: jest.fn(() => ({
-      width: 375,
-      height: 812,
-    })),
-  },
-}));
-
 const mockTokensData = [
   { symbol: "SOL", usdValue: 1500 },
   { symbol: "USDC", usdValue: 1000 },
