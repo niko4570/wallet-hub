@@ -2,62 +2,72 @@
 
 ## Scope & Assets
 
-- **Mobile client (Expo RN)**: Handles wallet connection via Solana Mobile Wallet Adapter (MWA), biometric gating, balance display, and send flow orchestration.
-- **API + Session Services (NestJS)**: Issue/revoke session keys, store wallet metadata, enforce policies, and relay Solana transactions.
-- **On-chain interactions**: Solana mainnet-beta RPC via Helius.
+- **Mobile client (Expo RN)**: Handles wallet connection via Solana Mobile Wallet Adapter (MWA), biometric gating, secure API request signing, and send flow orchestration.
+- **API + Session services (NestJS)**: Issue/revoke session keys, validate biometric proof payloads, enforce request security guard controls, and accept audit events.
+- **On-chain interactions**: Solana RPC through configured endpoints (mainnet default; testnet/devnet override supported by env).
 
 High-value assets:
+
 1. User wallets (secret keys live in trusted wallets, never inside WalletHub).
-2. Session keys/tokens issued by backend.
-3. Policy definitions & audit logs.
+2. Session keys and wallet authorization tokens.
+3. Policy definitions and security telemetry (silent reauth + transaction audit records).
 4. Transaction intents (destinations, amounts).
 
 ## Trust Boundaries
 
-| Boundary | Description | Controls |
-| --- | --- | --- |
-| Device ↔ Wallet App | MWA deep link / intent | Wallet verifies dApp identity; WalletHub never sees seed phrases. |
-| Device ↔ Backend | HTTPS JSON APIs + typed contracts | Access tokens/session keys, TLS pinning (planned). |
-| Backend ↔ Solana RPC | Helius RPC key | API key stored server-side, rate limited. |
+| Boundary             | Description                 | Controls                                                                                                                                                                                             |
+| -------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Device ↔ Wallet App  | MWA deep link / intent      | Wallet verifies dApp identity; WalletHub never sees seed phrases.                                                                                                                                    |
+| Device ↔ Backend     | JSON APIs + typed contracts | HTTPS/localhost URL validation on mobile, wallet-signed write requests (`x-wallet-*` headers), nonce + body-hash replay protection, optional API key gate, body-size limit, in-memory rate limiting. |
+| Backend ↔ Solana RPC | RPC endpoints + API keys    | URL configuration centralized via infra config; expected to run over HTTPS endpoints.                                                                                                                |
 
 ## Threat Agents
 
-- Remote attacker attempting API abuse or replaying session tokens.
-- Malicious wallet/dApp integration sending malformed addresses (handled via normalization + base58 verification).
-- Compromised device or shoulder surfer trying to send funds without biometric approval.
+- Remote attacker attempting API abuse, replaying signed requests, or brute-forcing unauthenticated endpoints.
+- Malicious client/wallet integration sending malformed addresses, signatures, or request payloads.
+- Compromised device or shoulder-surfer trying to trigger wallet actions without biometric approval.
 - Backend insider or infrastructure compromise manipulating session policies.
-- Network adversary spoofing RPC/backends (mitigated by HTTPS + future mTLS/TLS pinning).
+- Network adversary attempting endpoint spoofing/downgrade (partially mitigated; certificate pinning not yet implemented).
 
 ## Assumptions
 
 1. Users install WalletHub mobile client from trusted source and keep OS updated.
 2. Wallet private keys remain inside Solana wallets (Seed Vault, Phantom, Backpack, etc.).
 3. Device Secure Enclave/TEE enforces biometric factors; LocalAuthentication reports accurate enrollment state.
-4. Backend secrets (RPC keys, session signing keys, MPC creds) are stored in managed secret vaults.
-5. MPC/multi-sig signer integration will provide threshold security for high-value ops (placeholder today).
+4. Backend secrets (RPC keys, session API key, signing metadata) are managed securely by deployment environment.
+5. Current MPC signer logic is service-level policy + biometric approval logic, not yet external threshold cryptography infrastructure.
 
 ## Current Mitigations
 
-- **Biometric gating** before session management, connect, and send actions (Expo Local Authentication).
-- **Backend biometric proof validation** to ensure session issuance is tied to device-bound attestation data before issuing new keys.
-- **Address normalization / validation** prevents base64/non-base58 injection.
-- **Mainnet-only RPC + chain IDs** to avoid devnet spoofing risks.
-- **Silent re-authorization watchdog + auditing** proactively refreshes wallet tokens, records wallet capability probes, and captures all signed transactions (incl. method + signature) in backend memory for anomaly review.
-- **Session keys gated behind feature flag** (`SESSION_KEYS_ENABLED`) so the legacy signer path can be re-enabled deliberately without code changes.
-- **Env centralization** ensures RPC/API endpoints configured consistently; no ad-hoc `.env` parsing.
-- **Expo doctor & dependency pinning** keeps native stack aligned for predictable builds.
+- **Biometric gating in mobile** using `expo-local-authentication` for sensitive actions (wallet connect/register/remove/sign/send), with short-lived local approval reuse window.
+- **Wallet-signed backend writes** in mobile authorization API client: canonical message signing (`WalletHub|METHOD|PATH|NONCE|BODY_HASH`) with `x-wallet-*` headers.
+- **Backend request security guard** on `/session/*`: optional API key enforcement, body-size cap, per-client in-memory rate limiting, signature verification (`tweetnacl` + base58 pubkey), nonce replay cache with TTL, and body-hash integrity checks.
+- **Backend biometric proof validation** for session issuance: base64 payload parsing, JSON schema-like field checks, max-age validation, and minimum confidence threshold.
+- **Session key lifecycle controls**: feature flag gate (`SESSION_KEYS_ENABLED`, default false), issue/revoke paths, and hourly cron cleanup for expired active keys.
+- **Session scope/policy checks** in MPC signer service: scope non-empty, confidence minimum, daily spend and allowlist checks against session policy.
+- **Security telemetry endpoints** for silent reauthorization and transaction audits are active, but currently in-memory capped buffers (non-durable).
+- **Network URL validation on mobile** enforces HTTPS (with localhost/private-IP exceptions in non-production) before fetch.
+
+## Known Gaps / Residual Risk
+
+1. **Audit persistence gap**: silent reauth and transaction audit records are stored in process memory only; restarts lose history.
+2. **Rate-limit durability gap**: in-memory limiter and nonce cache are per-instance; distributed deployments need shared state.
+3. **Transport hardening gap**: no certificate pinning/mTLS yet for mobile↔backend or backend↔RPC links.
+4. **MPC maturity gap**: current signer is policy-driven service logic; production threshold signing/HSM/MPC provider integration is pending.
+5. **Best-effort telemetry**: mobile catches and logs failures when posting audit events, so some events may be dropped during outages.
 
 ## Planned Controls
 
-1. **MPC / multi-sig signer abstraction** for backend-issued session keys, with biometric attestation payloads.
-2. **Session key registry program** to anchor issuance & revocation on-chain once feature flag is flipped.
-3. **Policy engine** (rate limits, amount caps, device trust) enforced before relaying txns.
-4. **Audit anomaly detection pipeline** that streams the existing logs into SIEM for automated investigations.
-5. **Secure bootstrap scripts/CI** for reproducible build artifacts and supply-chain monitoring.
+1. **Durable security telemetry** (DB-backed audit + silent reauth records) with retention policy and query tooling.
+2. **Distributed request protection** using shared nonce/rate-limit stores (e.g., Redis) for multi-instance backends.
+3. **Certificate pinning / stronger transport controls** for mobile API calls and hardened RPC connectivity.
+4. **Production-grade MPC/threshold signer integration** with key custody controls and explicit trust boundaries.
+5. **On-chain session registry + revocation anchoring** and richer policy evaluation before transaction relay.
+6. **Anomaly detection pipeline** that streams telemetry into SIEM for automated alerting and incident response.
 
 ## Compliance & Privacy Notes
 
-- WalletHub never stores private keys or biometric data; only success/failure events.
-- Session tokens scoped to device + policy; revocable on backend and soon on-chain.
-- API responses exclude PII beyond wallet labels and device metadata.
-- Future milestones: SOC2-style logging, GDPR/CCPA data export & deletion, and MPC provider DPAs.
+- WalletHub does not store wallet private keys or raw biometric templates.
+- Backend stores session metadata/policy and security telemetry needed for authorization and auditing.
+- Session key issuance is environment-gated (`SESSION_KEYS_ENABLED`) and revocable in backend APIs.
+- Future milestones: SOC2-aligned controls, GDPR/CCPA export/deletion workflows, and formal DPA review for external custody/MPC providers.

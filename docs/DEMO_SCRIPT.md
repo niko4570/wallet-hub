@@ -1,7 +1,9 @@
 # WalletHub Demo Script
+
 ## MONOLITH Solana Mobile Hackathon
 
 ### Demo Overview
+
 **Duration**: 5-7 minutes
 **Goal**: Showcase WalletHub's mobile-first wallet aggregation with MWA integration
 
@@ -10,6 +12,7 @@
 ## Setup (Before Demo)
 
 ### Required
+
 - [ ] Android device with Phantom/Solflare wallet installed
 - [ ] Backend API running and accessible
 - [ ] Demo wallet with ~0.1 SOL + some tokens
@@ -17,6 +20,7 @@
 - [ ] Screen recording software ready
 
 ### Environment
+
 - Backend: Running on Railway/Render at `https://api.wallethub.app`
 - Mobile: Preview build installed via EAS
 - Network: Solana Mainnet (via Helius)
@@ -26,7 +30,9 @@
 ## Demo Flow
 
 ### 1. Introduction (30 seconds)
-**Script**: 
+
+**Script**:
+
 > "WalletHub is a mobile-native Solana wallet hub that aggregates multiple wallets through Mobile Wallet Adapter, providing unified portfolio tracking, activity visualization, and secure transactions—all with biometric authentication."
 
 **Show**: App icon and splash screen
@@ -34,7 +40,9 @@
 ---
 
 ### 2. Wallet Connection (1 minute)
+
 **Action**:
+
 1. Open WalletHub
 2. Tap "Connect Wallet" button
 3. Show MWA chooser appearing automatically
@@ -43,11 +51,13 @@
 6. Return to WalletHub
 
 **Highlight**:
+
 - "No manual wallet discovery needed"
 - "MWA system chooser handles everything"
 - "Wallet apps decide which accounts to share"
 
 **Expected Result**:
+
 - Wallet connected
 - Balance displayed immediately
 - Address shown with copy functionality
@@ -55,7 +65,9 @@
 ---
 
 ### 3. Portfolio Visualization (1.5 minutes)
+
 **Action**:
+
 1. Pull down to refresh balance
 2. Scroll to balance chart
 3. Point out 24h history
@@ -63,12 +75,14 @@
 5. Show token distribution
 
 **Highlight**:
+
 - "Real-time balance tracking via Helius RPC"
 - "Historical data shows portfolio changes"
 - "Token allocation breakdown from Jupiter"
 - "All data aggregated client-side for privacy"
 
 **Expected Result**:
+
 - Charts render smoothly
 - Data updates on refresh
 - Token names and values displayed
@@ -76,7 +90,9 @@
 ---
 
 ### 4. Activity Tracking (1.5 minutes)
+
 **Action**:
+
 1. Scroll to Recent Activity section
 2. Tap an activity item
 3. Show transaction detail modal
@@ -92,12 +108,14 @@
 7. Return to app
 
 **Highlight**:
+
 - "Activity merged from Jupiter + Helius"
 - "Rich transaction details in-app"
 - "One-tap explorer verification"
 - "Copy signature/address for sharing"
 
 **Expected Result**:
+
 - Activity list populated
 - Detail modal shows complete info
 - External links work
@@ -105,7 +123,9 @@
 ---
 
 ### 5. Send Transaction (2 minutes)
+
 **Action**:
+
 1. Tap "Send" button
 2. Show biometric prompt
 3. Authenticate (Face ID/Fingerprint)
@@ -125,12 +145,14 @@
     - New transaction appears
 
 **Highlight**:
+
 - "Biometric security before sensitive ops"
 - "Real-time fee estimation"
 - "Smart max amount calculation"
 - "Instant UI updates post-confirmation"
 
 **Expected Result**:
+
 - Transaction sent successfully
 - Balance decremented
 - New transaction in activity feed
@@ -138,7 +160,9 @@
 ---
 
 ### 6. Receive Flow (45 seconds)
+
 **Action**:
+
 1. Tap "Receive" button
 2. Show QR code
 3. Point out address
@@ -148,11 +172,13 @@
 7. Show share sheet
 
 **Highlight**:
+
 - "No biometric needed for receive"
 - "QR for easy in-person transfers"
 - "Copy/share for remote transfers"
 
 **Expected Result**:
+
 - QR code displays
 - Copy works
 - Share sheet appears
@@ -160,7 +186,9 @@
 ---
 
 ### 7. Multiple Wallet Management (1 minute)
+
 **Action**:
+
 1. Open account selector
 2. Show connected wallet
 3. Point out:
@@ -175,12 +203,14 @@
 9. Show success
 
 **Highlight**:
+
 - "Multi-wallet support via MWA"
 - "Primary wallet for default sends"
 - "Biometric guard on primary changes"
 - "Per-wallet activity tracking"
 
 **Expected Result**:
+
 - Can switch between wallets
 - Primary wallet marked
 - Changes require auth
@@ -188,13 +218,16 @@
 ---
 
 ### 8. Architecture Highlights (30 seconds)
+
 **Show** (slide/diagram if available):
+
 - Mobile Wallet Adapter integration
 - Client-side data aggregation
 - Backend session management
 - Biometric security layer
 
 **Script**:
+
 > "Under the hood, WalletHub leverages MWA for native wallet auth, aggregates data from Jupiter and Helius for rich portfolio insights, implements biometric gating for security, and maintains a minimal backend for session coordination and push notifications."
 
 ---
@@ -202,6 +235,7 @@
 ## Key Talking Points
 
 ### Technical Excellence
+
 - ✅ Pure MWA integration (no custom wallet detection)
 - ✅ System chooser for wallet selection
 - ✅ Biometric security for sensitive operations
@@ -211,6 +245,7 @@
 - ✅ TypeScript monorepo with shared contracts
 
 ### User Experience
+
 - ✅ Zero-friction wallet connection
 - ✅ Intuitive portfolio visualization
 - ✅ Detailed transaction history
@@ -219,6 +254,7 @@
 - ✅ Haptic feedback throughout
 
 ### Mobile-First Design
+
 - ✅ Native Android (React Native + Expo)
 - ✅ Dark theme optimized for OLED
 - ✅ Gesture-friendly navigation
@@ -230,14 +266,17 @@
 ## Fallback Scenarios
 
 ### If Wallet Connection Fails
+
 **Fallback**: Show already-connected state from previous session
 **Script**: "In case of connection issues, the app caches authorized sessions securely. Let me show the portfolio view with a pre-connected wallet."
 
 ### If Transaction Fails
+
 **Fallback**: Show transaction history with past successful txns
 **Script**: "Transaction submission requires network confirmation. Let me show previous successful transactions and their details instead."
 
 ### If Data Loading Slow
+
 **Fallback**: Show skeleton loaders and explain caching
 **Script**: "We show loading states while fetching from Jupiter and Helius APIs. The app caches data locally for instant subsequent loads."
 
@@ -284,6 +323,7 @@ A: Multi-sig support, NFT gallery, DeFi protocol integration, token swaps via Ju
 ## Submission Materials
 
 ### Required
+
 1. **Video Demo** (3-5 min)
    - Screen recording + voiceover
    - Show key features
@@ -308,6 +348,7 @@ A: Multi-sig support, NFT gallery, DeFi protocol integration, token swaps via Ju
    - Receive QR
 
 ### Optional Bonus
+
 - Architecture diagram
 - API documentation
 - Deployment guide
@@ -319,13 +360,15 @@ A: Multi-sig support, NFT gallery, DeFi protocol integration, token swaps via Ju
 ## Success Metrics
 
 ### Demo Success Indicators
-✅ Wallet connects on first try
-✅ Charts render smoothly
-✅ Transaction completes successfully
-✅ No crashes or freezes
-✅ Stays within 7-minute window
+
+[x] Wallet connects on first try
+[x] Charts render smoothly
+[x] Transaction completes successfully
+[x] No crashes or freezes
+[x] Stays within 7-minute window
 
 ### Judge Appeal Points
+
 - Clean, modern UI
 - Smooth animations
 - Responsive interactions
@@ -336,6 +379,7 @@ A: Multi-sig support, NFT gallery, DeFi protocol integration, token swaps via Ju
 ---
 
 ## Contact Info for Follow-up
+
 - GitHub: [Your GitHub]
 - Email: [Your Email]
 - Twitter: [Your Twitter]
