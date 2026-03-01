@@ -49,5 +49,8 @@
     "onlyBuiltDependencies": [
       "@shopify/react-native-skia"
     ]
+  },
+  "dependencies": {
+    "react-native-gifted-charts": "^1.4.74"
   }
 }

@@ -1,8 +1,49 @@
-import "react-native-get-random-values";
-import { registerRootComponent } from "expo";
-import { Buffer } from "buffer";
-import { getRandomValues as expoCryptoGetRandomValues } from "expo-crypto";
-import { AppRegistry } from "react-native";
+// Keep AppRegistry override as early as possible to prevent duplicate headless task registration.
+const { AppRegistry } = require("react-native");
+
+const headlessTaskRegistry: Set<string> =
+  (globalThis as any).__whHeadlessTaskRegistry ?? new Set<string>();
+(globalThis as any).__whHeadlessTaskRegistry = headlessTaskRegistry;
+
+type HeadlessTaskProvider = () => Promise<unknown>;
+type HeadlessTaskCancelProvider = () => void;
+
+const originalRegisterHeadlessTask = AppRegistry.registerHeadlessTask;
+AppRegistry.registerHeadlessTask = (
+  taskKey: string,
+  taskProvider: HeadlessTaskProvider,
+) => {
+  if (headlessTaskRegistry.has(taskKey)) {
+    return;
+  }
+  headlessTaskRegistry.add(taskKey);
+  return originalRegisterHeadlessTask(taskKey, taskProvider);
+};
+
+if (typeof AppRegistry.registerCancellableHeadlessTask === "function") {
+  const originalRegisterCancellableHeadlessTask =
+    AppRegistry.registerCancellableHeadlessTask;
+  AppRegistry.registerCancellableHeadlessTask = (
+    taskKey: string,
+    taskProvider: HeadlessTaskProvider,
+    cancelTaskProvider: HeadlessTaskCancelProvider,
+  ) => {
+    if (headlessTaskRegistry.has(taskKey)) {
+      return;
+    }
+    headlessTaskRegistry.add(taskKey);
+    return originalRegisterCancellableHeadlessTask(
+      taskKey,
+      taskProvider,
+      cancelTaskProvider,
+    );
+  };
+}
+
+require("react-native-get-random-values");
+const { registerRootComponent } = require("expo");
+const { Buffer } = require("buffer");
+const { getRandomValues: expoCryptoGetRandomValues } = require("expo-crypto");
 
 (globalThis as any).Buffer = Buffer;
 
@@ -24,39 +65,6 @@ const cryptoInstance =
     });
   }
 })();
-
-const headlessTaskRegistry: Set<string> =
-  (globalThis as any).__whHeadlessTaskRegistry ?? new Set<string>();
-(globalThis as any).__whHeadlessTaskRegistry = headlessTaskRegistry;
-
-const originalRegisterHeadlessTask = AppRegistry.registerHeadlessTask;
-AppRegistry.registerHeadlessTask = (taskKey, taskProvider) => {
-  if (headlessTaskRegistry.has(taskKey)) {
-    return;
-  }
-  headlessTaskRegistry.add(taskKey);
-  return originalRegisterHeadlessTask(taskKey, taskProvider);
-};
-
-if (typeof AppRegistry.registerCancellableHeadlessTask === "function") {
-  const originalRegisterCancellableHeadlessTask =
-    AppRegistry.registerCancellableHeadlessTask;
-  AppRegistry.registerCancellableHeadlessTask = (
-    taskKey,
-    taskProvider,
-    cancelTaskProvider,
-  ) => {
-    if (headlessTaskRegistry.has(taskKey)) {
-      return;
-    }
-    headlessTaskRegistry.add(taskKey);
-    return originalRegisterCancellableHeadlessTask(
-      taskKey,
-      taskProvider,
-      cancelTaskProvider,
-    );
-  };
-}
 
 import App from "./App";
 

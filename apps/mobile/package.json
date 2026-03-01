@@ -12,7 +12,6 @@
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
     "@expo/vector-icons": "^15.0.3",
-    "@jup-ag/api": "^6.0.48",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native/virtualized-lists": "0.81.5",
     "@react-navigation/bottom-tabs": "^7.12.0",
@@ -44,7 +43,6 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
-    "react-native-chart-kit": "^6.12.0",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-get-random-values": "~1.11.0",
     "react-native-paper": "^5.12.3",
@@ -58,7 +56,6 @@
     "stream-browserify": "^3.0.0",
     "stream-http": "^3.2.0",
     "util": "^0.12.5",
-    "victory-native": "^41.20.2",
     "whatwg-url": "^5.0.0",
     "zustand": "^5.0.11"
   },
@@ -67,6 +64,7 @@
     "@testing-library/jest-native": "^5.4.3",
     "@testing-library/react-native": "^13.3.3",
     "@types/jest": "^29.5.14",
+    "@types/node": "^22.19.11",
     "@types/react": "~19.1.0",
     "babel-plugin-transform-inline-environment-variables": "^0.4.4",
     "react-test-renderer": "19.1.0",
