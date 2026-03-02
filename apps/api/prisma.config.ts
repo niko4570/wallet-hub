@@ -6,6 +6,7 @@ export default defineConfig({
     path: 'prisma/migrations',
   },
   datasource: {
-    url: env('DATABASE_URL'),
+    // Allow generation without a real database; Render build may omit DATABASE_URL
+    url: env('DATABASE_URL', 'postgresql://local/local'),
   },
 });

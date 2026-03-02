@@ -6,12 +6,7 @@ services:
     region: oregon
     plan: free
     buildCommand: |
-      corepack enable
-      corepack prepare pnpm@latest --activate
-      pnpm install --frozen-lockfile
-      pnpm run build:contracts
-      pnpm run build:api
-      pnpm --filter api exec prisma generate --schema=apps/api/prisma/schema.prisma
+      corepack enable && corepack prepare pnpm@latest --activate && pnpm install --frozen-lockfile && pnpm run build:contracts && pnpm run build:api && pnpm --filter api exec prisma generate --schema=apps/api/prisma/schema.prisma
     startCommand: pnpm --filter api run start:prod
     envVars:
       - key: NODE_ENV
