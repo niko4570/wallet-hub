@@ -30,6 +30,18 @@ export type {
   PortfolioAllocationInput,
   PortfolioAllocationResult,
 } from "./portfolio/allocation";
+export {
+  normalizePortfolioSymbol,
+  classifyPortfolioCategory,
+  buildCategoryAllocation,
+  buildCategoryBreakdown,
+  calculateConcentrationMetrics,
+} from "./portfolio/allocationCategories";
+export type {
+  PortfolioCategoryName,
+  PortfolioCategorySlice,
+  PortfolioConcentrationMetrics,
+} from "./portfolio/allocationCategories";
 
 export {
   calculatePortfolioChangePercent,

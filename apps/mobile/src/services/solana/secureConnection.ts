@@ -281,7 +281,20 @@ export class SecureConnection extends Connection {
     if (json.error) {
       throw new Error(json.error.message);
     }
-    return json.result;
+    const payload = json?.result?.value ?? json?.result;
+
+    if (
+      !payload ||
+      typeof payload.blockhash !== "string" ||
+      typeof payload.lastValidBlockHeight !== "number"
+    ) {
+      throw new Error("Invalid getLatestBlockhash RPC response");
+    }
+
+    return {
+      blockhash: payload.blockhash,
+      lastValidBlockHeight: payload.lastValidBlockHeight,
+    };
   }
 
   async getTransaction(

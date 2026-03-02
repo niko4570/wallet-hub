@@ -149,14 +149,6 @@ export async function fetchAccountSnapshot(
 async function fetchServerSnapshot(
   address: string,
 ): Promise<ServerSnapshotResponse> {
-  try {
-    await fetch(`${API_URL}/helius/accounts/${address}/track`, {
-      method: "POST",
-    });
-  } catch (err) {
-    console.debug("Helius track registration failed", err);
-  }
-
   const response = await fetch(
     `${API_URL}/helius/accounts/${address}/snapshot`,
   );
