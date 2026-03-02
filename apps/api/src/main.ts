@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 import { LoggingInterceptor } from './interceptors/logging.interceptor';
+import { ConfigService } from '@nestjs/config';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { cors: true });
   const maxBodyBytes = Number(process.env.SESSION_MAX_BODY_BYTES ?? 65536);
@@ -18,7 +19,10 @@ async function bootstrap() {
 
   app.useGlobalInterceptors(new LoggingInterceptor());
 
-  const port = process.env.PORT ? Number(process.env.PORT) : 10000;
+  const configService = app.get(ConfigService);
+  const port = Number(
+    configService.get<number>('port') ?? process.env.PORT ?? 3000,
+  );
   const host = process.env.HOST || '0.0.0.0';
   await app.listen(port, host);
   console.log(`WalletHub API running on http://${host}:${port}`);
