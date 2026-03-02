@@ -11,6 +11,8 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { useNavigation } from "@react-navigation/native";
+import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -38,7 +40,10 @@ import SendModal from "../components/portfolio/SendModal";
 import ReceiveModal from "../components/portfolio/ReceiveModal";
 import { toast } from "../components/common/ErrorToast";
 import * as Haptics from "expo-haptics";
-import { useWalletHistoricalStore } from "../store/walletStore";
+import {
+  useWalletActivityStore,
+  useWalletHistoricalStore,
+} from "../store/walletStore";
 import {
   TIME_RANGE_OPTIONS,
   ANIMATION_CONFIG,
@@ -50,6 +55,7 @@ import {
   calculatePortfolioChangePercent,
   filterHistoricalDataByRange,
 } from "../utils";
+import type { MainTabParamList } from "../navigation/AppNavigator";
 
 // Helper function to map fetched assets to chart-ready tokens
 const getAssetAllocationTokens = (
@@ -61,6 +67,7 @@ const getAssetAllocationTokens = (
   }));
 
 const PortfolioScreen: React.FC = () => {
+  const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { sendSol, refreshBalance, detailedBalances } = useSolana();
@@ -69,6 +76,9 @@ const PortfolioScreen: React.FC = () => {
   const { network } = useSolanaStore();
   const getHistoricalBalances = useWalletHistoricalStore(
     (state) => state.getHistoricalBalances,
+  );
+  const walletActivity = useWalletActivityStore(
+    (state) => state.walletActivity,
   );
 
   // Portfolio state
@@ -89,6 +99,51 @@ const PortfolioScreen: React.FC = () => {
       initialHistoryData,
       parseInt(TIME_RANGE_OPTIONS.DEFAULT),
     ),
+  );
+
+  const chartEvents = React.useMemo(() => {
+    if (!activeWallet?.address) {
+      return [];
+    }
+
+    const sourceEvents = walletActivity[activeWallet.address] ?? [];
+    if (sourceEvents.length === 0) {
+      return [];
+    }
+
+    const days = parseInt(timeRange);
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+
+    return sourceEvents
+      .filter(
+        (entry) =>
+          typeof entry.timestamp === "number" && entry.timestamp >= cutoff,
+      )
+      .map((entry) => ({
+        signature: entry.signature,
+        timestamp: entry.timestamp,
+        direction: entry.direction,
+        type: entry.type,
+        description: entry.description,
+        amount: entry.amount,
+        amountUnit: entry.amountUnit,
+        status: entry.status,
+      }));
+  }, [activeWallet?.address, timeRange, walletActivity]);
+
+  const handleChartEventPress = useCallback(
+    (event: { signature?: string; timestamp: number }) => {
+      if (!event.signature) {
+        return;
+      }
+
+      navigation.navigate("Activity", {
+        focusSignature: event.signature,
+        focusTimestamp: event.timestamp,
+        focusNonce: Date.now(),
+      });
+    },
+    [navigation],
   );
 
   // Modal states
@@ -310,7 +365,11 @@ const PortfolioScreen: React.FC = () => {
                 <ActivityIndicator size="large" color={theme.colors.primary} />
               </View>
             ) : (
-              <GiftedLineChart history={chartData} />
+              <GiftedLineChart
+                history={chartData}
+                events={chartEvents}
+                onEventPress={handleChartEventPress}
+              />
             )}
           </Animated.View>
         </View>

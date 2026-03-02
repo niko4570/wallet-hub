@@ -1,4 +1,11 @@
-import React, { useState, useCallback, useEffect, useMemo, memo } from "react";
+import React, {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  memo,
+  useRef,
+} from "react";
 import {
   View,
   Text,
@@ -11,12 +18,14 @@ import {
   Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRoute, RouteProp } from "@react-navigation/native";
 import { formatAddress, formatAmount } from "../utils";
-import { useWalletStore } from "../store/walletStore";
-import { rpcService } from "../services";
+import { useWalletActivityStore, useWalletStore } from "../store/walletStore";
+import { fetchAccountSnapshot } from "../services";
 import { Transaction } from "../types";
 import { SkeletonTransaction } from "../components/common/SkeletonLoader";
-import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { IncomeExpenseFlowChart } from "../components/analytics";
+import type { MainTabParamList } from "../navigation/AppNavigator";
 import {
   ArrowUpRight,
   ArrowDownLeft,
@@ -25,14 +34,23 @@ import {
   X,
 } from "lucide-react-native";
 
+const CACHE_EXPIRATION = 5 * 60 * 1000;
+const MAX_TOTAL_TRANSACTIONS = 100;
+
 const ActivityScreen = () => {
-  const { linkedWallets, activeWallet } = useWalletStore();
+  const route = useRoute<RouteProp<MainTabParamList, "Activity">>();
+  const { linkedWallets } = useWalletStore();
+  const { walletActivity, setWalletActivity } = useWalletActivityStore();
+  const lastHandledFocusKeyRef = useRef<string | null>(null);
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [lastSignature, setLastSignature] = useState<string | undefined>();
-  const [hasMore, setHasMore] = useState(true);
+  const [highlightedSignature, setHighlightedSignature] = useState<
+    string | null
+  >(null);
   const [selectedTransaction, setSelectedTransaction] =
     useState<Transaction | null>(null);
   const [showTransactionDetail, setShowTransactionDetail] = useState(false);
@@ -48,161 +66,173 @@ const ActivityScreen = () => {
     >
   >({});
 
-  // Cache expiration time (5 minutes)
-  const CACHE_EXPIRATION = 5 * 60 * 1000;
-
-interface TransactionItemProps {
-  item: Transaction;
-  linkedWallets: any[];
-  onPress: (transaction: Transaction) => void;
-}
-
-const TransactionItem = memo(({ item, linkedWallets, onPress }: TransactionItemProps) => {
-  const linkedWalletAddresses = linkedWallets.map(
-    (wallet: any) => wallet.address,
-  );
-
-  const isOutbound = linkedWalletAddresses.includes(item.source);
-  const isInbound = linkedWalletAddresses.includes(item.destination);
-
-  if (!isOutbound && !isInbound) {
-    return null;
+  interface TransactionItemProps {
+    item: Transaction;
+    linkedWallets: any[];
+    onPress: (transaction: Transaction) => void;
+    isHighlighted: boolean;
   }
 
-  const amountUnit = item.amountUnit ?? "SOL";
-  const counterpartyAddress = isOutbound ? item.destination : item.source;
-  const formattedCounterparty = formatAddress(counterpartyAddress);
+  const TransactionItem = memo(
+    ({ item, linkedWallets, onPress, isHighlighted }: TransactionItemProps) => {
+      const linkedWalletAddresses = linkedWallets.map(
+        (wallet: any) => wallet.address,
+      );
 
-  const getTransactionInfo = () => {
-    switch (item.type) {
-      case "transfer":
-        return {
-          title: isOutbound ? "Sent SOL" : "Received SOL",
-          icon: isOutbound ? (
-            <ArrowUpRight size={20} color="#FF4D4D" />
-          ) : (
-            <ArrowDownLeft size={20} color="#00FFB3" />
-          ),
-          iconColor: isOutbound ? "#FF4D4D" : "#00FFB3",
-        };
-      case "token_transfer":
-        return {
-          title: isOutbound ? "Sent Token" : "Received Token",
-          icon: isOutbound ? (
-            <ArrowUpRight size={20} color="#FFA500" />
-          ) : (
-            <ArrowDownLeft size={20} color="#32CD32" />
-          ),
-          iconColor: isOutbound ? "#FFA500" : "#32CD32",
-        };
-      case "stake_delegate":
-        return {
-          title: "Staked SOL",
-          icon: <ArrowUpRight size={20} color="#1E90FF" />,
-          iconColor: "#1E90FF",
-        };
-      case "stake_withdraw":
-        return {
-          title: "Unstaked SOL",
-          icon: <ArrowDownLeft size={20} color="#9370DB" />,
-          iconColor: "#9370DB",
-        };
-      case "nft_transfer":
-        return {
-          title: isOutbound ? "Sent NFT" : "Received NFT",
-          icon: isOutbound ? (
-            <ArrowUpRight size={20} color="#FF69B4" />
-          ) : (
-            <ArrowDownLeft size={20} color="#FF69B4" />
-          ),
-          iconColor: "#FF69B4",
-        };
-      case "swap":
-        return {
-          title: "Swapped Tokens",
-          icon: <ArrowUpRight size={20} color="#FFD700" />,
-          iconColor: "#FFD700",
-        };
-      default:
-        return {
-          title: isOutbound ? "Sent" : "Received",
-          icon: isOutbound ? (
-            <ArrowUpRight size={20} color="#FF4D4D" />
-          ) : (
-            <ArrowDownLeft size={20} color="#00FFB3" />
-          ),
-          iconColor: isOutbound ? "#FF4D4D" : "#00FFB3",
-        };
-    }
-  };
+      const isOutbound = linkedWalletAddresses.includes(item.source);
+      const isInbound = linkedWalletAddresses.includes(item.destination);
 
-  const transactionInfo = getTransactionInfo();
+      if (!isOutbound && !isInbound) {
+        return null;
+      }
 
-  return (
-    <TouchableOpacity
-      style={styles.transactionItem}
-      onPress={() => onPress(item)}
-    >
-      <View
-        style={[
-          styles.transactionIcon,
-          { backgroundColor: `${transactionInfo.iconColor}20` },
-        ]}
-      >
-        {transactionInfo.icon}
-      </View>
-      <View style={styles.transactionContent}>
-        <Text style={styles.transactionTitle}>{transactionInfo.title}</Text>
-        <Text style={styles.transactionAddress}>
-          {isOutbound
-            ? `To ${formattedCounterparty}`
-            : `From ${formattedCounterparty}`}
-        </Text>
-        <Text style={styles.transactionWallet}>
-          {isOutbound
-            ? `From ${formatAddress(item.source)}`
-            : `To ${formatAddress(item.destination)}`}
-        </Text>
-      </View>
-      <View style={styles.transactionAmountContainer}>
-        <Text
+      const amountUnit = item.amountUnit ?? "SOL";
+      const counterpartyAddress = isOutbound ? item.destination : item.source;
+      const formattedCounterparty = formatAddress(counterpartyAddress);
+
+      const getTransactionInfo = () => {
+        switch (item.type) {
+          case "transfer":
+            return {
+              title: isOutbound ? "Sent SOL" : "Received SOL",
+              icon: isOutbound ? (
+                <ArrowUpRight size={20} color="#FF4D4D" />
+              ) : (
+                <ArrowDownLeft size={20} color="#00FFB3" />
+              ),
+              iconColor: isOutbound ? "#FF4D4D" : "#00FFB3",
+            };
+          case "token_transfer":
+            return {
+              title: isOutbound ? "Sent Token" : "Received Token",
+              icon: isOutbound ? (
+                <ArrowUpRight size={20} color="#FFA500" />
+              ) : (
+                <ArrowDownLeft size={20} color="#32CD32" />
+              ),
+              iconColor: isOutbound ? "#FFA500" : "#32CD32",
+            };
+          case "stake_delegate":
+            return {
+              title: "Staked SOL",
+              icon: <ArrowUpRight size={20} color="#1E90FF" />,
+              iconColor: "#1E90FF",
+            };
+          case "stake_withdraw":
+            return {
+              title: "Unstaked SOL",
+              icon: <ArrowDownLeft size={20} color="#9370DB" />,
+              iconColor: "#9370DB",
+            };
+          case "nft_transfer":
+            return {
+              title: isOutbound ? "Sent NFT" : "Received NFT",
+              icon: isOutbound ? (
+                <ArrowUpRight size={20} color="#FF69B4" />
+              ) : (
+                <ArrowDownLeft size={20} color="#FF69B4" />
+              ),
+              iconColor: "#FF69B4",
+            };
+          case "swap":
+            return {
+              title: "Swapped Tokens",
+              icon: <ArrowUpRight size={20} color="#FFD700" />,
+              iconColor: "#FFD700",
+            };
+          default:
+            return {
+              title: isOutbound ? "Sent" : "Received",
+              icon: isOutbound ? (
+                <ArrowUpRight size={20} color="#FF4D4D" />
+              ) : (
+                <ArrowDownLeft size={20} color="#00FFB3" />
+              ),
+              iconColor: isOutbound ? "#FF4D4D" : "#00FFB3",
+            };
+        }
+      };
+
+      const transactionInfo = getTransactionInfo();
+
+      return (
+        <TouchableOpacity
           style={[
-            styles.transactionAmount,
-            isOutbound && styles.transactionAmountOutbound,
+            styles.transactionItem,
+            isHighlighted && styles.transactionItemHighlighted,
           ]}
+          onPress={() => onPress(item)}
         >
-          {isOutbound
-            ? `- ${formatAmount(item.amount)} ${amountUnit}`
-            : `+ ${formatAmount(item.amount)} ${amountUnit}`}
-        </Text>
-      </View>
-    </TouchableOpacity>
+          <View
+            style={[
+              styles.transactionIcon,
+              { backgroundColor: `${transactionInfo.iconColor}20` },
+            ]}
+          >
+            {transactionInfo.icon}
+          </View>
+          <View style={styles.transactionContent}>
+            <Text style={styles.transactionTitle}>{transactionInfo.title}</Text>
+            <Text style={styles.transactionAddress}>
+              {isOutbound
+                ? `To ${formattedCounterparty}`
+                : `From ${formattedCounterparty}`}
+            </Text>
+            <Text style={styles.transactionWallet}>
+              {isOutbound
+                ? `From ${formatAddress(item.source)}`
+                : `To ${formatAddress(item.destination)}`}
+            </Text>
+          </View>
+          <View style={styles.transactionAmountContainer}>
+            <Text
+              style={[
+                styles.transactionAmount,
+                isOutbound && styles.transactionAmountOutbound,
+              ]}
+            >
+              {isOutbound
+                ? `- ${formatAmount(item.amount)} ${amountUnit}`
+                : `+ ${formatAmount(item.amount)} ${amountUnit}`}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      );
+    },
   );
-});
 
-interface TransactionGroupProps {
-  item: { date: string; transactions: Transaction[] };
-  linkedWallets: any[];
-  onTransactionPress: (transaction: Transaction) => void;
-}
+  interface TransactionGroupProps {
+    item: { date: string; transactions: Transaction[] };
+    linkedWallets: any[];
+    onTransactionPress: (transaction: Transaction) => void;
+    highlightedSignature: string | null;
+  }
 
-const TransactionGroup = memo(({ item, linkedWallets, onTransactionPress }: TransactionGroupProps) => {
-  return (
-    <View style={styles.transactionGroup}>
-      <Text style={styles.transactionGroupDate}>{item.date}</Text>
-      {item.transactions.map((transaction) => (
-        <TransactionItem
-          key={transaction.id}
-          item={transaction}
-          linkedWallets={linkedWallets}
-          onPress={onTransactionPress}
-        />
-      ))}
-    </View>
+  const TransactionGroup = memo(
+    ({
+      item,
+      linkedWallets,
+      onTransactionPress,
+      highlightedSignature,
+    }: TransactionGroupProps) => {
+      return (
+        <View style={styles.transactionGroup}>
+          <Text style={styles.transactionGroupDate}>{item.date}</Text>
+          {item.transactions.map((transaction) => (
+            <TransactionItem
+              key={transaction.id}
+              item={transaction}
+              linkedWallets={linkedWallets}
+              onPress={onTransactionPress}
+              isHighlighted={transaction.signature === highlightedSignature}
+            />
+          ))}
+        </View>
+      );
+    },
   );
-});
 
-// Group transactions by date
+  // Group transactions by date
   const groupedTransactions = useMemo(() => {
     const groups: { [key: string]: Transaction[] } = {};
 
@@ -233,205 +263,92 @@ const TransactionGroup = memo(({ item, linkedWallets, onTransactionPress }: Tran
       });
   }, [transactions]);
 
-  // Calculate transaction amount and determine direction
-  const parseTransaction = useCallback(
-    (
-      tx: any,
-      signature: string,
-      blockTime: number | null,
-      status: string,
-    ): Transaction | null => {
-      try {
-        if (!tx?.transaction?.message) return null;
+  const resolveTransactionType = useCallback(
+    (type?: string, description?: string): Transaction["type"] => {
+      const normalizedType = (type ?? "").toLowerCase();
+      const normalizedDescription = (description ?? "").toLowerCase();
 
-        const { transaction, meta, slot } = tx;
-        const message = transaction.message;
-        const instructions = message?.instructions;
-
-        if (!Array.isArray(instructions) || instructions.length === 0) {
-          return null;
-        }
-
-        // Try to find a recognizable instruction
-        let parsedInstruction = null;
-        let transactionType:
-          | "transfer"
-          | "token_transfer"
-          | "stake_delegate"
-          | "stake_withdraw"
-          | "nft_transfer"
-          | "swap" = "transfer";
-        let amount = 0;
-        let amountUnit = "SOL";
-        let source = "";
-        let destination = "";
-
-        // Check for different types of transactions
-        for (const instruction of instructions) {
-          const parsed = instruction?.parsed;
-          if (!parsed?.info) {
-            continue;
-          }
-
-          const program = instruction?.program;
-          const type = parsed?.type;
-
-          // System transfers
-          if (program === "system" && type === "transfer") {
-            parsedInstruction = instruction;
-            transactionType = "transfer";
-            const info = parsed.info;
-            source = info.source || info.from || "";
-            destination = info.destination || info.to || "";
-            const lamports = Number(info.lamports ?? info.amount ?? 0);
-            amount = lamports / LAMPORTS_PER_SOL;
-            amountUnit = "SOL";
-            break;
-          }
-
-          // SPL Token transfers
-          if (
-            program === "spl-token" &&
-            (type === "transfer" || type === "transferChecked")
-          ) {
-            parsedInstruction = instruction;
-            transactionType = "token_transfer";
-            const info = parsed.info;
-            source =
-              info.source || info.authority || info.owner || info.from || "";
-            destination = info.destination || info.recipient || info.to || "";
-            const uiAmount = info.tokenAmount?.uiAmount;
-            const uiAmountString = info.tokenAmount?.uiAmountString;
-            amount =
-              typeof uiAmount === "number"
-                ? uiAmount
-                : Number(uiAmountString ?? info.amount ?? 0);
-            amountUnit = "TOKEN";
-            break;
-          }
-
-          // Staking (delegate stake)
-          if (program === "stake" && type === "delegate") {
-            parsedInstruction = instruction;
-            transactionType = "stake_delegate";
-            const info = parsed.info;
-            source = info.stakeAccount || "";
-            destination = info.voter || info.delegate || "";
-            // For staking, we don't have a direct amount, but we can infer it from the stake account
-            amount = 0; // We'd need to get the stake amount from the stake account
-            amountUnit = "SOL";
-            break;
-          }
-
-          // Staking (withdraw stake)
-          if (program === "stake" && type === "withdraw") {
-            parsedInstruction = instruction;
-            transactionType = "stake_withdraw";
-            const info = parsed.info;
-            source = info.stakeAccount || "";
-            destination = info.destination || "";
-            const lamports = Number(info.lamports ?? info.amount ?? 0);
-            amount = lamports / LAMPORTS_PER_SOL;
-            amountUnit = "SOL";
-            break;
-          }
-
-          // NFT transfers (SPL Token with decimals 0)
-          if (
-            program === "spl-token" &&
-            (type === "transfer" || type === "transferChecked")
-          ) {
-            const info = parsed.info;
-            const decimals = info.tokenAmount?.decimals;
-            if (decimals === 0) {
-              parsedInstruction = instruction;
-              transactionType = "nft_transfer";
-              source =
-                info.source || info.authority || info.owner || info.from || "";
-              destination = info.destination || info.recipient || info.to || "";
-              amount = 1; // NFTs are usually transferred one at a time
-              amountUnit = "NFT";
-              break;
-            }
-          }
-
-          // Swap transactions (detected by multiple token transfers)
-          if (
-            program === "spl-token" &&
-            (type === "transfer" || type === "transferChecked")
-          ) {
-            // This is a simplistic check - real swap detection would be more complex
-            transactionType = "swap";
-            parsedInstruction = instruction;
-            const info = parsed.info;
-            source =
-              info.source || info.authority || info.owner || info.from || "";
-            destination = info.destination || info.recipient || info.to || "";
-            const uiAmount = info.tokenAmount?.uiAmount;
-            const uiAmountString = info.tokenAmount?.uiAmountString;
-            amount =
-              typeof uiAmount === "number"
-                ? uiAmount
-                : Number(uiAmountString ?? info.amount ?? 0);
-            amountUnit = "TOKEN";
-            break;
-          }
-        }
-
-        if (!parsedInstruction) {
-          return null;
-        }
-
-        if (!source || !destination) {
-          return null;
-        }
-
-        const derivedStatus = meta?.err
-          ? "failed"
-          : status === "confirmed"
-            ? "success"
-            : "pending";
-        const fee =
-          typeof meta?.fee === "number"
-            ? meta.fee / LAMPORTS_PER_SOL
-            : undefined;
-
-        return {
-          id: signature,
-          signature,
-          source,
-          destination,
-          amount,
-          amountUnit,
-          status: derivedStatus,
-          timestamp: new Date(
-            blockTime ? blockTime * 1000 : Date.now(),
-          ).toISOString(),
-          type: transactionType,
-          fee,
-          slot: typeof slot === "number" ? slot : undefined,
-        };
-      } catch (error) {
-        console.warn(`Failed to parse transaction ${signature}:`, error);
-        return null;
+      if (normalizedType === "transfer") return "transfer";
+      if (normalizedType === "token_transfer") return "token_transfer";
+      if (normalizedType === "nft_transfer") return "nft_transfer";
+      if (normalizedType === "swap") return "swap";
+      if (normalizedType === "stake") {
+        return normalizedDescription.includes("withdraw") ||
+          normalizedDescription.includes("unstake")
+          ? "stake_withdraw"
+          : "stake_delegate";
       }
+
+      return "transfer";
     },
     [],
   );
 
+  const mapActivityToTransaction = useCallback(
+    (walletAddress: string, entry: any): Transaction => {
+      const normalizedWalletAddress = walletAddress.trim();
+      const direction = entry?.direction as
+        | "in"
+        | "out"
+        | "internal"
+        | undefined;
+
+      let source = typeof entry?.source === "string" ? entry.source.trim() : "";
+      let destination =
+        typeof entry?.destination === "string" ? entry.destination.trim() : "";
+
+      if (direction === "out") {
+        source = normalizedWalletAddress;
+        destination = destination || "Unknown";
+      } else if (direction === "in") {
+        source = source || "Unknown";
+        destination = normalizedWalletAddress;
+      } else {
+        source = source || normalizedWalletAddress;
+        destination = destination || normalizedWalletAddress;
+      }
+
+      const timestampValue =
+        typeof entry?.timestamp === "number" && Number.isFinite(entry.timestamp)
+          ? entry.timestamp
+          : Date.now();
+
+      return {
+        id: `${entry?.signature ?? `activity-${timestampValue}`}-${normalizedWalletAddress}`,
+        signature: entry?.signature ?? `activity-${timestampValue}`,
+        source,
+        destination,
+        amount:
+          typeof entry?.amount === "number" && Number.isFinite(entry.amount)
+            ? entry.amount
+            : 0,
+        amountUnit: entry?.mint ? "TOKEN" : "SOL",
+        status:
+          entry?.status === "failed"
+            ? "failed"
+            : entry?.status === "pending"
+              ? "pending"
+              : "success",
+        timestamp: new Date(timestampValue).toISOString(),
+        type: resolveTransactionType(entry?.type, entry?.description),
+        fee: typeof entry?.fee === "number" ? entry.fee : undefined,
+      };
+    },
+    [resolveTransactionType],
+  );
+
   // Fetch transactions for a single wallet
   const fetchWalletTransactions = useCallback(
-    async (
-      walletAddress: string,
-      limit: number = 20,
-      lastSignature?: string,
-    ) => {
+    async (walletAddress: string, forceRefresh = false) => {
       try {
-        // Check if we have cached transactions that are not expired
         const cachedData = transactionCache[walletAddress];
         const now = Date.now();
 
-        if (cachedData && now - cachedData.timestamp < CACHE_EXPIRATION) {
+        if (
+          !forceRefresh &&
+          cachedData &&
+          now - cachedData.timestamp < CACHE_EXPIRATION
+        ) {
           if (__DEV__) {
             console.log(
               `Using cached transactions for wallet: ${walletAddress}`,
@@ -441,65 +358,15 @@ const TransactionGroup = memo(({ item, linkedWallets, onTransactionPress }: Tran
         }
 
         if (__DEV__) {
-          console.log(`Fetching transactions for wallet: ${walletAddress}`);
-        }
-        const signatures = await rpcService.getSignaturesForAddress(
-          walletAddress,
-          limit,
-          lastSignature,
-        );
-
-        if (__DEV__) {
           console.log(
-            `Got ${signatures.length} signatures for wallet: ${walletAddress}`,
+            `Fetching aggregated wallet activity for wallet: ${walletAddress}`,
           );
         }
-
-        if (signatures.length === 0) {
-          // Cache empty result
-          setTransactionCache((prev) => ({
-            ...prev,
-            [walletAddress]: {
-              transactions: [],
-              timestamp: now,
-            },
-          }));
-          return [];
-        }
-
-        const transactionPromises: Array<Promise<Transaction | null>> =
-          signatures.map(async (sig) => {
-            try {
-              if (__DEV__) {
-                console.log(
-                  `Fetching transaction for signature: ${sig.signature}`,
-                );
-              }
-              const tx = await rpcService.getTransaction(sig.signature);
-              const parsed = parseTransaction(
-                tx,
-                sig.signature,
-                sig.blockTime,
-                sig.status,
-              );
-              if (__DEV__) {
-                console.log(
-                  `Parsed transaction: ${parsed ? "success" : "failed"}`,
-                );
-              }
-              return parsed;
-            } catch (error) {
-              console.warn(
-                `Failed to fetch transaction ${sig.signature}:`,
-                error,
-              );
-              return null;
-            }
-          });
-
-        const results = await Promise.all(transactionPromises);
-        const validTransactions = results.filter(
-          (tx): tx is Transaction => tx !== null,
+        const result = await fetchAccountSnapshot(walletAddress);
+        const activity = Array.isArray(result.activity) ? result.activity : [];
+        setWalletActivity(walletAddress, activity);
+        const validTransactions = activity.map((entry) =>
+          mapActivityToTransaction(walletAddress, entry),
         );
 
         if (__DEV__) {
@@ -520,18 +387,31 @@ const TransactionGroup = memo(({ item, linkedWallets, onTransactionPress }: Tran
         return validTransactions;
       } catch (error) {
         console.error(
-          `Failed to fetch transactions for wallet ${walletAddress}:`,
+          `Failed to fetch aggregated activity for ${walletAddress}:`,
           error,
         );
+        const fallbackActivity = walletActivity[walletAddress] ?? [];
+        const fallbackTransactions = fallbackActivity.map((entry) =>
+          mapActivityToTransaction(walletAddress, entry),
+        );
+
+        if (fallbackTransactions.length > 0) {
+          return fallbackTransactions;
+        }
+
         return [];
       }
     },
-    [parseTransaction, transactionCache, CACHE_EXPIRATION],
+    [
+      mapActivityToTransaction,
+      setWalletActivity,
+      transactionCache,
+      walletActivity,
+    ],
   );
 
-  // Fetch transactions for all linked wallets
   const fetchTransactions = useCallback(
-    async (isLoadMore = false) => {
+    async (forceRefresh = false) => {
       const wallets = linkedWallets;
       if (wallets.length === 0) {
         if (__DEV__) {
@@ -545,11 +425,8 @@ const TransactionGroup = memo(({ item, linkedWallets, onTransactionPress }: Tran
         if (__DEV__) {
           console.log(`Fetching transactions for ${wallets.length} wallets`);
         }
-        const limit = 20;
-
-        // Fetch transactions for each wallet in parallel
         const allTransactionsPromises = wallets.map((wallet: any) =>
-          fetchWalletTransactions(wallet.address, limit),
+          fetchWalletTransactions(wallet.address, forceRefresh),
         );
 
         const allTransactionsResults = await Promise.all(
@@ -563,7 +440,6 @@ const TransactionGroup = memo(({ item, linkedWallets, onTransactionPress }: Tran
           );
         }
 
-        // Sort transactions by timestamp in descending order
         const sortedTransactions = allTransactions.sort(
           (a: Transaction, b: Transaction) => {
             const dateA = new Date(a.timestamp).getTime();
@@ -572,8 +448,17 @@ const TransactionGroup = memo(({ item, linkedWallets, onTransactionPress }: Tran
           },
         );
 
-        // Limit total transactions to avoid overwhelming the UI
-        const MAX_TOTAL_TRANSACTIONS = 100;
+        const uniqueTransactions = sortedTransactions.filter(
+          (entry, index, all) =>
+            index ===
+            all.findIndex(
+              (item) =>
+                item.signature === entry.signature &&
+                item.source === entry.source &&
+                item.destination === entry.destination,
+            ),
+        );
+
         const limitedTransactions = sortedTransactions.slice(
           0,
           MAX_TOTAL_TRANSACTIONS,
@@ -584,8 +469,7 @@ const TransactionGroup = memo(({ item, linkedWallets, onTransactionPress }: Tran
             `Setting ${limitedTransactions.length} sorted transactions`,
           );
         }
-        setTransactions(limitedTransactions);
-        setHasMore(false); // For global view, we'll just load a reasonable amount at once
+        setTransactions(uniqueTransactions.slice(0, MAX_TOTAL_TRANSACTIONS));
       } catch (error) {
         console.error("Failed to fetch transactions:", error);
         setTransactions([]);
@@ -605,7 +489,6 @@ const TransactionGroup = memo(({ item, linkedWallets, onTransactionPress }: Tran
     const loadData = async () => {
       setLoading(true);
       try {
-        setHasMore(true);
         if (__DEV__) {
           console.log(
             `Calling fetchTransactions for ${linkedWallets.length} wallets`,
@@ -626,8 +509,7 @@ const TransactionGroup = memo(({ item, linkedWallets, onTransactionPress }: Tran
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      setHasMore(true);
-      await fetchTransactions(false);
+      await fetchTransactions(true);
     } catch (error) {
       console.error("Refresh failed:", error);
     } finally {
@@ -635,11 +517,7 @@ const TransactionGroup = memo(({ item, linkedWallets, onTransactionPress }: Tran
     }
   }, [fetchTransactions]);
 
-  const loadMore = useCallback(async () => {
-    // For global transaction view, we don't support load more
-    // We load a reasonable amount of transactions at once
-    console.log("Load more not supported for global transaction view");
-  }, []);
+  const loadMore = useCallback(async () => {}, []);
 
   const handleTransactionDetail = (transaction: Transaction) => {
     setSelectedTransaction(transaction);
@@ -647,26 +525,82 @@ const TransactionGroup = memo(({ item, linkedWallets, onTransactionPress }: Tran
   };
 
   const renderTransactionGroup = useCallback(
-    ({ item }: ListRenderItemInfo<{ date: string; transactions: Transaction[] }>) => {
+    ({
+      item,
+    }: ListRenderItemInfo<{ date: string; transactions: Transaction[] }>) => {
       return (
         <TransactionGroup
           item={item}
           linkedWallets={linkedWallets}
           onTransactionPress={handleTransactionDetail}
+          highlightedSignature={highlightedSignature}
         />
       );
     },
+    [highlightedSignature, linkedWallets],
+  );
+
+  const renderFooter = () => null;
+
+  const linkedWalletAddresses = useMemo(
+    () => linkedWallets.map((wallet: any) => wallet.address),
     [linkedWallets],
   );
 
-  const renderFooter = () => {
-    if (!loadingMore) return null;
-    return (
-      <View style={styles.loadingFooter}>
-        <ActivityIndicator size="small" color="#7F56D9" />
-      </View>
+  const handleCloseTransactionDetail = useCallback(() => {
+    const signature = selectedTransaction?.signature;
+    setShowTransactionDetail(false);
+
+    if (!signature) {
+      return;
+    }
+
+    setHighlightedSignature(signature);
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
+
+    highlightTimeoutRef.current = setTimeout(() => {
+      setHighlightedSignature((current) =>
+        current === signature ? null : current,
+      );
+      highlightTimeoutRef.current = null;
+    }, 2000);
+  }, [selectedTransaction?.signature]);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const focusSignature = route.params?.focusSignature;
+    const focusNonce = route.params?.focusNonce;
+
+    if (!focusSignature || transactions.length === 0) {
+      return;
+    }
+
+    const focusKey = `${focusSignature}:${focusNonce ?? "default"}`;
+    if (lastHandledFocusKeyRef.current === focusKey) {
+      return;
+    }
+
+    const target = transactions.find(
+      (transaction) => transaction.signature === focusSignature,
     );
-  };
+
+    if (!target) {
+      return;
+    }
+
+    lastHandledFocusKeyRef.current = focusKey;
+    setSelectedTransaction(target);
+    setShowTransactionDetail(true);
+  }, [route.params?.focusNonce, route.params?.focusSignature, transactions]);
 
   if (loading) {
     return (
@@ -712,7 +646,7 @@ const TransactionGroup = memo(({ item, linkedWallets, onTransactionPress }: Tran
     return (
       <View style={styles.transactionDetailContainer}>
         <View style={styles.transactionDetailHeader}>
-          <TouchableOpacity onPress={() => setShowTransactionDetail(false)}>
+          <TouchableOpacity onPress={handleCloseTransactionDetail}>
             <X size={24} color="#FFFFFF" />
           </TouchableOpacity>
           <Text style={styles.transactionDetailTitle}>
@@ -825,6 +759,12 @@ const TransactionGroup = memo(({ item, linkedWallets, onTransactionPress }: Tran
         renderItem={renderTransactionGroup}
         keyExtractor={(item) => item.date}
         contentContainerStyle={styles.listContent}
+        ListHeaderComponent={
+          <IncomeExpenseFlowChart
+            transactions={transactions}
+            linkedWalletAddresses={linkedWalletAddresses}
+          />
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -848,7 +788,7 @@ const TransactionGroup = memo(({ item, linkedWallets, onTransactionPress }: Tran
             </Text>
           </View>
         }
-        extraData={transactions.length}
+        extraData={`${transactions.length}-${highlightedSignature ?? ""}`}
       />
 
       {/* Transaction Detail Modal */}
@@ -929,6 +869,11 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255, 255, 255, 0.05)",
+  },
+  transactionItemHighlighted: {
+    backgroundColor: "rgba(127, 86, 217, 0.18)",
+    borderLeftWidth: 3,
+    borderLeftColor: "#7F56D9",
   },
   transactionIcon: {
     width: 40,

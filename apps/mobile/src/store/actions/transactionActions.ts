@@ -1,13 +1,28 @@
-import { Connection, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import {
+  Connection,
+  LAMPORTS_PER_SOL,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+} from "@solana/web3.js";
 import type { AuthorizationResult } from "@solana-mobile/mobile-wallet-adapter-protocol";
-import type { SilentReauthorizationRecord, WalletCapabilityReport } from "@wallethub/contracts";
-import { transact, type Web3MobileWallet } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
+import type {
+  SilentReauthorizationRecord,
+  WalletCapabilityReport,
+} from "@wallethub/contracts";
+import {
+  transact,
+  type Web3MobileWallet,
+} from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
 import type { SolanaStoreState } from "../solanaStore";
 import { authorizationApi, walletService } from "../../services";
 import { requireBiometricApproval } from "../../security/biometrics";
 import type { LinkedWallet } from "../../types/wallet";
 import { normalizeAuthorization } from "../utils/authorizationUtils";
-import { mapCapabilities, DEFAULT_CAPABILITIES } from "../utils/capabilitiesUtils";
+import {
+  mapCapabilities,
+  DEFAULT_CAPABILITIES,
+} from "../utils/capabilitiesUtils";
 import { APP_IDENTITY } from "../utils/constants";
 
 export const createTransactionActions = (
@@ -31,8 +46,7 @@ export const createTransactionActions = (
       throw new Error("Amount exceeds maximum allowed value");
     }
 
-    const sourceAddress =
-      options?.fromAddress ?? state.activeWallet?.address;
+    const sourceAddress = options?.fromAddress ?? state.activeWallet?.address;
     if (!sourceAddress) {
       throw new Error("Select a wallet before sending");
     }
@@ -49,7 +63,10 @@ export const createTransactionActions = (
     }
 
     const currentBalance = state.balances[sourceAddress];
-    if (currentBalance && currentBalance < amountSol * LAMPORTS_PER_SOL) {
+    if (
+      typeof currentBalance === "number" &&
+      currentBalance < amountSol * LAMPORTS_PER_SOL
+    ) {
       throw new Error("Insufficient balance");
     }
 
@@ -79,27 +96,27 @@ export const createTransactionActions = (
       let refreshedAccount: LinkedWallet | null = null;
       const lamports = Math.round(amountSol * LAMPORTS_PER_SOL);
       const latestBlockhash = await state.connection.getLatestBlockhash();
-      const transaction = new Transaction({
-        blockhash: latestBlockhash.blockhash,
-        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-        feePayer: senderPubkey,
-      }).add(
+      const transaction = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: senderPubkey,
           toPubkey: recipientPubkey,
           lamports,
         }),
       );
+      transaction.feePayer = senderPubkey;
+      transaction.recentBlockhash = latestBlockhash.blockhash;
 
       let fallbackSignedTransaction: Transaction | null = null;
       let submittedSignature: string | null = null;
 
       await transact(async (wallet: Web3MobileWallet) => {
         let authorization: AuthorizationResult;
-        const capabilities = await wallet.getCapabilities().catch((err: unknown) => {
-          console.warn("Capability probe failed", err);
-          return null;
-        });
+        const capabilities = await wallet
+          .getCapabilities()
+          .catch((err: unknown) => {
+            console.warn("Capability probe failed", err);
+            return null;
+          });
         capabilityReport = mapCapabilities(capabilities);
 
         try {
