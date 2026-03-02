@@ -1,0 +1,32 @@
+services:
+  # NestJS API Service
+  - type: web
+    name: wallethub-api
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: |
+      corepack enable
+      corepack prepare pnpm@latest --activate
+      pnpm install --frozen-lockfile
+      pnpm run build:contracts
+      pnpm run build:api
+      DATABASE_URL="$DATABASE_URL" pnpm --filter api exec prisma generate --schema=apps/api/prisma/schema.prisma
+    startCommand: pnpm run start:api
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: wallethub-db
+          property: connectionString
+      - key: EXPO_PUBLIC_API_URL
+        sync: false
+
+databases:
+  - name: wallethub-db
+    databaseName: wallethub
+    user: wallethub
+    ipAllowList: []
