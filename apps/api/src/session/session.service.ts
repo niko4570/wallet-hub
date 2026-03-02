@@ -17,17 +17,18 @@ import { RevokeSessionKeyDto } from './dto/revoke-session-key.dto';
 import { BiometricVerificationService } from '../security/biometric-verification.service';
 import { MpcSignerService } from '../security/mpc-signer.service';
 import { InfrastructureConfigService } from '../config/infrastructure-config.service';
-import { PrismaService } from '../database/prisma.service';
 
 @Injectable()
 export class SessionService {
   private readonly logger = new Logger(SessionService.name);
+  // In-memory stores to replace Prisma-backed persistence
+  private readonly sessionPolicies = new Map<string, any>();
+  private readonly sessionKeys = new Map<string, any>();
 
   constructor(
     private readonly biometricVerifier: BiometricVerificationService,
     private readonly mpcSigner: MpcSignerService,
     private readonly infrastructureConfig: InfrastructureConfigService,
-    private readonly prisma: PrismaService,
   ) {}
   private get sessionKeysEnabled(): boolean {
     return this.infrastructureConfig.sessionKeysEnabled;
@@ -48,7 +49,7 @@ export class SessionService {
   }
 
   async listPolicies(): Promise<SessionPolicy[]> {
-    const policies = await this.prisma.sessionPolicy.findMany();
+    const policies = Array.from(this.sessionPolicies.values());
     return policies.map((policy: any) => ({
       id: policy.id,
       walletAddress: policy.walletAddress,
@@ -64,10 +65,12 @@ export class SessionService {
       return [];
     }
 
-    const sessionKeys = await this.prisma.sessionKey.findMany({
-      include: {
-        policy: true,
-      },
+    const sessionKeys = Array.from(this.sessionKeys.values()).map((k: any) => {
+      const clone = { ...k };
+      if (clone.policyId) {
+        clone.policy = this.sessionPolicies.get(clone.policyId) ?? null;
+      }
+      return clone;
     });
 
     return sessionKeys.map((key: any) => ({
@@ -122,22 +125,24 @@ export class SessionService {
       metadata.biometricDeviceId = biometricVerification.deviceId;
     }
 
-    const sessionKeyData = await this.prisma.sessionKey.create({
-      data: {
-        walletAddress: dto.walletAddress,
-        derivedPublicKey: `derived-${randomUUID()}`,
-        devicePublicKey: dto.devicePublicKey,
-        issuedAt: now,
-        expiresAt,
-        scopes: Array.isArray(dto.scopes) ? JSON.stringify(dto.scopes) : '[]',
-        status: 'active',
-        policyId: policy.id,
-        metadata,
-      },
-      include: {
-        policy: true,
-      },
-    });
+    const id = `sk_${randomUUID()}`;
+    const sessionKeyData = {
+      id,
+      walletAddress: dto.walletAddress,
+      derivedPublicKey: `derived-${randomUUID()}`,
+      devicePublicKey: dto.devicePublicKey,
+      issuedAt: now,
+      expiresAt,
+      scopes: Array.isArray(dto.scopes) ? dto.scopes : [],
+      status: 'active',
+      policyId: policy.id,
+      metadata,
+      lastUsedAt: null,
+    } as any;
+    this.sessionKeys.set(id, sessionKeyData);
+    // attach policy for return compatibility
+    (sessionKeyData as any).policy =
+      this.sessionPolicies.get(policy.id) ?? null;
 
     return {
       id: sessionKeyData.id,
@@ -146,8 +151,9 @@ export class SessionService {
       devicePublicKey: sessionKeyData.devicePublicKey,
       issuedAt: sessionKeyData.issuedAt.toISOString(),
       expiresAt: sessionKeyData.expiresAt.toISOString(),
-      scopes:
-        typeof sessionKeyData.scopes === 'string'
+      scopes: Array.isArray(sessionKeyData.scopes)
+        ? sessionKeyData.scopes
+        : typeof sessionKeyData.scopes === 'string'
           ? JSON.parse(sessionKeyData.scopes)
           : [],
       status: sessionKeyData.status as 'active' | 'revoked' | 'expired',
@@ -164,9 +170,7 @@ export class SessionService {
     dto: RevokeSessionKeyDto,
   ): Promise<SessionKey> {
     this.ensureSessionKeysEnabled();
-    const session = await this.prisma.sessionKey.findUnique({
-      where: { id },
-    });
+    const session = this.sessionKeys.get(id) ?? null;
     if (!session) {
       throw new NotFoundException(`Session key ${id} not found`);
     }
@@ -190,17 +194,14 @@ export class SessionService {
       };
     }
 
-    const updatedSession = await this.prisma.sessionKey.update({
-      where: { id },
-      data: {
-        status: 'revoked',
-        metadata: {
-          ...(session.metadata as Record<string, string>),
-          revokedReason: dto.reason ?? 'user_request',
-        },
-        lastUsedAt: new Date(),
-      },
-    });
+    const updatedSession = { ...session };
+    updatedSession.status = 'revoked';
+    updatedSession.metadata = {
+      ...(session.metadata as Record<string, string>),
+      revokedReason: dto.reason ?? 'user_request',
+    } as any;
+    updatedSession.lastUsedAt = new Date();
+    this.sessionKeys.set(id, updatedSession);
 
     return {
       id: updatedSession.id,
@@ -235,9 +236,9 @@ export class SessionService {
     walletAddress: string,
   ): Promise<SessionPolicy> {
     // First try to find an existing policy
-    const existingPolicy = await this.prisma.sessionPolicy.findFirst({
-      where: { walletAddress },
-    });
+    const existingPolicy = Array.from(this.sessionPolicies.values()).find(
+      (p: any) => p.walletAddress === walletAddress,
+    );
 
     if (existingPolicy) {
       return {
@@ -251,15 +252,18 @@ export class SessionService {
     }
 
     // Create a new ephemeral policy
-    const newPolicy = await this.prisma.sessionPolicy.create({
-      data: {
-        walletAddress,
-        maxDailySpendUsd: 500,
-        maxTxPerHour: 3,
-        allowedPrograms: [],
-        allowedDestinations: [],
-      },
-    });
+    const id = `sp_${randomUUID()}`;
+    const newPolicy = {
+      id,
+      walletAddress,
+      maxDailySpendUsd: 500,
+      maxTxPerHour: 3,
+      allowedPrograms: [],
+      allowedDestinations: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as any;
+    this.sessionPolicies.set(id, newPolicy);
 
     return {
       id: newPolicy.id,
@@ -284,36 +288,31 @@ export class SessionService {
     const now = new Date();
 
     // Update expired session keys to 'expired' status
-    const result = await this.prisma.sessionKey.updateMany({
-      where: {
-        status: 'active',
-        expiresAt: {
-          lt: now,
-        },
-      },
-      data: {
-        status: 'expired',
-        metadata: {
+    let count = 0;
+    for (const [k, v] of this.sessionKeys.entries()) {
+      if (v.status === 'active' && new Date(v.expiresAt) < now) {
+        const updated = { ...v };
+        updated.status = 'expired';
+        updated.metadata = {
+          ...(v.metadata ?? {}),
           expiredAt: now.toISOString(),
-        },
-      },
-    });
-
-    return result.count;
+        };
+        this.sessionKeys.set(k, updated);
+        count++;
+      }
+    }
+    return count;
   }
 
   // Get active session keys for a specific wallet
   async getActiveSessionKeys(walletAddress: string): Promise<SessionKey[]> {
     const now = new Date();
-    const sessionKeys = await this.prisma.sessionKey.findMany({
-      where: {
-        walletAddress,
-        status: 'active',
-        expiresAt: {
-          gte: now,
-        },
-      },
-    });
+    const sessionKeys = Array.from(this.sessionKeys.values()).filter(
+      (k: any) =>
+        k.walletAddress === walletAddress &&
+        k.status === 'active' &&
+        new Date(k.expiresAt) >= now,
+    );
 
     return sessionKeys.map((key: any) => ({
       id: key.id,
@@ -333,11 +332,7 @@ export class SessionService {
   // Check if a session key is valid (active and not expired)
   async isSessionKeyValid(sessionKeyId: string): Promise<boolean> {
     const now = new Date();
-    const sessionKey = await this.prisma.sessionKey.findUnique({
-      where: {
-        id: sessionKeyId,
-      },
-    });
+    const sessionKey = this.sessionKeys.get(sessionKeyId) ?? null;
 
     return (
       !!sessionKey &&
@@ -359,14 +354,11 @@ export class SessionService {
     const now = new Date();
 
     // Get session key with policy
-    const sessionKey = await this.prisma.sessionKey.findUnique({
-      where: {
-        id: sessionKeyId,
-      },
-      include: {
-        policy: true,
-      },
-    });
+    const sessionKey = this.sessionKeys.get(sessionKeyId) ?? null;
+    if (sessionKey && sessionKey.policyId) {
+      (sessionKey as any).policy =
+        this.sessionPolicies.get(sessionKey.policyId) ?? null;
+    }
 
     // Check if session key exists and is active
     if (!sessionKey) {
@@ -447,12 +439,11 @@ export class SessionService {
     }
 
     // Update last used timestamp
-    await this.prisma.sessionKey.update({
-      where: { id: sessionKeyId },
-      data: {
-        lastUsedAt: now,
-      },
-    });
+    const sk = this.sessionKeys.get(sessionKeyId) ?? null;
+    if (sk) {
+      sk.lastUsedAt = now;
+      this.sessionKeys.set(sessionKeyId, sk);
+    }
 
     return { valid: true };
   }
@@ -462,18 +453,12 @@ export class SessionService {
     sessionKey: SessionKey;
     policy: SessionPolicy;
   } | null> {
-    const sessionKeyWithPolicy = await this.prisma.sessionKey.findUnique({
-      where: {
-        id: sessionKeyId,
-      },
-      include: {
-        policy: true,
-      },
-    });
-
-    if (!sessionKeyWithPolicy || !sessionKeyWithPolicy.policy) {
-      return null;
-    }
+    const sessionKeyWithPolicy = this.sessionKeys.get(sessionKeyId) ?? null;
+    if (!sessionKeyWithPolicy) return null;
+    const policy = sessionKeyWithPolicy.policyId
+      ? this.sessionPolicies.get(sessionKeyWithPolicy.policyId)
+      : null;
+    if (!policy) return null;
 
     return {
       sessionKey: {
@@ -483,8 +468,9 @@ export class SessionService {
         devicePublicKey: sessionKeyWithPolicy.devicePublicKey,
         issuedAt: sessionKeyWithPolicy.issuedAt.toISOString(),
         expiresAt: sessionKeyWithPolicy.expiresAt.toISOString(),
-        scopes:
-          typeof sessionKeyWithPolicy.scopes === 'string'
+        scopes: Array.isArray(sessionKeyWithPolicy.scopes)
+          ? sessionKeyWithPolicy.scopes
+          : typeof sessionKeyWithPolicy.scopes === 'string'
             ? JSON.parse(sessionKeyWithPolicy.scopes)
             : [],
         status: sessionKeyWithPolicy.status as 'active' | 'revoked' | 'expired',
@@ -495,38 +481,37 @@ export class SessionService {
         lastUsedAt: sessionKeyWithPolicy.lastUsedAt?.toISOString(),
       },
       policy: {
-        id: sessionKeyWithPolicy.policy.id,
-        walletAddress: sessionKeyWithPolicy.policy.walletAddress,
-        maxDailySpendUsd: Number(sessionKeyWithPolicy.policy.maxDailySpendUsd),
-        maxTxPerHour: sessionKeyWithPolicy.policy.maxTxPerHour,
-        allowedPrograms: sessionKeyWithPolicy.policy
-          .allowedPrograms as string[],
-        allowedDestinations: sessionKeyWithPolicy.policy
-          .allowedDestinations as string[],
+        id: policy.id,
+        walletAddress: policy.walletAddress,
+        maxDailySpendUsd: Number(policy.maxDailySpendUsd),
+        maxTxPerHour: policy.maxTxPerHour,
+        allowedPrograms: policy.allowedPrograms as string[],
+        allowedDestinations: policy.allowedDestinations as string[],
       },
     };
   }
 
   // Revoke all session keys for a wallet
   async revokeAllSessionKeys(walletAddress: string): Promise<number> {
-    const result = await this.prisma.sessionKey.updateMany({
-      where: {
-        walletAddress,
-        status: 'active',
-      },
-      data: {
-        status: 'revoked',
-        metadata: {
+    let count = 0;
+    for (const [k, v] of this.sessionKeys.entries()) {
+      if (v.walletAddress === walletAddress && v.status === 'active') {
+        const updated = { ...v };
+        updated.status = 'revoked';
+        updated.metadata = {
+          ...(v.metadata ?? {}),
           revokedReason: 'wallet_revocation',
           revokedAt: new Date().toISOString(),
-        },
-        lastUsedAt: new Date(),
-      },
-    });
+        };
+        updated.lastUsedAt = new Date();
+        this.sessionKeys.set(k, updated);
+        count++;
+      }
+    }
 
     this.logger.log(
-      `Revoked ${result.count} session keys for wallet ${walletAddress}`,
+      `Revoked ${count} session keys for wallet ${walletAddress}`,
     );
-    return result.count;
+    return count;
   }
 }

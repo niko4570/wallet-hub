@@ -7,7 +7,6 @@ import { MpcSignerService } from '../security/mpc-signer.service';
 import { SilentReauthorizationService } from './silent-reauthorization.service';
 import { TransactionAuditService } from './transaction-audit.service';
 import { InfrastructureConfigService } from '../config/infrastructure-config.service';
-import { PrismaService } from '../database/prisma.service';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
@@ -19,7 +18,6 @@ import { PrismaService } from '../database/prisma.service';
     SilentReauthorizationService,
     TransactionAuditService,
     InfrastructureConfigService,
-    PrismaService,
   ],
   exports: [SessionService],
 })
