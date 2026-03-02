@@ -6,27 +6,18 @@ services:
     region: oregon
     plan: free
     buildCommand: |
+      if ! command -v corepack >/dev/null 2>&1; then npm install -g corepack; fi
       corepack enable
       corepack prepare pnpm@latest --activate
       pnpm install --frozen-lockfile
       pnpm run build:contracts
       pnpm run build:api
-      DATABASE_URL="$DATABASE_URL" pnpm --filter api exec prisma generate --schema=apps/api/prisma/schema.prisma
-    startCommand: pnpm run start:api
+      DATABASE_URL="postgresql://local/local" pnpm --filter api exec prisma generate --schema=apps/api/prisma/schema.prisma
+    startCommand: pnpm --filter api run start:prod
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 3000
-      - key: DATABASE_URL
-        fromDatabase:
-          name: wallethub-db
-          property: connectionString
       - key: EXPO_PUBLIC_API_URL
         sync: false
-
-databases:
-  - name: wallethub-db
-    databaseName: wallethub
-    user: wallethub
-    ipAllowList: []

@@ -5,7 +5,7 @@ export const validationSchema = Joi.object({
     .valid('development', 'production', 'test')
     .default('development'),
   PORT: Joi.number().port().default(3000),
-  DATABASE_URL: Joi.string().required(),
+  DATABASE_URL: Joi.string().uri().optional(),
   SOLANA_RPC_URL: Joi.string()
     .uri()
     .default('https://api.mainnet-beta.solana.com'),

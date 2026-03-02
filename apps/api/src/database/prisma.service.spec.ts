@@ -29,17 +29,19 @@ describe('PrismaService', () => {
     process.env = originalEnv;
   });
 
-  it('throws when DATABASE_URL is missing', () => {
+  it('falls back to in-memory when DATABASE_URL is missing', async () => {
     process.env.DATABASE_URL = '';
-    expect(() => new PrismaService()).toThrow('DATABASE_URL');
+    const service = new PrismaService();
+    await service.onModuleInit();
+    expect(service.isInMemory).toBe(true);
   });
 
   it('connects and disconnects on lifecycle hooks', async () => {
     const service = new PrismaService();
     await service.onModuleInit();
     await service.onModuleDestroy();
-    expect((service as any).$connect).toHaveBeenCalled();
-    expect((service as any).$disconnect).toHaveBeenCalled();
+    expect((service as any).client.$connect).toHaveBeenCalled();
+    expect((service as any).client.$disconnect).toHaveBeenCalled();
   });
 
   it('registers shutdown hook', async () => {
@@ -53,15 +55,14 @@ describe('PrismaService', () => {
   it('cleans database outside production', async () => {
     process.env.NODE_ENV = 'test';
     const service = new PrismaService();
-    const keys = Reflect.ownKeys(service).filter(
-      (key) => typeof key === 'string' && key[0] !== '_' && key[0] !== '$',
-    );
-    keys.forEach((key) => {
-      (service as any)[key] = { deleteMany: jest.fn() };
-    });
+    const keys = ['user', 'walletAccount'];
+    (service as any).client = {
+      user: { deleteMany: jest.fn() },
+      walletAccount: { deleteMany: jest.fn() },
+    };
     await service.cleanDatabase();
     keys.forEach((key) => {
-      expect((service as any)[key].deleteMany).toHaveBeenCalled();
+      expect((service as any).client[key].deleteMany).toHaveBeenCalled();
     });
   });
 
