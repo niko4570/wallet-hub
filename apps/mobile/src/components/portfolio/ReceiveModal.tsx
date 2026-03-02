@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "../../theme/ThemeContext";
 import { toast } from "../common/ErrorToast";
+import { decodeWalletAddress } from "../../utils";
 
 interface ReceiveModalProps {
   visible: boolean;
@@ -32,13 +33,26 @@ const ReceiveModal: React.FC<ReceiveModalProps> = ({
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
 
+  const normalizedWalletAddress = useMemo(() => {
+    if (!walletAddress) {
+      return null;
+    }
+
+    try {
+      return decodeWalletAddress(walletAddress);
+    } catch (error) {
+      console.warn("Invalid wallet address for receive modal", error);
+      return null;
+    }
+  }, [walletAddress]);
+
   // Copy wallet address
   const handleCopyAddress = useCallback(async () => {
-    if (!walletAddress) {
+    if (!normalizedWalletAddress) {
       return;
     }
     try {
-      await Clipboard.setStringAsync(walletAddress);
+      await Clipboard.setStringAsync(normalizedWalletAddress);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       toast.show({
         message: "Wallet address copied to clipboard",
@@ -51,16 +65,16 @@ const ReceiveModal: React.FC<ReceiveModalProps> = ({
         type: "error",
       });
     }
-  }, [walletAddress]);
+  }, [normalizedWalletAddress]);
 
   // Share wallet address
   const handleShareAddress = useCallback(async () => {
-    if (!walletAddress) {
+    if (!normalizedWalletAddress) {
       return;
     }
     try {
       await Share.share({
-        message: `Send SOL to ${walletAddress}`,
+        message: `Send SOL to ${normalizedWalletAddress}`,
       });
     } catch (err) {
       console.warn("Share failed", err);
@@ -69,9 +83,9 @@ const ReceiveModal: React.FC<ReceiveModalProps> = ({
         type: "error",
       });
     }
-  }, [walletAddress]);
+  }, [normalizedWalletAddress]);
 
-  if (!walletAddress) {
+  if (!normalizedWalletAddress) {
     return null;
   }
 
@@ -113,7 +127,7 @@ const ReceiveModal: React.FC<ReceiveModalProps> = ({
               ]}
             >
               <QRCode
-                value={walletAddress}
+                value={normalizedWalletAddress}
                 size={200}
                 backgroundColor="#FFFFFF"
                 color="#050814"
@@ -128,7 +142,7 @@ const ReceiveModal: React.FC<ReceiveModalProps> = ({
                 Wallet Address
               </Text>
               <Text style={[styles.addressText, { color: theme.colors.text }]}>
-                {walletAddress}
+                {normalizedWalletAddress}
               </Text>
             </View>
           </View>

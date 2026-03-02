@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
+  LAMPORTS_PER_SOL,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+} from "@solana/web3.js";
+import {
   View,
   Text,
   TextInput,
@@ -19,8 +25,7 @@ import { useSolana } from "../../context/SolanaContext";
 import { useWalletStore, useWalletBalanceStore } from "../../store/walletStore";
 import { toast } from "../common/ErrorToast";
 import { NETWORK_FEES, UI_CONFIG } from "../../config/appConfig";
-import { validateSolanaAddress, validateSolAmount } from "../../utils";
-import { requireBiometricApproval } from "../../security/biometrics";
+import { decodeWalletAddress, validateSolAmount } from "../../utils";
 
 interface SendModalProps {
   visible: boolean;
@@ -30,35 +35,89 @@ interface SendModalProps {
 const SendModal: React.FC<SendModalProps> = ({ visible, onClose }) => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const { sendSol, refreshBalance } = useSolana();
+  const { sendSol, refreshBalance, connection } = useSolana();
   const { activeWallet, primaryWalletAddress } = useWalletStore();
-  const { balances } = useWalletBalanceStore();
+  const { detailedBalances } = useWalletBalanceStore();
 
   const [sendRecipient, setSendRecipient] = useState("");
   const [sendAmount, setSendAmount] = useState("");
   const [sending, setSending] = useState(false);
   const [estimatedFee, setEstimatedFee] = useState<number | null>(null);
 
-  // Validate Solana address format
-  const validateAddress = useCallback((address: string) => {
-    return validateSolanaAddress(address);
-  }, []);
-
-  // Update fee estimate when inputs change
+  // Update fee estimate using real RPC fee calculation
   useEffect(() => {
+    let cancelled = false;
+
     if (!visible) {
       setEstimatedFee(null);
       return;
     }
 
     const amount = parseFloat(sendAmount);
-    if (!sendRecipient.trim() || Number.isNaN(amount) || amount <= 0) {
+    const rawRecipient = sendRecipient.trim();
+    if (!activeWallet || !rawRecipient || Number.isNaN(amount) || amount <= 0) {
       setEstimatedFee(null);
       return;
     }
 
-    setEstimatedFee(NETWORK_FEES.SOLANA);
-  }, [visible, sendRecipient, sendAmount]);
+    let recipient: string;
+    try {
+      recipient = decodeWalletAddress(rawRecipient);
+    } catch {
+      setEstimatedFee(null);
+      return;
+    }
+
+    if (recipient === activeWallet.address) {
+      setEstimatedFee(null);
+      return;
+    }
+
+    const estimateFee = async () => {
+      try {
+        const fromPubkey = new PublicKey(activeWallet.address);
+        const toPubkey = new PublicKey(recipient);
+        const lamports = Math.round(amount * LAMPORTS_PER_SOL);
+
+        const latestBlockhash = await connection.getLatestBlockhash();
+        const transaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey,
+            toPubkey,
+            lamports,
+          }),
+        );
+        transaction.feePayer = fromPubkey;
+        transaction.recentBlockhash = latestBlockhash.blockhash;
+
+        const message = transaction.compileMessage();
+        const feeResponse = await connection.getFeeForMessage(
+          message,
+          "confirmed",
+        );
+        const feeLamports = feeResponse.value;
+        const feeSol =
+          typeof feeLamports === "number"
+            ? feeLamports / LAMPORTS_PER_SOL
+            : NETWORK_FEES.SOLANA;
+
+        if (!cancelled) {
+          setEstimatedFee(feeSol);
+        }
+      } catch (error) {
+        console.warn("Failed to estimate network fee", error);
+        if (!cancelled) {
+          setEstimatedFee(NETWORK_FEES.SOLANA);
+        }
+      }
+    };
+
+    estimateFee();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeWallet, connection, sendAmount, sendRecipient, visible]);
 
   // Reset form when modal closes
   useEffect(() => {
@@ -94,12 +153,12 @@ const SendModal: React.FC<SendModalProps> = ({ visible, onClose }) => {
     if (!activeWallet) {
       return;
     }
-    const balance = balances[activeWallet.address] || 0;
+    const balance = detailedBalances[activeWallet.address]?.balance || 0;
     const feeReserve = estimatedFee || NETWORK_FEES.SOLANA;
     const maxSendable = Math.max(0, balance - feeReserve);
     setSendAmount(maxSendable.toFixed(6));
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [activeWallet, balances, estimatedFee]);
+  }, [activeWallet, detailedBalances, estimatedFee]);
 
   // Handle send transaction
   const handleSend = useCallback(async () => {
@@ -111,16 +170,14 @@ const SendModal: React.FC<SendModalProps> = ({ visible, onClose }) => {
       return;
     }
 
-    const trimmedRecipient = sendRecipient.trim();
-    const balance = balances[activeWallet.address] || 0;
+    const rawRecipient = sendRecipient.trim();
+    const balance = detailedBalances[activeWallet.address]?.balance || 0;
 
-    // Validate recipient address
-    const addressValidation = validateAddress(trimmedRecipient);
-    if (!addressValidation.valid) {
-      Alert.alert(
-        "Invalid address",
-        addressValidation.error || "Invalid address format",
-      );
+    let trimmedRecipient: string;
+    try {
+      trimmedRecipient = decodeWalletAddress(rawRecipient);
+    } catch {
+      Alert.alert("Invalid address", "Invalid recipient address format");
       return;
     }
 
@@ -138,15 +195,14 @@ const SendModal: React.FC<SendModalProps> = ({ visible, onClose }) => {
     }
 
     const amount = parseFloat(sendAmount);
-    const fee = estimatedFee || NETWORK_FEES.SOLANA;
 
-    // Require biometric approval before sending
-    try {
-      await requireBiometricApproval("Authenticate to send SOL");
-    } catch (error) {
-      if (error instanceof Error) {
-        Alert.alert("Authentication required", error.message);
-      }
+    const effectiveFee = estimatedFee ?? NETWORK_FEES.SOLANA;
+    const totalCost = amount + effectiveFee;
+    if (totalCost > balance) {
+      Alert.alert(
+        "Insufficient balance",
+        `Required: ${totalCost.toFixed(6)} SOL (including network fee).`,
+      );
       return;
     }
 
@@ -191,7 +247,7 @@ const SendModal: React.FC<SendModalProps> = ({ visible, onClose }) => {
     sendAmount,
     sendRecipient,
     sendSol,
-    validateAddress,
+    detailedBalances,
   ]);
 
   return (

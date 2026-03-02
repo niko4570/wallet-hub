@@ -14,9 +14,23 @@
  */
 
 import React, { useMemo, useState, useCallback } from "react";
-import { View, Text, Dimensions, StyleSheet } from "react-native";
+import {
+  View,
+  Text,
+  Dimensions,
+  StyleSheet,
+  TouchableOpacity,
+} from "react-native";
+import { Feather } from "@expo/vector-icons";
 import { PieChart } from "react-native-gifted-charts";
-import { buildPortfolioAllocation } from "../../utils";
+import {
+  buildPortfolioAllocation,
+  buildCategoryAllocation,
+  buildCategoryBreakdown,
+  classifyPortfolioCategory,
+  calculateConcentrationMetrics,
+} from "../../utils";
+import type { PortfolioCategoryName } from "../../utils";
 import { CHART_CONFIG } from "../../config/appConfig";
 import { useSolanaStore } from "../../store/solanaStore";
 
@@ -28,7 +42,13 @@ interface Token {
   symbol: string;
   /** USD value of the asset holding */
   usdValue: number;
+  /** Optional mint address */
+  mint?: string;
+  /** Optional token name */
+  name?: string;
 }
+
+type ViewMode = "asset" | "category";
 
 /**
  * ChartDataPoint interface for pie chart rendering
@@ -46,6 +66,8 @@ interface ChartDataPoint {
   color: string;
   /** Text label to display */
   text: string;
+  /** Group key for drilldown */
+  groupKey: string;
 }
 
 /**
@@ -118,6 +140,9 @@ const GiftedPieChart: React.FC<GiftedPieChartProps> = ({
 }) => {
   // Track the currently focused slice index
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const [viewMode, setViewMode] = useState<ViewMode>("asset");
+  const [selectedCategory, setSelectedCategory] =
+    useState<PortfolioCategoryName | null>(null);
 
   // Calculate total portfolio value and asset allocation using utility function
   const network = useSolanaStore((s) => s.network);
@@ -142,14 +167,20 @@ const GiftedPieChart: React.FC<GiftedPieChartProps> = ({
       : Math.max(1, CHART_CONFIG.ASSET_ALLOCATION_MAX_SLICES);
     const sorted = [...allocation].sort((a, b) => b.usdValue - a.usdValue);
     return sorted.slice(0, maxSlices);
-  }, [allocation]);
+  }, [allocation, network]);
+
+  const categorySlices = useMemo(() => {
+    return buildCategoryAllocation(allocation, totalUsd);
+  }, [allocation, totalUsd]);
+
+  const selectedSlices = viewMode === "category" ? categorySlices : slices;
 
   // Transform allocation data into chart-ready format with colors and percentages
   const chartData: ChartDataPoint[] = useMemo(() => {
     const isDevnet = network === "devnet";
     const palette = isDevnet ? COLORS_DEV : COLORS;
 
-    return slices.map((slice, index) => {
+    return selectedSlices.map((slice, index) => {
       // Assign colors based on slice importance (largest to smallest)
       let color = palette.muted;
       if (index === 0) {
@@ -169,14 +200,73 @@ const GiftedPieChart: React.FC<GiftedPieChartProps> = ({
         percentage,
         color,
         text: `${percentage}%`,
+        groupKey:
+          viewMode === "category"
+            ? slice.symbol
+            : classifyPortfolioCategory(slice.symbol),
       };
     });
-  }, [slices]);
+  }, [selectedSlices, network, viewMode]);
+
+  const categoryBreakdown = useMemo(
+    () => buildCategoryBreakdown(allocation),
+    [allocation],
+  );
+
+  const selectedCategoryItems = useMemo(() => {
+    if (!selectedCategory) {
+      return [] as Array<{
+        symbol: string;
+        usdValue: number;
+        percentage: number;
+      }>;
+    }
+
+    return (categoryBreakdown.get(selectedCategory) ?? [])
+      .sort((a, b) => b.usdValue - a.usdValue)
+      .slice(0, 6);
+  }, [categoryBreakdown, selectedCategory]);
+
+  const concentrationMetrics = useMemo(
+    () => calculateConcentrationMetrics(allocation),
+    [allocation],
+  );
 
   // Handle slice press event to update focus state
-  const handlePress = useCallback((item: any, index: number) => {
-    setFocusedIndex(index);
+  const handlePress = useCallback(
+    (item: any, index: number) => {
+      setFocusedIndex(index);
+
+      if (viewMode === "category") {
+        const group = item?.groupKey as PortfolioCategoryName | undefined;
+        setSelectedCategory(group ?? null);
+        return;
+      }
+
+      setSelectedCategory(
+        classifyPortfolioCategory(String(item?.symbol ?? "")),
+      );
+    },
+    [viewMode],
+  );
+
+  const switchViewMode = useCallback((nextMode: ViewMode) => {
+    setViewMode(nextMode);
+    setFocusedIndex(-1);
+    setSelectedCategory(null);
   }, []);
+
+  const handleLegendPress = useCallback(
+    (entry: ChartDataPoint, index: number) => {
+      setFocusedIndex(index);
+      if (viewMode === "category") {
+        setSelectedCategory(entry.groupKey as PortfolioCategoryName);
+      } else {
+        setSelectedCategory(classifyPortfolioCategory(entry.symbol));
+      }
+    },
+    [viewMode],
+  );
 
   // Render loading state
   if (loading) {
@@ -198,7 +288,7 @@ const GiftedPieChart: React.FC<GiftedPieChartProps> = ({
   }
 
   // Render empty state when no data available
-  if (slices.length === 0) {
+  if (selectedSlices.length === 0) {
     return (
       <View style={styles.container}>
         <Text style={styles.stateText}>No assets to display</Text>
@@ -214,6 +304,57 @@ const GiftedPieChart: React.FC<GiftedPieChartProps> = ({
   return (
     <View style={styles.container}>
       <View style={styles.chartWrapper}>
+        <View style={styles.modeSwitchRow}>
+          <TouchableOpacity
+            style={[
+              styles.modeSwitchButton,
+              viewMode === "asset" && styles.modeSwitchButtonActive,
+            ]}
+            onPress={() => switchViewMode("asset")}
+          >
+            <View style={styles.modeSwitchContent}>
+              <Feather
+                name="pie-chart"
+                size={12}
+                color={viewMode === "asset" ? TEXT_PRIMARY : TEXT_SECONDARY}
+                style={styles.modeSwitchIcon}
+              />
+              <Text
+                style={[
+                  styles.modeSwitchText,
+                  viewMode === "asset" && styles.modeSwitchTextActive,
+                ]}
+              >
+                Assets
+              </Text>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.modeSwitchButton,
+              viewMode === "category" && styles.modeSwitchButtonActive,
+            ]}
+            onPress={() => switchViewMode("category")}
+          >
+            <View style={styles.modeSwitchContent}>
+              <Feather
+                name="grid"
+                size={12}
+                color={viewMode === "category" ? TEXT_PRIMARY : TEXT_SECONDARY}
+                style={styles.modeSwitchIcon}
+              />
+              <Text
+                style={[
+                  styles.modeSwitchText,
+                  viewMode === "category" && styles.modeSwitchTextActive,
+                ]}
+              >
+                Categories
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.chartContainer}>
           {/* Render donut chart with interactive features */}
           <View style={{ width: chartSize, height: chartSize }}>
@@ -243,7 +384,12 @@ const GiftedPieChart: React.FC<GiftedPieChartProps> = ({
         {showLegend ? (
           <View style={styles.legend}>
             {chartData.map((entry, index) => (
-              <View key={entry.symbol} style={styles.legendRow}>
+              <TouchableOpacity
+                key={`${entry.symbol}-${index}`}
+                style={styles.legendRow}
+                onPress={() => handleLegendPress(entry, index)}
+                activeOpacity={0.8}
+              >
                 <View
                   style={[
                     styles.legendDot,
@@ -254,8 +400,76 @@ const GiftedPieChart: React.FC<GiftedPieChartProps> = ({
                 <Text style={styles.legendLabel}>{entry.symbol}</Text>
                 <View style={styles.legendSpacer} />
                 <Text style={styles.legendValue}>{entry.percentage}%</Text>
-              </View>
+              </TouchableOpacity>
             ))}
+          </View>
+        ) : null}
+
+        <View style={styles.metricsRow}>
+          <View style={styles.metricCard}>
+            <View style={styles.metricLabelRow}>
+              <Feather
+                name="bar-chart-2"
+                size={12}
+                color={TEXT_SECONDARY}
+                style={styles.metricLabelIcon}
+              />
+              <Text style={styles.metricLabel}>Top 3 Share</Text>
+            </View>
+            <Text style={styles.metricValue}>
+              {concentrationMetrics.top3Percent.toFixed(1)}%
+            </Text>
+          </View>
+          <View style={styles.metricCard}>
+            <View style={styles.metricLabelRow}>
+              <Feather
+                name="target"
+                size={12}
+                color={TEXT_SECONDARY}
+                style={styles.metricLabelIcon}
+              />
+              <Text style={styles.metricLabel}>HHI</Text>
+            </View>
+            <Text style={styles.metricValue}>
+              {Math.round(concentrationMetrics.hhi)}
+            </Text>
+            <Text style={styles.metricSubValue}>
+              {concentrationMetrics.concentration}
+            </Text>
+          </View>
+        </View>
+
+        {selectedCategory ? (
+          <View style={styles.drilldownCard}>
+            <View style={styles.drilldownTitleRow}>
+              <Feather
+                name="activity"
+                size={12}
+                color={TEXT_PRIMARY}
+                style={styles.metricLabelIcon}
+              />
+              <Text style={styles.drilldownTitle}>
+                {selectedCategory} Breakdown
+              </Text>
+            </View>
+            {selectedCategoryItems.length > 0 ? (
+              selectedCategoryItems.map((item) => (
+                <View key={item.symbol} style={styles.drilldownRow}>
+                  <Text style={styles.drilldownSymbol}>{item.symbol}</Text>
+                  <View style={styles.legendSpacer} />
+                  <Text style={styles.drilldownValue}>
+                    {formatUsd(item.usdValue)}
+                  </Text>
+                  <Text style={styles.drilldownPercent}>
+                    {(item.percentage * 100).toFixed(1)}%
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.drilldownEmpty}>
+                No assets in this category
+              </Text>
+            )}
           </View>
         ) : null}
       </View>
@@ -278,8 +492,42 @@ const styles = StyleSheet.create({
   },
   // Wrapper for chart layout
   chartWrapper: {
+    width: "100%",
     alignItems: "center",
     justifyContent: "center",
+  },
+  modeSwitchRow: {
+    width: "100%",
+    flexDirection: "row",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 12,
+  },
+  modeSwitchButton: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  modeSwitchButtonActive: {
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+  },
+  modeSwitchContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  modeSwitchIcon: {
+    marginRight: 6,
+  },
+  modeSwitchText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: TEXT_SECONDARY,
+  },
+  modeSwitchTextActive: {
+    color: TEXT_PRIMARY,
   },
   // Container for chart and center label
   chartContainer: {
@@ -317,6 +565,7 @@ const styles = StyleSheet.create({
   legendRow: {
     flexDirection: "row",
     alignItems: "center",
+    paddingVertical: 2,
   },
   // Small colored dot indicating asset
   legendDot: {
@@ -341,6 +590,87 @@ const styles = StyleSheet.create({
   },
   // Percentage value text in legend
   legendValue: {
+    fontSize: 12,
+    color: TEXT_SECONDARY,
+  },
+  metricsRow: {
+    marginTop: 14,
+    width: "100%",
+    flexDirection: "row",
+    columnGap: 10,
+  },
+  metricCard: {
+    flex: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  metricLabel: {
+    fontSize: 11,
+    color: TEXT_SECONDARY,
+    marginBottom: 4,
+  },
+  metricLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  metricLabelIcon: {
+    marginRight: 6,
+  },
+  metricValue: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: TEXT_PRIMARY,
+  },
+  metricSubValue: {
+    marginTop: 2,
+    fontSize: 11,
+    color: TEXT_SECONDARY,
+  },
+  drilldownCard: {
+    width: "100%",
+    marginTop: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    rowGap: 8,
+  },
+  drilldownTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: TEXT_PRIMARY,
+  },
+  drilldownTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 2,
+  },
+  drilldownRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  drilldownSymbol: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: TEXT_PRIMARY,
+  },
+  drilldownValue: {
+    fontSize: 12,
+    color: TEXT_SECONDARY,
+    marginRight: 8,
+  },
+  drilldownPercent: {
+    fontSize: 12,
+    color: TEXT_PRIMARY,
+    fontWeight: "600",
+  },
+  drilldownEmpty: {
     fontSize: 12,
     color: TEXT_SECONDARY,
   },
