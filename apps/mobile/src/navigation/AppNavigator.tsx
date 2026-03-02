@@ -17,7 +17,13 @@ export type RootStackParamList = {
 
 export type MainTabParamList = {
   Portfolio: undefined;
-  Activity: undefined;
+  Activity:
+    | {
+        focusSignature?: string;
+        focusTimestamp?: number;
+        focusNonce?: number;
+      }
+    | undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();

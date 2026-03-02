@@ -375,11 +375,15 @@ export function useSolana(): UseSolanaResult {
       const walletBalanceStore = useWalletBalanceStore.getState();
       const walletHistoricalStore = useWalletHistoricalStore.getState();
       walletBalanceStore.updateDetailedBalance(walletBalance);
-      walletHistoricalStore.updateHistoricalBalance(SOLANA_NETWORK, targetAddress, {
-        timestamp: Date.now(),
-        usd: walletBalance.usdValue,
-        sol: walletBalance.balance,
-      });
+      walletHistoricalStore.updateHistoricalBalance(
+        SOLANA_NETWORK,
+        targetAddress,
+        {
+          timestamp: Date.now(),
+          usd: walletBalance.usdValue,
+          sol: walletBalance.balance,
+        },
+      );
       return balance;
     },
     [activeWallet?.address, setMissingTokenPrices],
@@ -473,7 +477,7 @@ export function useSolana(): UseSolanaResult {
       try {
         console.log("[useSolana] Finalizing authorization...");
         console.log("[useSolana] Preview:", preview);
-        
+
         const accountsToLink = await walletService.finalizeWalletAuthorization(
           preview,
           selectedAddresses,
@@ -483,7 +487,7 @@ export function useSolana(): UseSolanaResult {
         // Update local state in useSolana hook
         console.log("[useSolana] Calling upsertWallets...");
         upsertWallets(accountsToLink);
-        
+
         console.log("[useSolana] Setting active wallet address...");
         setActiveWalletAddress(
           (current) => current ?? accountsToLink[0].address,
@@ -492,15 +496,18 @@ export function useSolana(): UseSolanaResult {
         // Also update useWalletStore to keep it in sync
         console.log("[useSolana] Syncing to useWalletStore...");
         const walletState = useWalletStore.getState();
-        
+
         // Add wallets to useWalletStore
         accountsToLink.forEach((newAccount) => {
           walletState.addWallet(newAccount);
         });
-        
+
         // Set active wallet in useWalletStore if not set
         if (!walletState.activeWallet && accountsToLink.length > 0) {
-          console.log("[useSolana] Setting active wallet in useWalletStore:", accountsToLink[0].address);
+          console.log(
+            "[useSolana] Setting active wallet in useWalletStore:",
+            accountsToLink[0].address,
+          );
           walletState.setActiveWallet(accountsToLink[0]);
         }
 
@@ -515,7 +522,10 @@ export function useSolana(): UseSolanaResult {
 
         // Set primary wallet in useWalletStore if not set
         if (!walletState.primaryWalletAddress && accountsToLink.length > 0) {
-          console.log("[useSolana] Setting primary wallet in useWalletStore:", accountsToLink[0].address);
+          console.log(
+            "[useSolana] Setting primary wallet in useWalletStore:",
+            accountsToLink[0].address,
+          );
           walletState.setPrimaryWalletAddress(accountsToLink[0].address);
         }
 
@@ -785,17 +795,15 @@ export function useSolana(): UseSolanaResult {
       let refreshedAccount: LinkedWallet | null = null;
       const lamports = Math.round(amountSol * LAMPORTS_PER_SOL);
       const latestBlockhash = await connection.getLatestBlockhash();
-      const transaction = new Transaction({
-        blockhash: latestBlockhash.blockhash,
-        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-        feePayer: senderPubkey,
-      }).add(
+      const transaction = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: senderPubkey,
           toPubkey: recipientPubkey,
           lamports,
         }),
       );
+      transaction.feePayer = senderPubkey;
+      transaction.recentBlockhash = latestBlockhash.blockhash;
 
       let fallbackSignedTransaction: Transaction | null = null;
       let submittedSignature: string | null = null;
