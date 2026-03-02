@@ -18,11 +18,13 @@ async function bootstrap() {
 
   app.useGlobalInterceptors(new LoggingInterceptor());
 
-  const port = process.env.PORT ? Number(process.env.PORT) : 3000;
+  const port = process.env.PORT ? Number(process.env.PORT) : 10000;
   const host = process.env.HOST || '0.0.0.0';
   await app.listen(port, host);
+  console.log(`WalletHub API running on http://${host}:${port}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 }
 bootstrap().catch((error) => {
-  console.error('Failed to bootstrap Nest app', error);
+  console.error('Failed to bootstrap Nest app:', error);
   process.exit(1);
 });
