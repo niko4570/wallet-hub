@@ -40,8 +40,8 @@ export class WalletsService {
 
   private wallets: WalletAccount[] = [
     {
-      address: 'F97p1dA1s5C3q9e7m2x1n4v6b8k0z1r3t5y7u9w1',
-      label: 'Backpack Prime',
+      address: 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4',
+      label: 'Jupiter Team Wallet',
       provider: 'backpack',
       balances: [
         {
@@ -63,7 +63,7 @@ export class WalletsService {
       sessionKeyIds: ['session-1'],
     },
     {
-      address: '7t5y3u1i9o7p5a3s2d4f6g8h0j2k4l6z8x0c2v4b6',
+      address: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM',
       label: 'Ledger Vault',
       provider: 'ledger',
       balances: [
@@ -75,7 +75,7 @@ export class WalletsService {
         },
         {
           tokenSymbol: 'JitoSOL',
-          mint: 'JitoSOL1111111111111111111111111111111111111',
+          mint: 'J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn',
           amount: 20,
           usdValue: 20 * 110.12,
         },
@@ -294,15 +294,15 @@ export class WalletsService {
     }
 
     try {
-      const response = await fetch(
-        `${JUPITER_PORTFOLIO_ENDPOINT}/${address.trim()}`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': this.jupiterApiKey,
-          },
+      const url = `${JUPITER_PORTFOLIO_ENDPOINT}/${address.trim()}`;
+      this.logger.debug(`Fetching Jupiter portfolio from: ${url}`);
+
+      const response = await fetch(url, {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': this.jupiterApiKey,
         },
-      );
+      });
 
       if (!response.ok) {
         const body = await response.text().catch(() => '');
@@ -313,11 +313,17 @@ export class WalletsService {
       }
 
       const payload = await response.json();
+      this.logger.debug(
+        `Jupiter API response for ${address}:`,
+        JSON.stringify(payload, null, 2),
+      );
+
       const tokens = this.extractTokens(payload)
         .map((token) => this.normalizeWalletBalance(token))
         .filter(Boolean) as WalletBalance[];
 
       if (tokens.length === 0) {
+        this.logger.warn(`No tokens found in Jupiter response for ${address}`);
         return null;
       }
 
